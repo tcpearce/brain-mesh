@@ -1,0 +1,25 @@
+{
+ "built": "2026-11-20",
+ "sources": 3,
+ "evidence": 22,
+ "by_type": {
+  "method": 3,
+  "observation": 10,
+  "oddity": 1,
+  "claim": 3,
+  "limitation": 2,
+  "assumption": 1,
+  "cited": 1,
+  "question": 1
+ },
+ "concepts": 12,
+ "pages": {
+  "K": 1,
+  "X": 1,
+  "G": 2,
+  "H": 1,
+  "E": 1
+ },
+ "errors": 0,
+ "warnings": 0
+}

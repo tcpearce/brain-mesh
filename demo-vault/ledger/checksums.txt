@@ -1,0 +1,4 @@
+# Checksums of the source files as registered. The sources are the ground truth; they must never change.
+P001.pdf f78509cb70ca0b443e52604dc2e501a0ce83d4ebaf05b7cca3e50517897b4e5a 2026-11-20
+P002.pdf ce5074c048ffbef9b38c8c2de34b22cfd3f56ba1f2441ba795c4597a418054bb 2026-11-20
+P003_original.md df8fa1c69eae4bd46e810f405d1376ea030e8860ffc95bca47185fc13039d8ff 2026-11-20

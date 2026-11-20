@@ -1,0 +1,24 @@
+---
+type: claim
+status: inferred
+updated: 2026-11-20
+---
+# Swelling of the polymer network distorts the cavities and lowers binding capacity
+
+The authors propose that [[swelling]] of the polymer network distorts the imprinted cavities and so lowers [[binding-capacity|binding capacity]] at higher [[temperature]]. The claim rests on the fall in capacity and the rise in thickness occurring together; swelling was not varied independently.
+
+**Basis:** capacity at [[P001-003-capacity-4-2-at-25c-water|25 °C]] and [[P001-004-capacity-1-3-at-45c-water|45 °C]], and the [[P001-005-film-thickens-18-percent|18% thickening]].
+**Source:** Smith & Jones 2021, Discussion, p. 2 · [[P001_marked.pdf#page=2&annotation=100R|open page]]
+
+## Codes
+- id:: P001-007
+- concepts:: [[swelling]], [[binding-capacity]], [[temperature]], [[imprinted-polymer-film]]
+- based_on:: [[P001-003-capacity-4-2-at-25c-water]], [[P001-004-capacity-1-3-at-45c-water]], [[P001-005-film-thickens-18-percent]]
+- anchor:: [[P001_text#^b0005]]
+- loc:: "swelling of the polymer network distorts the imprinted cavities"
+
+## Linked from
+- contradicted_by:: [[P002-005-heat-alone-does-not-degrade-cavities|Temperature alone does not degrade the imprinted cavities]] — only if the water result is read as a direct effect of heat
+- qualified_by:: [[P001-008-organic-solvents-not-tested|Organic solvents were not tested]]
+- side_of:: [[X001-does-heat-or-solvent-uptake-lower-capacity|Does heating itself lower binding capacity, or only heating in water?]]
+- supported_by:: [[P002-006-water-uptake-causes-loss-in-water|The loss reported in water is suggested to come from water uptake, not heating]] — both attribute the loss to solvent uptake

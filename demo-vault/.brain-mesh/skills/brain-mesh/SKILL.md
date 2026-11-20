@@ -1,0 +1,266 @@
+---
+name: "brain-mesh"
+description: "Map of a brain mesh: a Zettelkasten vault of interlinked markdown cards that Claude builds from science papers for browsing in Obsidian. Card formats, ids, link types and navigation. Read first for any brain mesh, second brain or research vault task, and before any other brain-mesh-* skill."
+---
+
+# Brain mesh
+
+A brain mesh is a second brain for one research topic. Claude builds it from papers and the user's own results; the user reads and steers it in Obsidian. Its job is to support new science: proposing experiments, designing them and judging their outcomes. Nobody knows in advance which detail of which paper will matter, so the vault is built to lose nothing and to keep every statement traceable to the place on the page it came from.
+
+## The ideas that hold it together
+
+1. **Cards.** Every note is one card with a permanent id and a meaningful file name. Evidence cards hold one statement each, so they can be cited, checked and linked individually.
+2. **Human first, codes second.** Each card opens with the science in plain prose that a person can read on its own. A `## Codes` section underneath repeats it in structured form: the id, typed links, values, conditions and provenance. People read the top; Claude and the tooling read Codes. The two must always agree.
+3. **Concept cards are the hubs.** Every card links the concepts it involves. Concept cards are the one exception to one statement per card: they are living articles that grow with every paper, and they are the main surface the user browses.
+4. **Links are typed, reasoned and two-way.** A link names the relation and, across papers, says why. It is written once; the tooling mirrors it onto the target card.
+5. **Layers cite only downward.** Sources, then evidence, then findings, tensions and gaps, then hypotheses and experiments. This keeps methods, results, authors' claims and the brain's own conclusions separate.
+6. **Importance is never judged at extraction.** Everything of each type is carded. What matters emerges later from what gets linked and used.
+7. **The source PDF is the ground truth.** Every evidence card points to an exact place on the page, and every other card reaches the PDF through the evidence it cites. The original file is never changed and its checksum is recorded. The tooling keeps a marked copy in which each card appears as a highlight on the page.
+
+## Where this lives
+
+These instructions and the tooling live in the GitHub repository `tcpearce/brain-mesh`: the documents under `skills/`, the tooling at `tools/mesh.py`, a demo vault and tests. The small `brain-mesh` skill synced to Claude is only a loader that fetches the current version. Wherever a document names a `brain-mesh-...` skill, read `skills/<that name>/SKILL.md` in the repository. To change anything, change it in the repository (see its README); never patch a copy.
+
+## Which document does what
+
+| Task | Document |
+|---|---|
+| Start a vault, install or upgrade its tooling, open it in Obsidian | `brain-mesh-setup` |
+| Add a paper or an own result; re-read existing papers for a new question | `brain-mesh-add-paper` |
+| Find knowledge gaps, hunt papers that fill them, maintain the research-gaps document | `brain-mesh-gaps` |
+| Hypotheses, experiment design, registered predictions, judging outcomes | `brain-mesh-experiment` |
+| Health checks, merges, corrections, retractions, periodic audits | `brain-mesh-housekeeping` |
+
+## Finding the vault
+
+A vault is a folder containing `MESH.json`. Look, in order, in: a path the user names; a folder on their computer or a repository connected to this session; an uploaded archive. If there is none, use `brain-mesh-setup`.
+
+The vault must outlive the session. If it lives in a connected folder or a repository, work there. If this session's files are temporary, say so at the start and hand back an archive of the whole vault at the end; otherwise the work is lost.
+
+Keep the vault's tooling current: from the repository clone run `python3 tools/mesh.py upgrade <vault folder>`, which copies the tooling and these instructions into the vault, then `build` in the vault. It is quick and safe to run every session.
+
+One writer at a time. If the user may have edited cards in Obsidian since the last session, run `python3 tools/mesh.py build` before anything else so the index matches the files.
+
+## Layout
+
+```
+MAP.md                    home note: overview, then the concept hubs
+MESH.json  SCHEMA.md      marker file and a one-page cheat sheet
+concepts/<slug>.md        concept cards (the hubs)
+sources/P012/             one folder per source
+  P012-<slug>.md            source card
+  P012-007-<slug>.md        evidence cards
+  P012.pdf                  the source as received: the ground truth, never changed
+  P012_marked.pdf           generated copy with every card highlighted on the page
+  P012_text.md              its paragraph-anchored text (never edited)
+  P012-T2.csv               tables transcribed from the source
+findings/K###-<slug>.md   tensions/X###-...   gaps/G###-...
+hypotheses/H###-...       experiments/E###-...
+gaps/RESEARCH-GAPS.md     generated research-gaps document
+ledger/                   CHANGELOG.md, lenses.md, reading-queue.md, checksums.txt
+index/                    generated lookup tables (cards.tsv, edges.tsv, coverage.tsv, marks.json ...)
+tools/mesh.py             the tooling (a copy; the repository holds the source of truth)
+.brain-mesh/              hidden: an offline copy of these instructions and the tooling version
+notes/                    optional: the user's own free-form notes, ignored by the tooling
+```
+
+## Ids and names
+
+- The id is the code at the start of the file name: `P012` (a source), `P012-007` (its seventh evidence card), `K003`, `X001`, `G004`, `H002`, `E001`. A concept card's id is its slug: `binding-capacity`.
+- File name = id plus a short meaningful slug, lower case with hyphens, two to six words: `P012-007-capacity-falls-at-45c.md`. The slug is frozen when the card is created; refine the title inside the card instead of renaming the file. A source card's slug starts with a letter, usually the first author: `P012-smith-2021-film-temperature.md`.
+- Ids are never changed or reused. A card that is wrong or merged is retired by adding `- retired:: <reason and a link to its replacement>` to its Codes. It is never deleted, so nothing that cites it breaks.
+- Get the next free id from `python3 tools/mesh.py id P` (also `K`, `X`, `G`, `H`, `E`, `L`), or `id P012` for that source's next card.
+- When writing a link, a bare id is enough: `[[P012-007]]` or `[[P012-007|readable text]]`. `build` expands every link to the full file name so Obsidian resolves it. In prose always give readable display text.
+
+## Card anatomy
+
+Every card has the same four parts in the same order.
+
+```markdown
+---
+type: observation
+status: measured
+updated: 2026-11-20
+---
+# Binding capacity for analyte X falls to 1.3 at 45 °C in water
+
+At 45 °C in [[water]], the [[binding-capacity|binding capacity]] of the
+[[imprinted-polymer-film|imprinted polymer film]] for [[analyte-x|analyte X]]
+was 1.3 ± 0.2 across three replicate films, about a third of its value at 25 °C.
+
+**Basis:** [[P001-002|batch rebinding with UV detection]].
+**Source:** Smith & Jones 2021, Results, p. 1 · [[P001.pdf#page=1|open page]]
+
+## Codes
+- id:: P001-004
+- value:: [[binding-capacity]] = 1.3 ± 0.2 (± unspecified, n = 3)
+- when:: [[temperature]] = 45 degC
+- when:: [[solvent]] = [[water]]
+- concepts:: [[imprinted-polymer-film]], [[analyte-x]]
+- obtained_by:: [[P001-002]]
+- anchor:: [[P001_text#^b0004]]
+- loc:: "At 45 °C it decreased to 1.3"
+```
+
+1. **Properties.** Exactly `type`, `status` and `updated`, one per line. Concept cards add `aliases` and have no `status`. Put quotes round any value that contains a colon.
+2. **Title.** A `#` heading that states the card's point as a full sentence.
+3. **Human part.** The science in plain prose, complete enough to understand with no other card open: name the system, the conditions, the numbers with units and uncertainty, and the direction of any effect. Link concepts and other cards by readable name. Use the labelled lines and sections given for the card type below.
+4. **Codes.** A list of `- key:: value` lines. Everything a query might need is here even when the prose already says it: the id, every concept, every typed link, values and conditions in fixed form, and provenance. A generated `## Linked from` section may follow it; never edit that section.
+
+Why both halves: prose alone cannot be traversed reliably, and codes alone cannot be read. They are kept in step by hand. If the user has edited the prose in Obsidian, bring the Codes into line, and the reverse. `build` flags a value or a concept that appears in one half and not the other.
+
+## Card types
+
+### Concept cards: the hubs
+
+A concept is anything the brain needs a shared word for: an `entity` (material, analyte, organism, device), a `variable` (anything measured or set), a `technique`, or a `concept` (mechanism, phenomenon, model). Concept cards are what the user navigates by. Write them as short living articles and extend them every time a source touches them.
+
+```markdown
+---
+type: concept
+aliases: ["Binding capacity", "rebinding capacity"]
+updated: 2026-11-20
+---
+# Binding capacity
+
+**Definition.** One to three sentences.
+
+**How it is measured.** For variables and techniques: the methods the sources use and how they differ, citing method cards.
+
+## What is known
+- One line per established point, each citing a finding or evidence card.
+
+## Relationships
+- **[[temperature]]** lowers it in water but not in acetonitrile ([[X001|tension X001]]).
+
+## Open questions
+- One line each, citing a gap card where one exists.
+
+## Where it appears
+<!--AUTO:START-->
+<!--AUTO:END-->
+
+## Codes
+- id:: binding-capacity
+- kind:: variable
+- unit:: 1
+- measured_by:: [[batch-rebinding-assay]], [[quartz-crystal-microbalance]]
+```
+
+- `kind` is `entity`, `variable`, `technique` or `concept`. A variable needs `unit`: a unit, `1` for dimensionless, or `categorical` when its values are themselves concept cards (solvent = water).
+- Concept-to-concept relations in Codes: `broader` (is a kind of), `part_of`, `measured_by`, `affects`, `related`. Write the relation on the card of the concept that does the affecting or belonging, for example on the temperature card: `- affects:: [[binding-capacity]] — in water only, [[K001]]`. An `affects` line must cite the finding or evidence card it rests on, because it is a scientific claim and not vocabulary.
+- The block under **Where it appears** is generated: every finding, tension, gap, hypothesis and experiment that uses the concept, its evidence cards, relations pointing at it from other concepts, and the concepts it most often appears with. Keep the two AUTO marker lines in the card.
+- Before creating a concept run `python3 tools/mesh.py concept "<name>"`. If an existing concept covers it, add the new name to that card's `aliases` instead.
+
+### Source cards
+
+One per paper, preprint, thesis, report, dataset or own result.
+
+Human part: `# Authors (year) Title`, then **Citation.** (with links `[[P012.pdf|original PDF]]`, `[[P012_marked.pdf|marked PDF]]` and `[[P012_text|anchored text]]`), **What they did.**, **What they found.**, **Weaknesses.**, **Extraction.** (one sentence on what has and has not been extracted), then a `## Cards from this source` heading followed by the two AUTO marker lines.
+
+Codes: `kind` (paper, preprint, thesis, report, dataset, own-result, other), `authors` (separated by `;`), `year`, `venue`, `doi`, one `coverage:: unit | depth | what it holds` line for every section, table, figure and supplementary item (depth is `full`, `skim`, `none` or `missing`), and one `pass:: date | kind | cards | verification` line per extraction pass. Status is `registered`, `extracted` or `integrated`.
+
+The coverage lines are the record of what has not been read closely. They are what stops "not in the brain" being mistaken for "not in the paper".
+
+### Evidence cards
+
+One statement from one source. Human part as in the example above: the statement, an optional **Basis:** line naming the method or evidence in words, a **Source:** line a person can follow (authors, year, section, figure or table, page, link to the PDF page), and an optional **Caveat:** line.
+
+| type | what the statement must contain | usual status |
+|---|---|---|
+| `method` | what was done, to what, with which parameters and instruments; enough to repeat or compare | reported |
+| `observation` | what was measured, the value with uncertainty and n, the conditions, the comparison | measured, derived |
+| `model` | the relation in words and symbols, fitted parameters, range of validity | derived |
+| `claim` | what the authors conclude, how strongly they put it, what it rests on | inferred, speculated |
+| `assumption` | what is assumed, where it enters, whether anything tests it | asserted |
+| `limitation` | what limits the result and which statements it affects | reported |
+| `question` | the open question as the authors pose it | reported |
+| `definition` | how this source defines or operationalises a term, where that differs from the concept card | reported |
+| `cited` | a background statement the source takes from other work, with the reference | cited |
+| `oddity` | anything unexpected, unexplained or mentioned in passing that fits nowhere else | measured, reported |
+
+Status says what kind of support the statement has in this source: `reported` (a description of what was done or stated), `measured`, `derived` (computed from measurements), `inferred` (the authors' interpretation), `asserted` (stated without evidence here), `speculated`, `cited`.
+
+Codes on evidence cards:
+
+- `value:: [[variable]] = number ± uncertainty unit (kind of uncertainty, n = N)`. One value per card. A non-numeric outcome may follow the `=`.
+- `when:: [[variable]] = value`, one line per condition, written on every card even when the paper states it once, because cards are read alone. A categorical value is a concept link.
+- `concepts::` every other concept involved.
+- Typed links (next section).
+- `anchor::` where it comes from: `[[P012_text#^b0042]]` for a paragraph, or `T2` (table), `F3b` (figure panel), `p7` (page), `eq4`, `SI...`. Give several, separated by commas, when the paper states the same thing more than once, and add the page to a table or figure anchor (`T2, p7`).
+- `loc:: "..."` six to twelve consecutive words copied from the anchored paragraph. The tooling uses it to confirm the anchor and to place the card's highlight on the PDF. It is a locator, not an excerpt; keep it short.
+- Optional: `origin:: claude` when the statement is Claude's reading and not the authors' words; `via:: table`, `figure`, `si` or `inferred` when it did not come from the running text (a value read off a plot is `via:: figure` and approximate); `null:: true` for a null or negative result; `flag:: <doubt about the extraction>`; `ref::` on cited cards; `lens:: L003` when added in a lens pass.
+
+### Synthesis cards
+
+Written by Claude across sources. One proposition, disagreement or unknown per card. Each cites evidence cards and lists its concepts in `concepts::`.
+
+- **Finding `K`.** `# <the proposition, with its scope>`, **In brief.**, `## Evidence` (for and against, in words, with links), `## Where it holds and where it breaks`, `## What would change this`. Codes: `support::`, `against::`. Status: `single-source`, `tentative`, `probable`, `established`, `contested`. Grade on independent sources, directness and replication, not on how confident the authors sound.
+- **Tension `X`.** **The disagreement.**, `## Sides`, `## Possible explanations` (differing conditions, methods or definitions first), `## What would settle it`. Codes: `sides::`. Status: `open`, `explained`, `resolved`.
+- **Gap `G`.** See `brain-mesh-gaps`.
+
+### Workbench cards
+
+Hypothesis `H` and experiment `E`: see `brain-mesh-experiment`.
+
+## Links
+
+Links live in Codes as `- relation:: [[target]] — reason`.
+
+| on evidence cards | meaning |
+|---|---|
+| `obtained_by` | this observation was made with that method |
+| `based_on` | this claim or model rests on those observations |
+| `qualifies` | this limitation restricts that statement |
+| `underlies` | this assumption is needed by that statement |
+| `supports`, `contradicts` | agrees or disagrees with that card |
+| `replicates` | the same measurement under the same conditions from an independent source |
+| `extends` | follows on from that card: further conditions, a next step, a refinement |
+
+Synthesis and workbench cards use `support`, `against`, `sides`, `from`, `closed_by`, `explains`, `rivals`, `tests`, `addresses`, `uses` and `results`. `python3 tools/mesh.py schema` prints every allowed key and status.
+
+- A link to a card from another source must carry a reason of a few words after ` — `. The reason is what makes the link worth following later, and `build` rejects a cross-source link without one.
+- Write each link once, on the newer card. `build` mirrors it onto the target under `## Linked from`, in inverse wording with the same reason, so both cards show the connection and nobody maintains two ends.
+- Evidence cards link to evidence cards. Findings cite evidence. Hypotheses and experiments cite findings, tensions, gaps and evidence. Nothing cites upward.
+
+## The PDF as ground truth
+
+Every statement in the brain must be checkable against the page it came from, in one click.
+
+- **Evidence cards point at the page.** Write the link in the **Source:** line as `[[P012.pdf#page=5|open page]]`. `build` then re-points it at the card's own highlight in the marked copy, as `[[P012_marked.pdf#page=5&annotation=27R|open page]]`. Never write the annotation number by hand; it is regenerated.
+- **The marked copy.** `P012_marked.pdf` is rebuilt whenever the source's cards change. Each evidence card appears as a highlight on its `loc` phrase, coloured by card type (method blue, observation yellow, claim green, model teal, limitation and assumption orange, question purple, oddity pink, cited and definition grey), with a tag in the margin showing the card id. The highlight's comment holds the card's id and title, and the tag opens the card in Obsidian. A table or figure card is marked on its caption. A card that cannot be placed gets a tag at the top of the page and a warning.
+- **It doubles as a coverage map.** Text with no highlight has no card. Looking through the marked pages is the quickest way to see what was not extracted.
+- **The original is sealed.** `anchor` records a checksum of the file in `ledger/checksums.txt`, and `build` reports an error if the file ever differs. The user's own highlights and notes belong on the marked copy, where they are preserved, never on the original.
+- **Everything else reaches the PDF through evidence.** A finding cites evidence cards, and each of those opens the page. Concept hubs cite findings and evidence. No synthesis card should state a fact that cannot be followed down to a highlighted passage.
+- **Sources that are not PDFs** (a results file, lab notes) are anchored the same way. Their cards link to the paragraph with `[[P003_text#^b0002|open passage]]`.
+- Marking needs PyMuPDF. Without it `build` says that marking was skipped; the cards and every other check still work.
+
+## Navigating and answering from the vault
+
+Work from the top down and read only what the question needs.
+
+1. `MAP.md` for the overview and the list of hubs.
+2. `python3 tools/mesh.py find <words>` searches every card; concept aliases expand automatically. Narrow with `--type observation` or `--source P012`.
+3. `python3 tools/mesh.py show <id or concept>` prints a card, the source paragraphs it is anchored to and everything that links to it. For a concept it lists every card that uses it.
+4. `python3 tools/mesh.py matrix <variable> <variable>` cross-tabulates observations by condition and shows what has and has not been measured.
+5. `index/cards.tsv` and `index/edges.tsv` hold one line per card and per link, for searching with grep. `index/marks.json` gives each card's page and highlight.
+6. When a detail matters, go down to the source: open the PDF page the card points to.
+
+Without code execution the same route works by reading `MAP.md`, then the concept card, then the cards it lists.
+
+When answering:
+
+- Cite card ids, and give the source in words (authors, year, page) for anything the user may repeat elsewhere.
+- Say what kind of statement each point is: measured, the authors' interpretation, or the brain's own synthesis.
+- For anything a decision will rest on, read the passage on the PDF page itself before relying on the card.
+- Before saying the brain has nothing on a point, check the coverage of the relevant sources (`index/coverage.tsv`). If the answer may sit in a part that was not fully extracted, run a lens pass (`brain-mesh-add-paper`) instead of reporting an absence.
+- The brain holds only the sources added to it. "Not in the brain" is never "not known"; `brain-mesh-gaps` handles that distinction.
+
+## Rules that keep it sound
+
+- Never edit a source PDF, its anchored text or an id. If `build` reports that a source file has changed, restore the original before doing anything else.
+- After any change run `python3 tools/mesh.py build`. It expands links, mirrors them, refreshes the hub lists and `MAP.md`, re-marks the PDFs whose cards changed, rebuilds `index/` and runs every check. Fix all errors before finishing; treat each warning as work to do or to explain.
+- Record each completed operation with `python3 tools/mesh.py log "<what changed>"`.
+- Before creating any card, apply the duplicate rules in `brain-mesh-add-paper`.
+- Keep prose and Codes in agreement on every card touched, and set its `updated` date.
+- If the vault is a git repository, offer to commit after each completed operation, one commit per changelog line.

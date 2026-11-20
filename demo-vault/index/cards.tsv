@@ -1,0 +1,44 @@
+id	family	type	status	concepts	title	path
+P001-001	evidence	method	reported	imprinted-polymer-film	Films were spin coated at 2000 rpm and cured for 12 h	sources/P001/P001-001-films-spin-coated-and-cured.md
+P001-002	evidence	method	reported	batch-rebinding-assay binding-capacity imprinted-polymer-film	Binding capacity was measured by batch rebinding with UV detection at 254 nm	sources/P001/P001-002-batch-rebinding-uv-254.md
+P001-003	evidence	observation	measured	analyte-x binding-capacity imprinted-polymer-film solvent temperature water	Binding capacity for analyte X is 4.2 at 25 °C in water	sources/P001/P001-003-capacity-4-2-at-25c-water.md
+P001-004	evidence	observation	measured	analyte-x binding-capacity imprinted-polymer-film solvent temperature water	Binding capacity for analyte X falls to 1.3 at 45 °C in water	sources/P001/P001-004-capacity-1-3-at-45c-water.md
+P001-005	evidence	observation	measured	film-thickness imprinted-polymer-film solvent swelling temperature water	The film thickens by 18% between 25 and 45 °C in water	sources/P001/P001-005-film-thickens-18-percent.md
+P001-006	evidence	oddity	measured	binding-capacity imprinted-polymer-film solvent temperature water	One film at 35 °C showed an unexplained transient rise in capacity	sources/P001/P001-006-transient-capacity-rise-at-35c.md
+P001-007	evidence	claim	inferred	binding-capacity imprinted-polymer-film swelling temperature	Swelling of the polymer network distorts the cavities and lowers binding capacity	sources/P001/P001-007-swelling-distorts-cavities.md
+P001-008	evidence	limitation	reported	solvent water	Organic solvents were not tested	sources/P001/P001-008-organic-solvents-not-tested.md
+P001-009	evidence	assumption	asserted	batch-rebinding-assay binding-capacity equilibration-time	The assay assumes binding reaches equilibrium within 60 minutes	sources/P001/P001-009-equilibrium-assumed-within-60-min.md
+P001-010	evidence	cited	cited	swelling temperature	Swelling is said to scale with temperature in hydrogels (Lee 2015)	sources/P001/P001-010-hydrogel-swelling-scales-with-temperature.md
+P001-011	evidence	question	reported	binding-capacity temperature	Whether the capacity loss reverses on cooling is unknown	sources/P001/P001-011-reversibility-on-cooling-unknown.md
+P001	source	source	integrated		Smith & Jones (2021) Temperature dependence of analyte X binding by an imprinted polymer film	sources/P001/P001-smith-2021-temperature-binding-water.md
+P002-001	evidence	method	reported	binding-capacity imprinted-polymer-film quartz-crystal-microbalance	Binding capacity was measured with a quartz crystal microbalance	sources/P002/P002-001-capacity-measured-by-qcm.md
+P002-002	evidence	observation	measured	acetonitrile analyte-x binding-capacity imprinted-polymer-film solvent temperature	Binding capacity for analyte X is 3.9 at 25 °C in acetonitrile	sources/P002/P002-002-capacity-3-9-at-25c-acetonitrile.md
+P002-003	evidence	observation	measured	acetonitrile analyte-x binding-capacity imprinted-polymer-film solvent temperature	Binding capacity for analyte X is 3.7 at 45 °C in acetonitrile	sources/P002/P002-003-capacity-3-7-at-45c-acetonitrile.md
+P002-004	evidence	observation	derived null	acetonitrile analyte-x binding-capacity imprinted-polymer-film solvent temperature	Heating from 25 to 45 °C does not change binding capacity in acetonitrile	sources/P002/P002-004-no-change-on-heating-in-acetonitrile.md
+P002-005	evidence	claim	inferred	acetonitrile binding-capacity imprinted-polymer-film temperature	Temperature alone does not degrade the imprinted cavities	sources/P002/P002-005-heat-alone-does-not-degrade-cavities.md
+P002-006	evidence	claim	speculated	binding-capacity swelling temperature water	The loss reported in water is suggested to come from water uptake, not heating	sources/P002/P002-006-water-uptake-causes-loss-in-water.md
+P002-007	evidence	limitation	reported	film-thickness imprinted-polymer-film	Only one film thickness, 200 nm, was tested	sources/P002/P002-007-single-film-thickness-tested.md
+P002	source	source	integrated		Garcia & Chen (2023) Imprinted polymer films retain analyte X binding at elevated temperature in acetonitrile	sources/P002/P002-garcia-2023-binding-retained-acetonitrile.md
+P003-001	evidence	observation	measured	analyte-x batch-rebinding-assay binding-capacity imprinted-polymer-film solvent temperature water	Own films: binding capacity is 4.0 at 25 °C in water	sources/P003/P003-001-capacity-4-0-at-25c-water.md
+P003-002	evidence	observation	measured	analyte-x batch-rebinding-assay binding-capacity imprinted-polymer-film solvent temperature water	Own films: binding capacity falls to 1.4 at 45 °C in water	sources/P003/P003-002-capacity-1-4-at-45c-water.md
+P003-003	evidence	observation	measured	analyte-x binding-capacity imprinted-polymer-film solvent swelling temperature water	Own films: binding capacity recovers to 3.8 after cooling back to 25 °C in water	sources/P003/P003-003-capacity-recovers-on-cooling.md
+P003-004	evidence	observation	measured	acetonitrile analyte-x batch-rebinding-assay binding-capacity imprinted-polymer-film solvent temperature	Own films: binding capacity is 3.9 at 25 °C in acetonitrile by batch rebinding	sources/P003/P003-004-capacity-3-9-at-25c-acetonitrile.md
+P003	source	source	integrated		Own result (2026) Heat-then-cool cycle in water and acetonitrile, experiment E001	sources/P003/P003-own-2026-heat-cool-cycle-results.md
+acetonitrile	concept	concept			Acetonitrile	concepts/acetonitrile.md
+analyte-x	concept	concept			Analyte X	concepts/analyte-x.md
+batch-rebinding-assay	concept	concept			Batch rebinding assay	concepts/batch-rebinding-assay.md
+binding-capacity	concept	concept			Binding capacity	concepts/binding-capacity.md
+equilibration-time	concept	concept			Equilibration time	concepts/equilibration-time.md
+film-thickness	concept	concept			Film thickness	concepts/film-thickness.md
+imprinted-polymer-film	concept	concept			Imprinted polymer film	concepts/imprinted-polymer-film.md
+quartz-crystal-microbalance	concept	concept			Quartz crystal microbalance	concepts/quartz-crystal-microbalance.md
+solvent	concept	concept			Solvent	concepts/solvent.md
+swelling	concept	concept			Swelling	concepts/swelling.md
+temperature	concept	concept			Temperature	concepts/temperature.md
+water	concept	concept			Water	concepts/water.md
+K001	page	finding	probable	analyte-x binding-capacity imprinted-polymer-film temperature water	In water, binding capacity of the imprinted film for analyte X falls about threefold between 25 and 45 °C	findings/K001-capacity-falls-on-heating-in-water.md
+X001	page	tension	explained	acetonitrile binding-capacity film-thickness solvent swelling temperature water	Does heating itself lower binding capacity, or only heating in water?	tensions/X001-does-heat-or-solvent-uptake-lower-capacity.md
+G001	page	gap	closed	binding-capacity swelling temperature water	Is the loss of binding capacity on heating in water reversible on cooling?	gaps/G001-is-capacity-loss-reversible-on-cooling.md
+G002	page	gap	confirmed	acetonitrile film-thickness imprinted-polymer-film swelling temperature	Film thickness has never been measured in acetonitrile, so swelling is not ruled in or out there	gaps/G002-no-thickness-data-in-acetonitrile.md
+H001	page	hypothesis	supported	binding-capacity swelling temperature water	The loss of binding capacity on heating in water is reversible swelling, not damage	hypotheses/H001-loss-is-reversible-swelling.md
+E001	page	experiment	done	acetonitrile batch-rebinding-assay binding-capacity solvent temperature water	Heat-then-cool cycle in water and acetonitrile with one assay	experiments/E001-heat-cool-cycle-two-solvents.md

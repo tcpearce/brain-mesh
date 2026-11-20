@@ -1,0 +1,87 @@
+---
+name: "brain-mesh-housekeeping"
+description: "Keep a brain mesh healthy as it grows: health report, stale concept hubs, re-grading findings, merging duplicates, corrections and retractions, audits of old cards, and reconciling edits made in Obsidian. Use for tidy, audit, check or maintain requests."
+---
+
+# Brain mesh: housekeeping
+
+Read `brain-mesh` first. Find the vault.
+
+A vault that only ever grows drifts: hubs fall behind their evidence, findings keep grades they no longer deserve, searches age, and small extraction errors accumulate. Housekeeping is the work that keeps the brain trustworthy enough to design experiments from.
+
+Run it after every five to ten sources, before the brain is used for a proposal or an experiment design, after the user has edited cards in Obsidian, and whenever a source is corrected or retracted.
+
+## The routine
+
+```bash
+python3 tools/mesh.py build     # errors, duplicate warnings, prose and Codes out of step, changed source files
+python3 tools/mesh.py health    # the queues below
+```
+
+Work through the results in this order. Fix what is clear. Bring to the user anything that is a judgement about their science.
+
+1. **Errors from `build`.** Broken links, missing codes, anchors that do not exist, a source file whose checksum no longer matches. Fix all of them. A changed source file is restored from a backup or from git, never re-sealed, unless the user confirms that the registered file was the wrong one.
+2. **Cards with only a page-level marker.** Their `loc` phrase was not found on the PDF page. Correct the phrase or the anchor so the card sits on its passage.
+3. **Duplicate warnings.** Same-source near-duplicates, parallel results from different sources left unlinked, repeated background claims, near-identical concept names, overlapping findings. Apply the duplicate rules in `brain-mesh-add-paper`; merge as described below.
+4. **Concept hubs older than their newest card.** Reread the cards listed under **Where it appears**, then bring **What is known**, **Relationships** and **Open questions** up to date and set `updated`. The hubs are what the user reads, so a stale hub misleads even when every card beneath it is right.
+5. **Findings whose status no longer matches their evidence.** Re-grade: still `single-source` after a second source supports it, still `established` after counter-evidence arrived, graded above `single-source` on one paper.
+6. **Old gap searches.** Repeat them with `brain-mesh-gaps`. A confirmed research gap is only as good as its last search.
+7. **Claims, observations and models cited by nothing.** Either integrate them into a finding or a tension, or leave them deliberately. Not every card needs a finding, but a paper's main results do.
+8. **Flagged cards.** Go back to the PDF page, resolve the doubt and remove the flag, or keep it with a clearer note.
+9. **Concepts used by at most one card.** Fold them into a broader concept as an alias, or leave them if more sources on the topic are coming.
+10. **Hubs that have grown long.** Split: create narrower concept cards with `- broader::` pointing at the hub, move the relevant lines to them, and re-point the cards whose statement is specifically about the narrower concept.
+11. **Experiments registered or running for a long time; sources not yet integrated.** Ask the user, or finish the integration.
+
+Finish with `build`, then `python3 tools/mesh.py log "housekeeping: <what was done>"`.
+
+## Merging
+
+Never delete a card file; other cards and the user's own notes may point at it.
+
+1. Decide which card survives: the older id, unless the newer card is clearly the better one.
+2. Move anything worth keeping into the survivor by hand: for a concept, its aliases and the lines of its article; for an evidence card, its anchors and any detail the survivor lacks.
+3. `python3 tools/mesh.py merge <keep> <drop>` redirects every link and retires the dropped card with a pointer to the survivor.
+4. `build`.
+
+Two cards from different sources that say the same thing are not duplicates. They are independent evidence and stay separate, linked by `replicates`.
+
+## Corrections and retractions
+
+`python3 tools/mesh.py impact <card id or P###>` lists everything that rests, directly or through other cards, on a card or on a whole source: the claims built on an observation, the findings that cite it, the hypotheses those findings prompted, the experiments testing them, and the concept relations that cite it.
+
+- **An extraction error found later.** Check the passage on the PDF page, then fix the card, prose and Codes together. Run `impact` on it and review each dependant. Log it.
+- **A published correction.** Add the corrected version as its own registered file and note it on the source card; fix the affected cards, keep their ids, note the correction in each card's prose, and re-verify them against the corrected text.
+- **A retraction.** Do not remove the source or its cards; the history matters. State the retraction at the top of the source card's prose, add `- retracted:: <date and reason>` to its Codes and a `flag::` to each of its evidence cards. Then go through the `impact` list and re-grade every finding as though those cards were absent, reopen gaps they had closed, and correct the hubs.
+
+Tell the user what changed in the brain's conclusions, not only which cards were edited.
+
+## Edits made in Obsidian
+
+The user is free to edit prose. After they have, `build` shows what moved: a value or concept in the prose that no longer matches the Codes, a renamed file whose name no longer starts with its id, a broken link.
+
+- Treat the user's prose as their intent. Where an edit corrects content, change the Codes to match, then check the PDF page to see who is right, and say so if the source disagrees with the edit.
+- Where the intent is unclear, ask. Never silently revert a user's edit.
+- A renamed file gets its id back at the start of the name; the rest of the user's wording can stay as the slug.
+- Edits inside `## Linked from` or an AUTO block are overwritten by the next `build`. Move anything of value into the card's own prose first.
+- The user's own highlights and notes on a marked PDF are kept when it is regenerated. Annotations on an original PDF change its checksum: move them to the marked copy and restore the original.
+
+## Periodic audit
+
+Checks on anchors and numbers catch transcription slips, not misreadings. Every so often run `python3 tools/mesh.py sample P### 10` on a few sources, favouring older ones and those the main findings rest on. Read each card against its passage on the marked PDF for meaning, completeness of conditions and fairness of status.
+
+Log the result, for example `audit: 30 cards across P004, P011, P019; 1 corrected`. If more than about one card in twenty needs correcting in a source, re-verify that source in full.
+
+## Versioning and safety
+
+- One writer at a time. If the vault is in git, pull before starting and commit after each completed operation.
+- Before a large change such as a batch merge, a hub split or a migration, commit or copy the vault first.
+- Tooling and card-format upgrades go through `brain-mesh-setup`.
+- Publisher PDFs, their marked copies and anchored text stay out of any shared copy; see `brain-mesh-setup`.
+
+## Running it on a schedule
+
+Where scheduled tasks are available and the vault is somewhere a scheduled run can reach, offer a weekly or monthly check that runs `build`, `health` and `gaps` and reports the queues. A scheduled run reports; it does not change the content of cards unattended.
+
+## Report
+
+Give the user a short account: errors fixed; duplicates merged; hubs refreshed; findings re-graded and why; searches repeated; anything they need to decide; and the audit result.

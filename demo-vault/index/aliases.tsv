@@ -1,0 +1,33 @@
+alias	concept
+acetonitrile	acetonitrile
+analyte x	analyte-x
+analyte-x	analyte-x
+aqueous	water
+batch rebinding	batch-rebinding-assay
+batch rebinding assay	batch-rebinding-assay
+batch-rebinding-assay	batch-rebinding-assay
+binding capacity	binding-capacity
+binding-capacity	binding-capacity
+contact time	equilibration-time
+equilibration time	equilibration-time
+equilibration-time	equilibration-time
+film thickness	film-thickness
+film-thickness	film-thickness
+imprinted film	imprinted-polymer-film
+imprinted polymer film	imprinted-polymer-film
+imprinted-polymer-film	imprinted-polymer-film
+mecn	acetonitrile
+medium	solvent
+mip film	imprinted-polymer-film
+qcm	quartz-crystal-microbalance
+quartz crystal microbalance	quartz-crystal-microbalance
+quartz-crystal-microbalance	quartz-crystal-microbalance
+rebinding capacity	binding-capacity
+solvent	solvent
+solvent uptake	swelling
+swelling	swelling
+t	temperature
+temperature	temperature
+thickness	film-thickness
+water	water
+water uptake	swelling

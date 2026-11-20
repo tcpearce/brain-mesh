@@ -1,0 +1,128 @@
+---
+name: "brain-mesh-gaps"
+description: "Find the key knowledge gaps in a brain mesh, search for papers that fill them, and maintain the research-gaps document for gaps no paper answers. Use for what is missing, what to read next, literature gaps, or research gaps to propose experiments from."
+---
+
+# Brain mesh: gaps
+
+Read `brain-mesh` first. Find the vault and run `python3 tools/mesh.py build`.
+
+## The ladder
+
+"The brain does not know" has three different meanings, and each needs a different response. Every candidate gap climbs this ladder, one rung at a time:
+
+1. **Extraction gap.** The answer is in a source already in the brain but was never carded. Response: a lens pass.
+2. **Brain gap.** The literature answers it but the brain does not hold the paper. Response: a reading list, then ingestion.
+3. **Research gap.** A logged search finds no answer. Response: it enters the research-gaps document, and experiments are proposed from it.
+
+Skipping a rung is the main way this goes wrong: proposing an experiment that page 7 of a paper already in the vault has answered.
+
+## 1. Scan for candidates
+
+`python3 tools/mesh.py gaps` prints signals, grouped. They are prompts for judgement, not a list of gaps.
+
+| signal in the scan | kind of gap it may indicate |
+|---|---|
+| findings resting on one source | `unreplicated` |
+| open tensions | `unresolved-tension` |
+| authors' open questions not taken up | `open-question` |
+| oddities not taken up | `unexplained` |
+| assumptions not taken up | `untested-assumption` |
+| models not taken up | `unvalidated-model` (never tested outside the fitted range) |
+| limitations not taken up | `method` or `scope` |
+| condition variables only ever held at one value; sparse condition pairs | `untested-region` |
+| numeric variables never measured as an outcome | `unmeasured` |
+| source units not fully extracted | an extraction gap, rung 1 |
+| most-cited sources not in the brain | a brain gap, rung 2 |
+
+For each sparse pair the scan names, run `python3 tools/mesh.py matrix <variable> <variable>` to see exactly which combinations nobody has measured. Read the **Open questions** and **Relationships** sections of the main concept hubs too: a relationship stated with no finding behind it is a gap. The marked PDFs help with rung 1: passages with no highlight were never carded.
+
+## 2. Choose the key gaps
+
+Most signals are not worth a card. Keep a gap when the answer would matter, judged on three things:
+
+- **Dependence.** How much rests on it. `python3 tools/mesh.py impact <id>` shows what depends on a card, and a gap on a hub concept outranks one at the edge.
+- **Decision value.** Would the answer change a finding's status, separate rival hypotheses, or change what the user does next?
+- **Tractability.** Could a paper or a feasible experiment answer it?
+
+Set `priority` to 1 (the brain's conclusions turn on it), 2 (it would sharpen them) or 3 (worth recording).
+
+Search existing gap cards first (`python3 tools/mesh.py find <words> --type gap`). The same unknown reached from two directions is one gap; add the new origin to its `from::` line.
+
+## 3. Write the gap card
+
+```markdown
+---
+type: gap
+status: open
+updated: 2026-11-20
+---
+# Film thickness has never been measured in acetonitrile, so swelling is not ruled in or out there
+
+**Unknown.** One or two sentences stating exactly what is not known, with its scope.
+
+## Why it matters
+What depends on the answer: which findings, hypotheses or decisions change.
+
+## What is known
+The nearest evidence, with links, and how far it reaches.
+
+## Search log
+- Not yet searched.
+
+## What would close it
+The observation, paper or experiment that would answer it.
+
+## Codes
+- id:: G002
+- kind:: unmeasured
+- priority:: 2
+- from:: [[P001-005]], [[X001]]
+- concepts:: [[film-thickness]], [[acetonitrile]], [[swelling]]
+```
+
+`kind` is one of: untested-region, unreplicated, unresolved-tension, unexplained, untested-assumption, unvalidated-model, unmeasured, open-question, method, scope. The title states the unknown as a full sentence or question. `from::` lists the cards that reveal the gap.
+
+Status moves through: `open` (found, not yet searched), `fillable` (papers found, not yet added), `confirmed` (searched; the literature does not answer it), `planned` (an experiment is registered against it), `closed` (answered; `closed_by::` names the cards), `dropped` (ill-posed or not worth pursuing, with the reason in the prose).
+
+## 4. Take each gap up the ladder
+
+Record every step in the card's **Search log**, dated. The log is what makes an absence claim checkable and repeatable.
+
+**Rung 1: is it in a source we already hold?** Look at `index/coverage.tsv` for the sources that share the gap's concepts. If any relevant section, table, figure or supplementary item is not `full`, or the question is finer than the extraction was, run a lens pass (`brain-mesh-add-paper`). If the answer turns up, card it, set the gap to `closed` or `dropped`, and say in the log that it was an extraction gap.
+
+**Rung 2: is it in the literature?**
+
+- Build queries from the gap's concept cards. Their names and `aliases` are ready-made synonym lists; combine the variable, the system and the condition.
+- Use whatever search this session offers: literature connectors, a literature-search skill, web search. Use at least two independent routes for a priority 1 gap.
+- Follow citations as well as keywords: the references the brain's own sources lean on (`index/frontier.tsv`) and the papers that cite the brain's key sources.
+- Screen each hit against the gap as stated: does it measure this variable, in this system, under these conditions? A paper on the general topic does not fill a specific gap.
+- Log the date, where you searched, the exact queries, the number of hits, how many were screened, and a one-line verdict on each serious candidate.
+
+Then:
+
+- **Papers that would fill it.** Set status `fillable` and `- searched:: <date>`. Add each paper to `ledger/reading-queue.md` with its DOI or link, the gap it would fill, a priority and whether the full text is openly available. Tell the user which PDFs to supply; full text often cannot be fetched from here. Once a paper is ingested with `brain-mesh-add-paper`, return to the gap: `closed` with `closed_by::` if it is answered, a rewritten **Unknown** if it is only narrowed.
+- **Nothing answers it.** Set status `confirmed` and `- searched:: <date>`. Word the conclusion as what it is: "no answer found in <where> on <date>". Never "nobody has done this".
+
+**Rung 3: a research gap.** A confirmed gap goes into the research-gaps document and is offered to `brain-mesh-experiment`. When an experiment is registered against it, set status `planned`. When results answer it, `closed`.
+
+A search goes stale. Repeat it before an experiment is designed on a confirmed gap, and whenever `python3 tools/mesh.py health` reports the search as old.
+
+## 5. The research-gaps document
+
+`python3 tools/mesh.py gapsdoc` assembles `gaps/RESEARCH-GAPS.md` from the gap cards:
+
+- a summary table of confirmed and planned gaps in priority order, with the date last searched and any experiment addressing each;
+- the full human-readable part of each of those gaps, including its search log;
+- gaps that papers may fill, and gaps not yet searched, as short lists;
+- the sources cited.
+
+Everything below its AUTO marker is regenerated, so edit the gap cards and rerun, never the assembled text. Above the marker, write and maintain an introduction: the scope of the brain, how the gaps were identified, where and when the literature was searched, the three or four gaps that matter most and why, and the limits of the search.
+
+To share it outside Obsidian, produce it in whatever document format the user asks for, replacing card links with author-year citations and keeping the gap ids.
+
+## 6. Close
+
+- Add each key gap to **Open questions** on the concept hubs it concerns, with a link.
+- Run `python3 tools/mesh.py build`, then `gapsdoc`, then `python3 tools/mesh.py log "gaps: <n> new, <n> fillable, <n> confirmed, <n> closed"`.
+- Report to the user: how many candidates were extraction gaps, brain gaps and research gaps; the reading list in priority order; and the top research gaps, each with one line on what would close it.

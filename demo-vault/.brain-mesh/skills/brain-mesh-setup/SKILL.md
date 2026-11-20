@@ -17,6 +17,16 @@ One vault per research topic. The vault is an ordinary folder and must outlive t
 
 If none of these is settled, ask the user which they want. It decides whether the work persists.
 
+### When the vault is its own git repository
+
+This is the arrangement that lets Claude work on the vault from anywhere while the user browses it in Obsidian on their computer.
+
+- **Everything is committed**, including the original PDFs, the marked PDFs and `index/`. The user's computer runs no tooling, so whatever Obsidian needs must arrive with a pull. `init` writes a `.gitignore` that excludes only scratch files.
+- **Pull before any work, push after each completed operation**, one commit per changelog line, so the user's next pull shows it. Work on the branch the user has agreed; ask once whether that is `main` or a branch with a pull request, and remember the answer in the vault's `MAP.md` overview.
+- **One writer at a time.** If the user edits cards or annotates a marked PDF on their computer, they push before Claude works on that source. A marked PDF is a binary file: two versions cannot be merged, only chosen between.
+- **Size.** Original PDFs are stored once. A marked PDF is stored again each time that source's cards change, so finish a source before committing, and expect roughly twice the size of the PDFs overall. If the repository approaches a gigabyte, move the PDFs to Git LFS.
+- On the user's computer: clone the repository once, open the folder in Obsidian, and pull to update (GitHub Desktop or the Obsidian Git plugin both work).
+
 ## 2. Get the tooling
 
 The tooling is one file, `tools/mesh.py`, kept in the `tcpearce/brain-mesh` repository next to these instructions. The loader skill has already cloned or pulled the repository; use that copy. `init` copies it into the new vault, together with an offline copy of the instructions in the hidden `.brain-mesh/` folder, so a vault still works when the repository cannot be reached.

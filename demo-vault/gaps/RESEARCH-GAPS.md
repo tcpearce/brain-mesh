@@ -3,7 +3,7 @@
 _Introduction: scope of the brain, how gaps were identified and searched, and the headline gaps. Rewrite when the list changes._
 
 <!--AUTO:START (rebuilt by `mesh.py gapsdoc`; do not edit below)-->
-_Assembled 2026-11-20 from the gap cards. Edit those cards, then re-run `mesh.py gapsdoc`._
+_Assembled from the gap cards. Edit those cards, then re-run `mesh.py gapsdoc`._
 
 ## Research gaps: no answer found in the literature searched
 

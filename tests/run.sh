@@ -69,6 +69,8 @@ CARDS
 python3 tools/mesh.py split batch.md | grep -q "3 cards written" && pass "split wrote 3 cards" || fail "split"
 python3 tools/mesh.py build | grep -q "check: 0 errors, 0 warnings" && pass "smoke vault builds clean" || fail "smoke vault build"
 [ -f .brain-mesh/skills/brain-mesh/SKILL.md ] && pass "init copied the instructions into the vault" || fail "instructions not copied"
+[ -f .gitignore ] && pass "init wrote a .gitignore" || fail "no .gitignore"
+cp MAP.md /tmp/map1 && python3 tools/mesh.py build > /dev/null && cmp -s MAP.md /tmp/map1 && pass "a second build leaves MAP.md unchanged" || fail "MAP.md changes between builds"
 
 # 3. checks must catch planted faults
 sed -i.bak 's/= 4.2/= 4.7/' sources/P001/P001-001-response-is-4-2.md

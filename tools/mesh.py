@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.0.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.0.1"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -418,6 +418,7 @@ def cmd_init(path, name, topic):
     wr(J(path, "SCHEMA.md"), SCHEMA_MD.format(v=SCHEMA))
     wr(J(path, "ledger", "CHANGELOG.md"), f"# Changelog (append only, newest last)\n\n- {TODAY} brain mesh created\n")
     wr(J(path, "ledger", "lenses.md"), "# Lens passes (targeted re-reads of the sources)\n")
+    wr(J(path, ".gitignore"), "# Everything a vault needs is versioned, including index/ and the marked PDFs, so a pull is enough to browse it.\n__pycache__/\n*.pyc\n*.tmp\n.DS_Store\n.trash/\nindex/.new.md\n.obsidian/workspace*.json\n")
     wr(J(path, "ledger", "reading-queue.md"), "# Reading queue (papers found that are not yet in the brain)\n\n| ref | would fill | priority | access | status |\n|---|---|---|---|---|\n")
     cmd_upgrade(path, quiet=True)
     print(f"Brain mesh '{name}' created at {os.path.abspath(path)} with tooling {VERSION} (open this folder as an Obsidian vault)")
@@ -671,7 +672,7 @@ def cmd_build(root):
     for c in ev:
         for t in m.terms(c): tc[t] += 1; tsrc[t].add(c.id[:4])
     concepts = [c for c in m.cards.values() if c.fam == "concept"]
-    wr(J(ix, "stats.json"), json.dumps({"built": TODAY, "sources": len(srcs), "evidence": len(ev), "by_type": types, "concepts": len(concepts), "pages": Counter(c.id[0] for c in m.pages("KXGHE")), "errors": len(m.err), "warnings": len(m.warn)}, indent=1) + "\n")
+    wr(J(ix, "stats.json"), json.dumps({"sources": len(srcs), "evidence": len(ev), "by_type": types, "concepts": len(concepts), "pages": Counter(c.id[0] for c in m.pages("KXGHE")), "errors": len(m.err), "warnings": len(m.warn)}, indent=1) + "\n")
     L = [f"**Counts:** {len(srcs)} sources · {len(ev)} evidence cards ({', '.join(f'{k} {v}' for k, v in types.most_common())}) · {len(concepts)} concepts · " + " · ".join(f"{k} {len(m.pages(k))}" for k in PAGES), ""]
     def sect(title, cs, cap=40):
         if not cs: return
@@ -690,7 +691,7 @@ def cmd_build(root):
     if front: L += ["**Most-cited sources not yet in the brain:** " + "; ".join(f"{k} ({len(v)})" for k, v in front[:8]), ""]
     cl = J(root, "ledger", "CHANGELOG.md")
     if os.path.exists(cl): L += ["**Recent changes**"] + [l for l in rd(cl).splitlines() if l.startswith("- ")][-5:] + [""]
-    L.append(f"**Integrity ({TODAY}):** {len(m.err)} errors, {len(m.warn)} warnings" + "".join(f"; {v} {k}" for k, v in notes.items()))
+    L.append(f"**Integrity:** {len(m.err)} errors, {len(m.warn)} warnings" + "".join(f"; {v} {k}" for k, v in notes.items()))
     mp = J(root, "MAP.md"); t = rd(mp)
     if "<!--AUTO:START" not in t or "<!--AUTO:END-->" not in t: t = t.rstrip() + "\n\n<!--AUTO:START (rebuilt by `mesh.py build`; do not edit by hand)-->\n<!--AUTO:END-->\n"
     a, b = t.find("<!--AUTO:START"), t.find("<!--AUTO:END-->")
@@ -738,7 +739,7 @@ def cmd_gapsdoc(m):
         for v in e.all("addresses"):
             for t in m.ids(v)[0]: exps[t].append(e)
     conf, cited = [g for g in G if g.status in ("confirmed", "planned")], set()
-    L = [f"_Assembled {TODAY} from the gap cards. Edit those cards, then re-run `mesh.py gapsdoc`._", "", "## Research gaps: no answer found in the literature searched", ""]
+    L = ["_Assembled from the gap cards. Edit those cards, then re-run `mesh.py gapsdoc`._", "", "## Research gaps: no answer found in the literature searched", ""]
     if conf: L += ["| Gap | What is unknown | Kind | Priority | Last searched | Experiment |", "|---|---|---|---|---|---|"]
     L += [f"| [[{g.name}\\|{g.id}]] | {one(g.title, 140)} | {g.get('kind')} | {g.get('priority', '?')} | {g.get('searched', 'never')} | {' '.join(f'[[{e.name}{chr(92)}|{e.id}]]' for e in exps[g.id]) or 'none yet'} |" for g in conf] or ["None confirmed yet."]
     for g in conf:

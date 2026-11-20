@@ -17,8 +17,8 @@ Start with a concept below, for example [[binding-capacity|Binding capacity]] or
 - [[binding-capacity|Binding capacity]] · variable · 17 cards from 3 sources
 - [[temperature|Temperature]] · variable · 16 cards from 3 sources
 - [[solvent|Solvent]] · variable · 12 cards from 3 sources
-- [[water|Water]] · entity · 9 cards from 3 sources
 - [[analyte-x|Analyte X]] · entity · 9 cards from 3 sources
+- [[water|Water]] · entity · 9 cards from 3 sources
 - [[batch-rebinding-assay|Batch rebinding assay]] · technique · 5 cards from 2 sources
 - [[swelling|Swelling]] · concept · 5 cards from 3 sources
 - [[acetonitrile|Acetonitrile]] · entity · 5 cards from 2 sources

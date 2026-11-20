@@ -7,6 +7,8 @@ Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py`
 Found by the first test on real papers.
 
 - Marking: PDF search now expands typeset ligatures, so a locator phrase containing "fi" or "fl" is found on the page.
+- Marking: each tag now sits immediately left of the column holding its highlight, so on a two- or three-column page a tag is beside its own passage. A page margin takes the full card id; a gutter between columns takes the card number alone.
+- Marking: a card with two anchors that resolve to the same passage gets one highlight, not two.
 - Checks: a value written with a thousands separator in the prose (5,000) now matches the same value in Codes (5000).
 - Add-paper instructions: choose locator phrases made of plain words, avoiding symbols, operators and words split by a line-break hyphen.
 

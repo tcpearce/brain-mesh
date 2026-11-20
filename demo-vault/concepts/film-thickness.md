@@ -20,7 +20,7 @@ updated: 2026-11-20
 **Linked from other concepts**
 - affected_by:: [[temperature|Temperature]] — [[P001-005-film-thickens-18-percent]]
 
-**Appears alongside:** [[swelling]] (3) · [[temperature]] (3) · [[imprinted-polymer-film]] (3) · [[solvent]] (2) · [[water]] (2) · [[acetonitrile]] (2) · [[binding-capacity]] (1)
+**Appears alongside:** [[temperature]] (3) · [[swelling]] (3) · [[imprinted-polymer-film]] (3) · [[solvent]] (2) · [[water]] (2) · [[acetonitrile]] (2) · [[binding-capacity]] (1)
 
 <!--AUTO:END-->
 

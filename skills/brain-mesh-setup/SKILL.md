@@ -64,7 +64,7 @@ Tell the user, briefly:
 - Open the vault folder with "Open folder as vault". Start at `MAP`, then follow a concept hub.
 - Every link is a normal Obsidian link. The backlinks pane of a concept card lists every card that mentions it, and each card's `## Linked from` section shows what points at it and why.
 - The graph view is most readable with colour groups by folder: `path:concepts`, `path:sources`, `path:findings`, `path:tensions`, `path:gaps`, `path:hypotheses`, `path:experiments`.
-- Each paper has two PDFs. `P012.pdf` is the original and is never changed. `P012_marked.pdf` shows every card as a coloured highlight with the card id in the margin. A card's **open page** link jumps to its highlight, and clicking a margin tag opens the card. Unhighlighted text has no card.
+- Each paper has two PDFs. `P012.pdf` is the original and is never changed. `P012_marked.pdf` shows every card as a coloured highlight with a tag beside it: the full card id in the page margin, or the card number alone (`014` for `P012-014`) in the gutter between columns. A card's **open page** link jumps to its highlight, and clicking a margin tag opens the card. Unhighlighted text has no card.
 - Their own highlights and notes go on the marked copy, where the tooling preserves them. Annotating the original would trip its checksum.
 - The margin tags open cards by vault name, taken to be the vault's folder name. If the vault appears under another name in Obsidian, set `"obsidian_vault"` in `MESH.json` and run `python3 tools/mesh.py mark --force`.
 - The `key:: value` lines under `## Codes` are plain text. The Dataview plugin, if installed, can query them, but nothing depends on it.

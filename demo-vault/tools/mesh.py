@@ -36,7 +36,7 @@ INVERSE = {"obtained_by": "used_to_obtain", "based_on": "basis_for", "qualifies"
 STOP = set("a an the of in on at to for by with and or is are was were be as it its this that from into than not no does do did between about".split())
 MARK_COLOURS = {"method": (0.55, 0.75, 1.0), "observation": (1.0, 0.9, 0.2), "model": (0.55, 0.9, 0.9), "claim": (0.6, 0.9, 0.5), "assumption": (1.0, 0.7, 0.4),
                 "limitation": (1.0, 0.7, 0.4), "question": (0.8, 0.7, 1.0), "oddity": (1.0, 0.6, 0.8), "definition": (0.85, 0.85, 0.85), "cited": (0.85, 0.85, 0.85)}
-LEGEND = "brain mesh marks: method blue · observation yellow · claim green · model teal · limitation and assumption orange · question purple · oddity pink · cited and definition grey. Each tag opens its card."
+LEGEND = "brain mesh marks: method blue · observation yellow · claim green · model teal · limitation and assumption orange · question purple · oddity pink · cited and definition grey. Each tag opens its card; a three-digit tag beside a column is the card number within this paper."
 NOTES = ("MAP", "SCHEMA", "RESEARCH-GAPS", "CHANGELOG", "lenses", "reading-queue")
 WIKI = re.compile(r"\[\[([^\]|#]+)(#[^\]|]*)?(\|[^\]]*)?\]\]")
 IDLINK = re.compile(r"\[\[(P\d{3}-\d{3}|P\d{3}|[KXGHE]\d{3})(-[a-z0-9-]*)?(?=[\]|#\\])")
@@ -532,6 +532,25 @@ def fixlinks(m):
         if new != txt: wr(path, new); n += sum(a != b for a, b in zip(IDLINK.findall(txt), IDLINK.findall(new)))
     return n
 
+def textlines(page):
+    """Horizontal text lines of a page, each with the box of the paragraph it belongs to."""
+    return [(l["bbox"], b["bbox"]) for b in page.get_text("dict")["blocks"] if b.get("type") == 0 for l in b["lines"] if abs(l["dir"][0]) > 0.9 and l["bbox"][2] - l["bbox"][0] > 3]
+
+
+def tagspot(page, lines, q, cid):
+    """Where a card's tag goes: immediately left of the column that holds its highlight, so that on a page with two or
+    three columns each tag sits beside its own passage. Full id where there is room (a page margin), the card number
+    alone in a gutter between columns. Returns label, x, width, font size."""
+    ym = (q.y0 + q.y1) / 2
+    inside = [b for _, b in lines if b[0] - 1 <= q.x0 <= b[2] and b[1] - 1 <= ym <= b[3] + 1]
+    col = min(inside, key=lambda b: b[2] - b[0])[0] if inside else q.x0
+    gap = col - max([l[2] for l, _ in lines if l[2] <= col + 1 and l[1] < q.y0 + 9 and l[3] > q.y0 - 1] or [0])
+    if gap >= 30: w = min(36, gap - 4); return cid, col - 2 - w, w, 5.5
+    if gap >= 9: w = min(13, gap - 1); return cid.split("-")[-1], col - 0.5 - w, w, 4.5
+    W, right = page.rect.width, max([l[2] for l, _ in lines] or [page.rect.width - 40])
+    return (cid, right + 3, 36, 5.5) if W - right >= 40 else (cid, 2, 36, 5.5)
+
+
 def mark(m, only=None, force=False):
     """Write every evidence card onto a marked copy of its source PDF (P###_marked.pdf): a highlight at its locator
     phrase coloured by card type, a margin tag that opens the card in Obsidian, and the card's own PDF link pointed
@@ -567,22 +586,20 @@ def mark(m, only=None, force=False):
                     hit = find([f"Table {lab.group(2)}"] if lab.group(1) == "T" else [f"Figure {lab.group(2)}", f"Fig. {lab.group(2)}", f"Fig {lab.group(2)}"], stated + every)
                     spots.append((hit[0], hit[1][:1]) if hit else ((stated or [1])[0], None))
             spots = spots or [(p, None) for p in stated if 1 <= p <= len(doc)] or [(1, None)]
-            first = None
+            first, seen = None, set()
             for pno, quads in spots:
                 page = doc[pno - 1]
-                if pno not in edge:
-                    xs = [(b[0], b[2]) for b in page.get_text("blocks") if b[6] == 0] or [(72, page.rect.width - 72)]
-                    edge[pno] = (min(x[0] for x in xs), max(x[1] for x in xs))
-                left, right = edge[pno]; W_ = page.rect.width
+                where = (pno, round(quads[0].rect.x0), round(quads[0].rect.y0)) if quads else (pno,)
+                if where in seen: continue  # two anchors of one card that resolve to the same passage get one mark
+                seen.add(where)
+                if pno not in edge: edge[pno] = textlines(page)
                 if quads:
                     h = page.add_highlight_annot(quads); h.set_colors(stroke=col)
                     h.set_info(title="brain-mesh", subject=c.id, content=f"{c.id} · {c.type}/{c.status}\n{c.title}"); h.update()
-                    y, x0 = quads[0].rect.y0, quads[0].rect.x0
-                else: h, y, x0 = None, 24, 0
-                on_right = x0 > W_ / 2 and W_ - right >= 40
-                x = (right + 3) if on_right else (max(2, left - 39) if left >= 41 else (right + 3 if W_ - right >= 40 else 2))
-                row = (pno, on_right, round(y / 8)); tag = fitz.Rect(x, y + 8.5 * rows[row], x + 36, y + 8 + 8.5 * rows[row]); rows[row] += 1
-                t = page.add_freetext_annot(tag, c.id, fontsize=5.5, text_color=(0.1, 0.1, 0.45), fill_color=col)
+                    y = quads[0].rect.y0; label, x, w, fs = tagspot(page, edge[pno], quads[0].rect, c.id)
+                else: h, y, label, x, w, fs = None, 24, c.id, 2, 36, 5.5
+                row = (pno, round(x), round(y / 8)); tag = fitz.Rect(x, y + 8.5 * rows[row], x + w, y + 8 + 8.5 * rows[row]); rows[row] += 1
+                t = page.add_freetext_annot(tag, label, fontsize=fs, text_color=(0.1, 0.1, 0.45), fill_color=col)
                 t.set_info(title="brain-mesh", subject=c.id); t.update()  # a free-text annotation displays its content, so the tag keeps just the id
                 page.insert_link({"kind": fitz.LINK_URI, "from": tag, "uri": f"obsidian://open?vault={vault}&file={urllib.parse.quote(os.path.relpath(c.path, m.root))}"})
                 first = first or {"page": pno, "annot": (h or t).xref, "how": "highlight" if h else "page"}

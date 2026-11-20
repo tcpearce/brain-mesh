@@ -28,7 +28,7 @@ updated: 2026-11-20
 **Linked from other concepts**
 - related:: [[film-thickness|Film thickness]]
 
-**Appears alongside:** [[temperature]] (9) · [[water]] (6) · [[binding-capacity]] (6) · [[imprinted-polymer-film]] (4) · [[solvent]] (3) · [[film-thickness]] (3) · [[acetonitrile]] (2) · [[analyte-x]] (1)
+**Appears alongside:** [[temperature]] (9) · [[water]] (6) · [[binding-capacity]] (6) · [[imprinted-polymer-film]] (4) · [[film-thickness]] (3) · [[solvent]] (3) · [[acetonitrile]] (2) · [[analyte-x]] (1)
 
 <!--AUTO:END-->
 

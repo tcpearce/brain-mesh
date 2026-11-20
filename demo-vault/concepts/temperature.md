@@ -42,7 +42,7 @@ updated: 2026-11-20
 - [[P001-006-transient-capacity-rise-at-35c|One film at 35 °C showed an unexplained transient rise in capacity]] · oddity
 - [[P001-010-hydrogel-swelling-scales-with-temperature|Swelling is said to scale with temperature in hydrogels (Lee 2015)]] · cited
 
-**Appears alongside:** [[binding-capacity]] (19) · [[imprinted-polymer-film]] (15) · [[solvent]] (13) · [[water]] (13) · [[analyte-x]] (10) · [[swelling]] (9) · [[acetonitrile]] (8) · [[batch-rebinding-assay]] (4) · [[film-thickness]] (3)
+**Appears alongside:** [[binding-capacity]] (19) · [[imprinted-polymer-film]] (15) · [[water]] (13) · [[solvent]] (13) · [[analyte-x]] (10) · [[swelling]] (9) · [[acetonitrile]] (8) · [[batch-rebinding-assay]] (4) · [[film-thickness]] (3)
 
 <!--AUTO:END-->
 

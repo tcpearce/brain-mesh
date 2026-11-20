@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.0.2"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.0.3"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -605,7 +605,7 @@ def mark(m, only=None, force=False):
                 first = first or {"page": pno, "annot": (h or t).xref, "how": "highlight" if h else "page"}
             cards[c.id] = first
         if len(doc):
-            lg = doc[0].add_freetext_annot(fitz.Rect(30, 3, doc[0].rect.width - 30, 12), LEGEND, fontsize=5, text_color=(0.3, 0.3, 0.3)); lg.set_info(title="brain-mesh"); lg.update()
+            lg = doc[0].add_freetext_annot(fitz.Rect(30, 2, doc[0].rect.width - 30, 16), LEGEND, fontsize=5, text_color=(0.3, 0.3, 0.3)); lg.set_info(title="brain-mesh"); lg.update()
         doc.save(out + ".tmp", deflate=True, garbage=3); doc.close(); os.replace(out + ".tmp", out)
         for c in ev:  # point the card's own PDF link at its highlight
             k = cards[c.id]; frag = f"#page={k['page']}&annotation={k['annot']}R"
@@ -927,6 +927,15 @@ def cmd_sample(m, pid, n=10):
         for a in m.anchors(c):
             print(f"    SOURCE {a}: {m.blocks(pid)[a][1]}" if a in m.blocks(pid) else f"    SOURCE {a}: open the source to check")
 
+def cmd_unread(m, pid, floor=140):
+    """Paragraphs of a source that no card is anchored to, in reading order: the place to look for missed cards."""
+    used = {a for c in m.evidence(pid) for a in m.anchors(c)}
+    rows = [(a, pg, t) for a, (pg, t) in m.blocks(pid).items() if a not in used]
+    for a, pg, t in rows:
+        if len(t) >= int(floor): print(f"{a}\tp{pg}\t{len(t)} chars\t{one(t, 260)}")
+    print(f"{pid}: {len(m.blocks(pid))} paragraphs, {len(used & set(m.blocks(pid)))} with a card anchored, {len(rows)} without ({sum(1 for r in rows if len(r[2]) >= int(floor))} of them at least {floor} characters, listed above)")
+
+
 def cmd_related(m, pid):
     mine = set().union(*[m.terms(c) for c in m.evidence(pid)] or [set()])
     for n, c in sorted(((len(mine & m.terms(c)), c) for c in m.pages("KXGHE")), key=lambda r: (-r[0], r[1].id)):
@@ -948,6 +957,7 @@ show <id|concept>             a card, its source paragraphs and what links to it
 link <id> [<id> ...]          the full [[file name]] link for each id
 matrix <var> [<var>] [--all]  cross-tab observations by condition (also: type, source)
 sample <P###> [n]             random cards beside their source text, for spot checks
+unread <P###> [min chars]     paragraphs of a source that no card is anchored to, for finding missed cards
 related <P###>                synthesis and workbench cards, and sources, sharing concepts with a source
 neighbours <id|P###>          the most similar existing cards for one card or a whole source: duplicates to merge, links to make
 health                        housekeeping queues: stale hubs, findings to re-grade, old searches, unused evidence
@@ -981,6 +991,7 @@ def main():
     elif c == "concept": cmd_concept(m, " ".join(a))
     elif c == "matrix": cmd_matrix(m, a)
     elif c == "sample": cmd_sample(m, *a[:2])
+    elif c == "unread": cmd_unread(m, *a[:2])
     elif c == "related": cmd_related(m, a[0])
     elif c == "neighbours": cmd_neighbours(m, a[0])
     elif c == "health": cmd_health(m)

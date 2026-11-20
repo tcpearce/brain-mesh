@@ -2,6 +2,14 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.0.3 (2026-11-20)
+
+Also from the first test on real papers.
+
+- New command `unread <P###>`: lists the paragraphs of a source that no card is anchored to. On the two test papers it found six statements the first pass had missed.
+- Add-paper instructions: the verification step now runs `unread` and reviews each listed paragraph, as well as viewing the marked pages.
+- Marking: the legend at the top of page 1 is no longer cut off.
+
 ## 1.0.2 (2026-11-20)
 
 Found by the first test on real papers.

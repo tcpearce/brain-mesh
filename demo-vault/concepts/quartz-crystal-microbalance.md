@@ -15,7 +15,7 @@ updated: 2026-11-20
 **Linked from other concepts**
 - measures:: [[binding-capacity|Binding capacity]]
 
-**Appears alongside:** [[binding-capacity]] (1) · [[imprinted-polymer-film]] (1)
+**Appears alongside:** [[imprinted-polymer-film]] (1) · [[binding-capacity]] (1)
 
 <!--AUTO:END-->
 

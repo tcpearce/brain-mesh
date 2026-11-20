@@ -23,7 +23,7 @@ updated: 2026-11-20
 - [[P003-003-capacity-recovers-on-cooling|Own films: binding capacity recovers to 3.8 after cooling back to 25 °C in water]] · observation
 - [[P003-004-capacity-3-9-at-25c-acetonitrile|Own films: binding capacity is 3.9 at 25 °C in acetonitrile by batch rebinding]] · observation
 
-**Appears alongside:** [[temperature]] (10) · [[imprinted-polymer-film]] (10) · [[binding-capacity]] (10) · [[solvent]] (9) · [[water]] (6) · [[acetonitrile]] (4) · [[batch-rebinding-assay]] (3) · [[swelling]] (1)
+**Appears alongside:** [[binding-capacity]] (10) · [[imprinted-polymer-film]] (10) · [[temperature]] (10) · [[solvent]] (9) · [[water]] (6) · [[acetonitrile]] (4) · [[batch-rebinding-assay]] (3) · [[swelling]] (1)
 
 <!--AUTO:END-->
 

@@ -66,7 +66,7 @@ Tell the user, briefly:
 - The graph view is most readable with colour groups by folder: `path:concepts`, `path:sources`, `path:findings`, `path:tensions`, `path:gaps`, `path:hypotheses`, `path:experiments`.
 - Each paper has two PDFs. `P012.pdf` is the original and is never changed. `P012_marked.pdf` shows every card as a coloured highlight with a tag beside it: the full card id in the page margin, or the card number alone (`014` for `P012-014`) in the gutter between columns. A card's **open page** link jumps to its highlight, and clicking a margin tag opens the card. Unhighlighted text has no card.
 - Their own highlights and notes go on the marked copy, where the tooling preserves them. Annotating the original would trip its checksum.
-- The margin tags open cards by vault name, taken to be the vault's folder name. If the vault appears under another name in Obsidian, set `"obsidian_vault"` in `MESH.json` and run `python3 tools/mesh.py mark --force`.
+- The tags open cards by vault name. `init` records the folder name as `"obsidian_vault"` in `MESH.json`. If the vault appears under another name in Obsidian, for example a clone kept in a differently named folder, change that value and run `python3 tools/mesh.py mark --force`.
 - The `key:: value` lines under `## Codes` are plain text. The Dataview plugin, if installed, can query them, but nothing depends on it.
 - Safe to edit in Obsidian: the prose of any card, concept hubs most of all. Tell Claude afterwards so the Codes can be brought into line.
 - Do not edit: `## Linked from` sections, anything between AUTO markers, `index/`, the original PDFs or the `_text` files. Do not rename card files; the id at the start of the name must stay.

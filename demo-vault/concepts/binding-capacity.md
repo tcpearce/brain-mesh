@@ -30,7 +30,7 @@ updated: 2026-11-20
 - [[K001-capacity-falls-on-heating-in-water|K001 In water, binding capacity of the imprinted film for analyte X falls about threefold between 25 and 45 °C]] · probable
 - [[X001-does-heat-or-solvent-uptake-lower-capacity|X001 Does heating itself lower binding capacity, or only heating in water?]] · explained
 
-**Evidence: 17 cards from 3 sources** (observation 9, claim 3, method 2, oddity 1, assumption 1, question 1)
+**Evidence: 17 cards from 3 sources** (observation 9, claim 3, method 2, assumption 1, oddity 1, question 1)
 - [[P001-003-capacity-4-2-at-25c-water|Binding capacity for analyte X is 4.2 at 25 °C in water]] · observation
 - [[P001-004-capacity-1-3-at-45c-water|Binding capacity for analyte X falls to 1.3 at 45 °C in water]] · observation
 - [[P002-002-capacity-3-9-at-25c-acetonitrile|Binding capacity for analyte X is 3.9 at 25 °C in acetonitrile]] · observation
@@ -53,7 +53,7 @@ updated: 2026-11-20
 - affected_by:: [[swelling|Swelling]] — proposed, not tested, [[P001-007-swelling-distorts-cavities]]
 - affected_by:: [[temperature|Temperature]] — in water only, [[K001-capacity-falls-on-heating-in-water]], [[X001-does-heat-or-solvent-uptake-lower-capacity]]
 
-**Appears alongside:** [[temperature]] (19) · [[imprinted-polymer-film]] (15) · [[water]] (12) · [[solvent]] (12) · [[analyte-x]] (10) · [[acetonitrile]] (7) · [[batch-rebinding-assay]] (6) · [[swelling]] (6) · [[equilibration-time]] (1) · [[quartz-crystal-microbalance]] (1) · [[film-thickness]] (1)
+**Appears alongside:** [[temperature]] (19) · [[imprinted-polymer-film]] (15) · [[solvent]] (12) · [[water]] (12) · [[analyte-x]] (10) · [[acetonitrile]] (7) · [[batch-rebinding-assay]] (6) · [[swelling]] (6) · [[equilibration-time]] (1) · [[film-thickness]] (1) · [[quartz-crystal-microbalance]] (1)
 
 <!--AUTO:END-->
 

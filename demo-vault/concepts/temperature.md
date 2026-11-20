@@ -24,7 +24,7 @@ updated: 2026-11-20
 - [[K001-capacity-falls-on-heating-in-water|K001 In water, binding capacity of the imprinted film for analyte X falls about threefold between 25 and 45 °C]] · probable
 - [[X001-does-heat-or-solvent-uptake-lower-capacity|X001 Does heating itself lower binding capacity, or only heating in water?]] · explained
 
-**Evidence: 16 cards from 3 sources** (observation 10, claim 3, oddity 1, cited 1, question 1)
+**Evidence: 16 cards from 3 sources** (observation 10, claim 3, cited 1, oddity 1, question 1)
 - [[P001-003-capacity-4-2-at-25c-water|Binding capacity for analyte X is 4.2 at 25 °C in water]] · observation
 - [[P001-004-capacity-1-3-at-45c-water|Binding capacity for analyte X falls to 1.3 at 45 °C in water]] · observation
 - [[P001-005-film-thickens-18-percent|The film thickens by 18% between 25 and 45 °C in water]] · observation
@@ -42,7 +42,7 @@ updated: 2026-11-20
 - [[P001-006-transient-capacity-rise-at-35c|One film at 35 °C showed an unexplained transient rise in capacity]] · oddity
 - [[P001-010-hydrogel-swelling-scales-with-temperature|Swelling is said to scale with temperature in hydrogels (Lee 2015)]] · cited
 
-**Appears alongside:** [[binding-capacity]] (19) · [[imprinted-polymer-film]] (15) · [[water]] (13) · [[solvent]] (13) · [[analyte-x]] (10) · [[swelling]] (9) · [[acetonitrile]] (8) · [[batch-rebinding-assay]] (4) · [[film-thickness]] (3)
+**Appears alongside:** [[binding-capacity]] (19) · [[imprinted-polymer-film]] (15) · [[solvent]] (13) · [[water]] (13) · [[analyte-x]] (10) · [[swelling]] (9) · [[acetonitrile]] (8) · [[batch-rebinding-assay]] (4) · [[film-thickness]] (3)
 
 <!--AUTO:END-->
 

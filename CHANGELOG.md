@@ -2,6 +2,13 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.0.4 (2026-11-20)
+
+Found by rebuilding the test vault from a fresh clone.
+
+- Builds are now identical on every machine: lists ranked by count break ties by name. Before, the "Appears alongside" line of concept hubs could reorder between runs and show up as changes in git.
+- The vault name that the PDF tags open is recorded in `MESH.json` (`obsidian_vault`) when a vault is created, and by `upgrade` if it is missing. Before, it was taken from the folder name at each build, so a clone in a differently named folder rewrote every marked PDF.
+
 ## 1.0.3 (2026-11-20)
 
 Also from the first test on real papers.

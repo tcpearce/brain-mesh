@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.0.3"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.0.4"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -45,6 +45,12 @@ TODAY = datetime.date.today().isoformat()
 
 def rd(p):
     with open(p, encoding="utf-8") as f: return f.read()
+def ranked(counter, n=None):
+    """Most frequent first, ties in name order. Unlike Counter.most_common the order never depends on the machine or
+    the run, so a rebuild in another clone of the vault changes nothing."""
+    return sorted(counter.items(), key=lambda r: (-r[1], str(r[0])))[:n]
+
+
 def wr(p, t):
     os.makedirs(os.path.dirname(p), exist_ok=True)
     with open(p, "w", encoding="utf-8") as f: f.write(t)
@@ -413,7 +419,7 @@ def cmd_init(path, name, topic):
     if os.path.exists(J(path, "MESH.json")): sys.exit("A brain mesh already exists here.")
     for d in ["sources", "concepts", "ledger", "index", "tools"] + [p[0] for p in PAGES.values()]:
         os.makedirs(J(path, d), exist_ok=True)
-    wr(J(path, "MESH.json"), json.dumps({"name": name, "topic": topic, "schema": SCHEMA, "created": TODAY}, indent=1) + "\n")
+    wr(J(path, "MESH.json"), json.dumps({"name": name, "topic": topic, "schema": SCHEMA, "created": TODAY, "obsidian_vault": os.path.basename(os.path.abspath(path))}, indent=1) + "\n")
     wr(J(path, "MAP.md"), MAP_MD.format(name=name, topic=topic))
     wr(J(path, "SCHEMA.md"), SCHEMA_MD.format(v=SCHEMA))
     wr(J(path, "ledger", "CHANGELOG.md"), f"# Changelog (append only, newest last)\n\n- {TODAY} brain mesh created\n")
@@ -434,6 +440,10 @@ def cmd_upgrade(vault, quiet=False):
     if os.path.isdir(docs) and me != dst:
         shutil.rmtree(J(vault, ".brain-mesh"), ignore_errors=True); shutil.copytree(docs, J(vault, ".brain-mesh", "skills"))
         wr(J(vault, ".brain-mesh", "VERSION"), VERSION + "\n")
+    cfg = json.loads(rd(J(vault, "MESH.json")))
+    if not cfg.get("obsidian_vault"):  # pin the name the PDF tags use, so clones in other folders do not re-mark the PDFs
+        cfg["obsidian_vault"] = os.path.basename(os.path.abspath(vault)); wr(J(vault, "MESH.json"), json.dumps(cfg, indent=1) + "\n")
+        if not quiet: print(f"recorded obsidian_vault = {cfg['obsidian_vault']} in MESH.json; change it if the vault has another name in Obsidian")
     if not quiet: print(f"tooling {old} -> {VERSION}" + ("; instructions copied to .brain-mesh/" if os.path.isdir(docs) and me != dst else "") + ". Now run `python3 tools/mesh.py build` in the vault.")
 
 def pdf_pages(pdf):
@@ -664,14 +674,14 @@ def cmd_build(root):
         pg, ev = sorted((c for c in users if c.fam == "page"), key=lambda c: c.id), [c for c in users if c.fam == "evidence"]
         if pg: L += [f"**Findings, tensions, gaps, hypotheses and experiments ({len(pg)})**"] + [f"- {lk(c)} · {c.status}" for c in pg[:40]] + [""]
         if ev:
-            L.append(f"**Evidence: {len(ev)} cards from {len({c.id[:4] for c in ev})} sources** ({', '.join(f'{k} {v}' for k, v in Counter(c.type for c in ev).most_common())})")
+            L.append(f"**Evidence: {len(ev)} cards from {len({c.id[:4] for c in ev})} sources** ({', '.join(f'{k} {v}' for k, v in ranked(Counter(c.type for c in ev)))})")
             ev.sort(key=lambda c: (rank.index(c.type) if c.type in rank else 99, c.id))
             L += [f"- {lk(c, one(c.title, 110))} · {c.type}" for c in ev[:30]]
             if len(ev) > 30: L.append(f"- … {len(ev) - 30} more: see this note's backlinks, or run `mesh.py show {con.id}`")
             L.append("")
         if inbound.get(con.id): L += ["**Linked from other concepts**"] + mirror(inbound[con.id]) + [""]
         co = Counter(t for c in users for t in m.terms(c) if t != con.id)
-        if co: L += ["**Appears alongside:** " + " · ".join(f"[[{t}]] ({n_})" for t, n_ in co.most_common(15)), ""]
+        if co: L += ["**Appears alongside:** " + " · ".join(f"[[{t}]] ({n_})" for t, n_ in ranked(co, 15)), ""]
         fill(con, L)
     marked = mark(Mesh(root))
     m = Mesh(root); notes, ix = m.check(), J(root, "index")
@@ -691,14 +701,14 @@ def cmd_build(root):
         for t in m.terms(c): tc[t] += 1; tsrc[t].add(c.id[:4])
     concepts = [c for c in m.cards.values() if c.fam == "concept"]
     wr(J(ix, "stats.json"), json.dumps({"sources": len(srcs), "evidence": len(ev), "by_type": types, "concepts": len(concepts), "pages": Counter(c.id[0] for c in m.pages("KXGHE")), "errors": len(m.err), "warnings": len(m.warn)}, indent=1) + "\n")
-    L = [f"**Counts:** {len(srcs)} sources · {len(ev)} evidence cards ({', '.join(f'{k} {v}' for k, v in types.most_common())}) · {len(concepts)} concepts · " + " · ".join(f"{k} {len(m.pages(k))}" for k in PAGES), ""]
+    L = [f"**Counts:** {len(srcs)} sources · {len(ev)} evidence cards ({', '.join(f'{k} {v}' for k, v in ranked(types))}) · {len(concepts)} concepts · " + " · ".join(f"{k} {len(m.pages(k))}" for k in PAGES), ""]
     def sect(title, cs, cap=40):
         if not cs: return
         L.append(f"**{title}**"); L.extend(f"- {lk(c)} · {c.status}" for c in cs[:cap])
         if len(cs) > cap: L.append(f"- … {len(cs) - cap} more in index/cards.tsv")
         L.append("")
     if tc:
-        L += ["**Concepts (start here): the most-used hubs**"] + [f"- [[{t}|{m.cards[t].title or t}]] · {m.cards[t].get('kind')} · {n_} cards from {len(tsrc[t])} sources" for t, n_ in tc.most_common(40)]
+        L += ["**Concepts (start here): the most-used hubs**"] + [f"- [[{t}|{m.cards[t].title or t}]] · {m.cards[t].get('kind')} · {n_} cards from {len(tsrc[t])} sources" for t, n_ in ranked(tc, 40)]
         L += [f"- … {len(tc) - 40} more in concepts/"] * (len(tc) > 40) + [""]
     closed = ("resolved", "closed", "dropped", "refuted", "retired", "done", "abandoned")
     sect("Open tensions, gaps, hypotheses and experiments", [c for c in m.pages("XGHE") if c.status not in closed])
@@ -941,7 +951,7 @@ def cmd_related(m, pid):
     for n, c in sorted(((len(mine & m.terms(c)), c) for c in m.pages("KXGHE")), key=lambda r: (-r[0], r[1].id)):
         if n: print(f"{c.id}\t{n} shared concepts\t{c.type}/{c.status}\t{one(c.title, 110)}")
     other = Counter(c.id[:4] for c in m.evidence() if not c.id.startswith(pid + "-") and mine & m.terms(c))
-    print("SOURCES sharing concepts: " + (", ".join(f"{p} ({n} cards)" for p, n in other.most_common(10)) or "none"))
+    print("SOURCES sharing concepts: " + (", ".join(f"{p} ({n} cards)" for p, n in ranked(other, 10)) or "none"))
 
 def cmd_log(m, msg):
     with open(J(m.root, "ledger", "CHANGELOG.md"), "a", encoding="utf-8") as f: f.write(f"- {TODAY} {msg}\n")

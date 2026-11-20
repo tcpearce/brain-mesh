@@ -2,5 +2,6 @@
  "name": "Brain mesh demo",
  "topic": "Temperature and solvent effects on analyte binding by imprinted polymer films (invented example data)",
  "schema": 1,
- "created": "2026-11-20"
+ "created": "2026-11-20",
+ "obsidian_vault": "demo-vault"
 }

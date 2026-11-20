@@ -13,7 +13,7 @@ updated: 2026-11-20
 - [[G002-no-thickness-data-in-acetonitrile|G002 Film thickness has never been measured in acetonitrile, so swelling is not ruled in or out there]] · confirmed
 - [[K001-capacity-falls-on-heating-in-water|K001 In water, binding capacity of the imprinted film for analyte X falls about threefold between 25 and 45 °C]] · probable
 
-**Evidence: 17 cards from 3 sources** (observation 10, method 3, claim 2, oddity 1, limitation 1)
+**Evidence: 17 cards from 3 sources** (observation 10, method 3, claim 2, limitation 1, oddity 1)
 - [[P001-003-capacity-4-2-at-25c-water|Binding capacity for analyte X is 4.2 at 25 °C in water]] · observation
 - [[P001-004-capacity-1-3-at-45c-water|Binding capacity for analyte X falls to 1.3 at 45 °C in water]] · observation
 - [[P001-005-film-thickens-18-percent|The film thickens by 18% between 25 and 45 °C in water]] · observation

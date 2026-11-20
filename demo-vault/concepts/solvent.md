@@ -13,7 +13,7 @@ updated: 2026-11-20
 - [[E001-heat-cool-cycle-two-solvents|E001 Heat-then-cool cycle in water and acetonitrile with one assay]] · done
 - [[X001-does-heat-or-solvent-uptake-lower-capacity|X001 Does heating itself lower binding capacity, or only heating in water?]] · explained
 
-**Evidence: 12 cards from 3 sources** (observation 10, oddity 1, limitation 1)
+**Evidence: 12 cards from 3 sources** (observation 10, limitation 1, oddity 1)
 - [[P001-003-capacity-4-2-at-25c-water|Binding capacity for analyte X is 4.2 at 25 °C in water]] · observation
 - [[P001-004-capacity-1-3-at-45c-water|Binding capacity for analyte X falls to 1.3 at 45 °C in water]] · observation
 - [[P001-005-film-thickens-18-percent|The film thickens by 18% between 25 and 45 °C in water]] · observation

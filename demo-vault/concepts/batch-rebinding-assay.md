@@ -12,7 +12,7 @@ updated: 2026-11-20
 **Findings, tensions, gaps, hypotheses and experiments (1)**
 - [[E001-heat-cool-cycle-two-solvents|E001 Heat-then-cool cycle in water and acetonitrile with one assay]] · done
 
-**Evidence: 5 cards from 2 sources** (observation 3, method 1, assumption 1)
+**Evidence: 5 cards from 2 sources** (observation 3, assumption 1, method 1)
 - [[P003-001-capacity-4-0-at-25c-water|Own films: binding capacity is 4.0 at 25 °C in water]] · observation
 - [[P003-002-capacity-1-4-at-45c-water|Own films: binding capacity falls to 1.4 at 45 °C in water]] · observation
 - [[P003-004-capacity-3-9-at-25c-acetonitrile|Own films: binding capacity is 3.9 at 25 °C in acetonitrile by batch rebinding]] · observation
@@ -22,7 +22,7 @@ updated: 2026-11-20
 **Linked from other concepts**
 - measures:: [[binding-capacity|Binding capacity]]
 
-**Appears alongside:** [[binding-capacity]] (6) · [[imprinted-polymer-film]] (4) · [[temperature]] (4) · [[solvent]] (4) · [[water]] (3) · [[analyte-x]] (3) · [[acetonitrile]] (2) · [[equilibration-time]] (1)
+**Appears alongside:** [[binding-capacity]] (6) · [[imprinted-polymer-film]] (4) · [[solvent]] (4) · [[temperature]] (4) · [[analyte-x]] (3) · [[water]] (3) · [[acetonitrile]] (2) · [[equilibration-time]] (1)
 
 <!--AUTO:END-->
 

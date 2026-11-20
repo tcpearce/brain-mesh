@@ -85,6 +85,10 @@ cp -r "$ROOT/demo-vault" "$T/demo-vault"; cd "$T/demo-vault"
 python3 "$MESH" upgrade . > /dev/null
 python3 tools/mesh.py build | grep -q "check: 0 errors, 0 warnings" && pass "demo vault builds clean" || fail "demo vault build"
 python3 tools/mesh.py build | grep -q "0 links expanded" && pass "build is repeatable" || fail "second build changed links"
+sums() { find . -type f \( -name '*.md' -o -name '*.tsv' -o -name '*.json' -o -name '*.pdf' \) | sort | xargs cksum; }
+PYTHONHASHSEED=1 python3 tools/mesh.py build > /dev/null; sums > "$T/s1"
+PYTHONHASHSEED=2 python3 tools/mesh.py build > /dev/null; sums > "$T/s2"
+cmp -s "$T/s1" "$T/s2" && pass "builds are identical whatever the hash seed" || fail "build output depends on the run"
 python3 tools/mesh.py unread P001 1 | tail -1 | grep -q "^P001: [0-9]* paragraphs, [0-9]* with a card anchored" && pass "unread reports paragraphs without a card" || fail "unread"
 if python3 -c "import pymupdf" 2>/dev/null || python3 -c "import fitz" 2>/dev/null; then
   [ -f sources/P001/P001_marked.pdf ] && pass "marked PDFs present" || fail "marked PDF missing"

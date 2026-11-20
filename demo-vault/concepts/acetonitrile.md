@@ -21,7 +21,7 @@ updated: 2026-11-20
 - [[P003-004-capacity-3-9-at-25c-acetonitrile|Own films: binding capacity is 3.9 at 25 °C in acetonitrile by batch rebinding]] · observation
 - [[P002-005-heat-alone-does-not-degrade-cavities|Temperature alone does not degrade the imprinted cavities]] · claim
 
-**Appears alongside:** [[temperature]] (8) · [[binding-capacity]] (7) · [[imprinted-polymer-film]] (6) · [[solvent]] (6) · [[analyte-x]] (4) · [[batch-rebinding-assay]] (2) · [[water]] (2) · [[swelling]] (2) · [[film-thickness]] (2)
+**Appears alongside:** [[temperature]] (8) · [[binding-capacity]] (7) · [[imprinted-polymer-film]] (6) · [[solvent]] (6) · [[analyte-x]] (4) · [[batch-rebinding-assay]] (2) · [[film-thickness]] (2) · [[swelling]] (2) · [[water]] (2)
 
 <!--AUTO:END-->
 

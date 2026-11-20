@@ -10,18 +10,18 @@ What it says: binding capacity of the imprinted film falls about threefold on he
 Start with a concept below, for example [[binding-capacity|Binding capacity]] or [[temperature|Temperature]].
 
 <!--AUTO:START (rebuilt by `mesh.py build`; do not edit by hand)-->
-**Counts:** 3 sources · 22 evidence cards (observation 10, method 3, claim 3, limitation 2, oddity 1, assumption 1, cited 1, question 1) · 12 concepts · K 1 · X 1 · G 2 · H 1 · E 1
+**Counts:** 3 sources · 22 evidence cards (observation 10, claim 3, method 3, limitation 2, assumption 1, cited 1, oddity 1, question 1) · 12 concepts · K 1 · X 1 · G 2 · H 1 · E 1
 
 **Concepts (start here): the most-used hubs**
-- [[imprinted-polymer-film|Imprinted polymer film]] · entity · 17 cards from 3 sources
 - [[binding-capacity|Binding capacity]] · variable · 17 cards from 3 sources
+- [[imprinted-polymer-film|Imprinted polymer film]] · entity · 17 cards from 3 sources
 - [[temperature|Temperature]] · variable · 16 cards from 3 sources
 - [[solvent|Solvent]] · variable · 12 cards from 3 sources
-- [[water|Water]] · entity · 9 cards from 3 sources
 - [[analyte-x|Analyte X]] · entity · 9 cards from 3 sources
+- [[water|Water]] · entity · 9 cards from 3 sources
+- [[acetonitrile|Acetonitrile]] · entity · 5 cards from 2 sources
 - [[batch-rebinding-assay|Batch rebinding assay]] · technique · 5 cards from 2 sources
 - [[swelling|Swelling]] · concept · 5 cards from 3 sources
-- [[acetonitrile|Acetonitrile]] · entity · 5 cards from 2 sources
 - [[film-thickness|Film thickness]] · variable · 2 cards from 2 sources
 - [[equilibration-time|Equilibration time]] · variable · 1 cards from 1 sources
 - [[quartz-crystal-microbalance|Quartz crystal microbalance]] · technique · 1 cards from 1 sources

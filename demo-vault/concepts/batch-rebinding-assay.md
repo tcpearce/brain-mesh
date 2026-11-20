@@ -22,7 +22,7 @@ updated: 2026-11-20
 **Linked from other concepts**
 - measures:: [[binding-capacity|Binding capacity]]
 
-**Appears alongside:** [[binding-capacity]] (6) · [[imprinted-polymer-film]] (4) · [[temperature]] (4) · [[solvent]] (4) · [[analyte-x]] (3) · [[water]] (3) · [[acetonitrile]] (2) · [[equilibration-time]] (1)
+**Appears alongside:** [[binding-capacity]] (6) · [[imprinted-polymer-film]] (4) · [[solvent]] (4) · [[temperature]] (4) · [[water]] (3) · [[analyte-x]] (3) · [[acetonitrile]] (2) · [[equilibration-time]] (1)
 
 <!--AUTO:END-->
 

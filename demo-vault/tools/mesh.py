@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.0.1"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.0.2"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -264,7 +264,7 @@ class Mesh:
                             W.append(f"{i}: value {num.group(0)} not found in the anchored source")
                 for k, v in c.codes:
                     if k in EVIDENCE_RELS and any(t[:4] != pid for t in s.ids(v)[0]) and len(reason(v).split()) < 3: E.append(f"{i}: '{k}::' links another source, so it needs ' — ' and a reason of a few words")
-                if c.get("value") and s.num(c) and s.num(c) not in re.sub(r"\s", "", plain(c.prose())): W.append(f"{i}: the value {s.num(c)} in Codes does not appear in the prose above it; make the two agree")
+                if c.get("value") and s.num(c) and s.num(c) not in re.sub(r"\s|(?<=\d),(?=\d{3}\b)", "", plain(c.prose())): W.append(f"{i}: the value {s.num(c)} in Codes does not appear in the prose above it; make the two agree")
                 if os.path.exists(J(s.root, "sources", pid, pid + ".pdf")):
                     if not re.search(r"\[\[" + pid + r"(_marked)?\.pdf", c.human): W.append(f"{i}: the prose has no link to the PDF; add '[[{pid}.pdf#page=N|open page]]' to its Source line")
                     k = s.marks().get(pid, {}).get("cards", {}).get(i)
@@ -553,7 +553,8 @@ def mark(m, only=None, force=False):
         for page in doc:  # remove only brain-mesh's own marks; anything the user added to the marked copy stays
             for a_ in [a_ for a_ in page.annots() or [] if a_.info.get("title") == "brain-mesh"]: page.delete_annot(a_)
             for l_ in [l_ for l_ in page.get_links() if str(l_.get("uri", "")).startswith("obsidian://open")]: page.delete_link(l_)
-        find = lambda texts, pages: next(((p, q) for t in texts if len(t) > 5 for p in pages if 1 <= p <= len(doc) for q in [doc[p - 1].search_for(t, quads=True)] if q), None)
+        flags = fitz.TEXT_DEHYPHENATE | fitz.TEXT_PRESERVE_WHITESPACE  # no TEXT_PRESERVE_LIGATURES: "fi" must match a typeset ligature
+        find = lambda texts, pages: next(((p, q) for t in texts if len(t) > 5 for p in pages if 1 <= p <= len(doc) for q in [doc[p - 1].search_for(t, quads=True, flags=flags)] if q), None)
         every = list(range(1, len(doc) + 1))
         for c in ev:
             col, loc, spots = MARK_COLOURS.get(c.type, (1, 1, 0)), c.get("loc").strip("\"'“”"), []

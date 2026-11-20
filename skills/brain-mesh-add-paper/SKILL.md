@@ -43,6 +43,7 @@ Writing each card:
 - Say what the paper leaves out: no n, an unspecified uncertainty, a missing control. Absences are information for experiment design.
 - Write in your own words. The only copied text is the short `loc::` phrase.
 - Give every card a way back to the page. End the **Source:** line with `[[P012.pdf#page=5|open page]]`; `build` re-points it at the card's highlight in the marked PDF. Take the `loc::` phrase from the sentence that carries the statement, because that phrase is what gets highlighted.
+- Choose locator phrases made of plain words. Avoid stretches containing symbols or operators (=, <, ±, ~), citation numbers, and words the PDF breaks across lines with a hyphen: PDFs often encode these oddly, and the phrase then fails to match the page even though it reads correctly.
 - For a table or figure give the page as well, `- anchor:: T2, p7`, so the mark lands on the right caption.
 - A value read from a plot is `via:: figure` and approximate; say so in the prose.
 - Doubt about the extraction goes in `flag::`, not in silence.

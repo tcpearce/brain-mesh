@@ -53,7 +53,7 @@ updated: 2026-11-20
 - affected_by:: [[swelling|Swelling]] — proposed, not tested, [[P001-007-swelling-distorts-cavities]]
 - affected_by:: [[temperature|Temperature]] — in water only, [[K001-capacity-falls-on-heating-in-water]], [[X001-does-heat-or-solvent-uptake-lower-capacity]]
 
-**Appears alongside:** [[temperature]] (19) · [[imprinted-polymer-film]] (15) · [[water]] (12) · [[solvent]] (12) · [[analyte-x]] (10) · [[acetonitrile]] (7) · [[batch-rebinding-assay]] (6) · [[swelling]] (6) · [[equilibration-time]] (1) · [[quartz-crystal-microbalance]] (1) · [[film-thickness]] (1)
+**Appears alongside:** [[temperature]] (19) · [[imprinted-polymer-film]] (15) · [[solvent]] (12) · [[water]] (12) · [[analyte-x]] (10) · [[acetonitrile]] (7) · [[batch-rebinding-assay]] (6) · [[swelling]] (6) · [[equilibration-time]] (1) · [[quartz-crystal-microbalance]] (1) · [[film-thickness]] (1)
 
 <!--AUTO:END-->
 

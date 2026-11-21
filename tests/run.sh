@@ -1030,12 +1030,15 @@ except ImportError: import fitz
 doc = fitz.open(); p = doc.new_page(width=400, height=400)
 p.insert_text((40, 60), "The panel ratings were more consistent than the DREAM Ol-", fontsize=9)
 p.insert_text((40, 72), "faction Prediction Consortium cohort ratings in this test.", fontsize=9)
+p.insert_text((40, 84), "The model correctly pre-", fontsize=9)
+p.insert_text((40, 96), "dicted this counterintuitive pattern of ratings.", fontsize=9)
 doc.save("hy.pdf")
 PY
 python3 tools/mesh.py anchor P001 hy.pdf > /dev/null
 b=$(grep -o "\^b[0-9]*" sources/P001/P001_text.md | head -1 | tr -d '^')
-printf -- '=== response\n---\ntype: concept\naliases: ["Response"]\nupdated: 2026-01-01\n---\n# Response\n\n**Definition.** A rating.\n\n## Where it appears\n<!--AUTO:START-->\n<!--AUTO:END-->\n\n## Codes\n- kind:: concept\n\n=== P001-hyphen-test\n---\ntype: source\nstatus: extracted\nupdated: 2026-01-01\n---\n# Hyphen test\n\n## Cards from this source\n<!--AUTO:START-->\n<!--AUTO:END-->\n\n## Codes\n- kind:: other\n- authors:: none\n- year:: 2026\n- coverage:: all | full | two lines\n\n=== P001-001-panel-more-consistent\n---\ntype: claim\nstatus: asserted\nupdated: 2026-01-01\n---\n# The panel was more consistent\n\nThe [[response]] ratings were more consistent than another cohort.\n\n## Codes\n- missing:: basis — none\n- anchor:: [[P001_text#^%s]]\n- loc:: "more consistent than the DREAM Olfaction Prediction Consortium"\n' "$b" > hy.md
+printf -- '=== response\n---\ntype: concept\naliases: ["Response"]\nupdated: 2026-01-01\n---\n# Response\n\n**Definition.** A rating.\n\n## Where it appears\n<!--AUTO:START-->\n<!--AUTO:END-->\n\n## Codes\n- kind:: concept\n\n=== P001-hyphen-test\n---\ntype: source\nstatus: extracted\nupdated: 2026-01-01\n---\n# Hyphen test\n\n## Cards from this source\n<!--AUTO:START-->\n<!--AUTO:END-->\n\n## Codes\n- kind:: other\n- authors:: none\n- year:: 2026\n- coverage:: all | full | two lines\n\n=== P001-001-panel-more-consistent\n---\ntype: claim\nstatus: asserted\nupdated: 2026-01-01\n---\n# The panel was more consistent\n\nThe [[response]] ratings were more consistent than another cohort.\n\n## Codes\n- missing:: basis — none\n- anchor:: [[P001_text#^%s]]\n- loc:: "more consistent than the DREAM Olfaction Prediction Consortium"\n\n=== P001-002-model-predicted-it\n---\ntype: claim\nstatus: asserted\nupdated: 2026-01-01\n---\n# The model predicted the pattern\n\nThe model predicted the [[response]] pattern.\n\n## Codes\n- missing:: basis — none\n- anchor:: [[P001_text#^%s]]\n- loc:: "The model correctly predicted this counterintuitive"\n' "$b" "$b" > hy.md
 python3 tools/mesh.py split hy.md > /dev/null; python3 tools/mesh.py build > /dev/null
 grep -A4 '"P001-001"' index/marks.json | grep -q '"how": "highlight"' && pass "a locator broken by a hyphenated line end is still highlighted" || { grep -A4 '"P001-001"' index/marks.json; fail "hyphen highlight"; }
+grep -A4 '"P001-002"' index/marks.json | grep -q '"how": "highlight"' && pass "a locator whose own word is hyphenated across lines is highlighted word by word" || { grep -A4 '"P001-002"' index/marks.json; fail "hyphenated word highlight"; }
 fi
 echo "ALL TESTS PASSED"

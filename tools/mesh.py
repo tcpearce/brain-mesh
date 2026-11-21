@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.14.2"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.14.3"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -1705,6 +1705,23 @@ def tagspot(page, lines, q, cid):
     return (cid, right + 3, 36, 5.5) if W - right >= 40 else (cid, 2, 36, 5.5)
 
 
+def word_run_quads(fitz, page, loc_words):
+    """Quads of a locator found as a run of the page's words, a word hyphenated at a line end joined with the next
+    line's first word ("pre-" + "dicted"), for PDFs where search_for does not dehyphenate (issue #16)."""
+    norm = lambda s: re.sub(r"[^a-z0-9]", "", s.lower())
+    tgt = [norm(w) for w in loc_words if norm(w)]
+    ws, run, i = page.get_text("words"), [], 0  # x0, y0, x1, y1, word, block, line, word number
+    while i < len(ws):
+        w = ws[i]
+        if w[4].endswith(("-", "­")) and i + 1 < len(ws) and (ws[i + 1][5], ws[i + 1][6]) != (w[5], w[6]):
+            run.append((norm(w[4][:-1] + ws[i + 1][4]), [w[:4], ws[i + 1][:4]])); i += 2
+        else: run.append((norm(w[4]), [w[:4]])); i += 1
+    toks = [t for t, _r in run]
+    for k in range(len(toks) - len(tgt) + 1):
+        if tgt and toks[k:k + len(tgt)] == tgt: return [fitz.Rect(r).quad for _t, rs in run[k:k + len(tgt)] for r in rs]
+    return None
+
+
 def mark(m, only=None, force=False):
     """Write every evidence card onto a marked copy of its source PDF (P###_marked.pdf): a highlight at its locator
     phrase coloured by card type, a margin tag that opens the card in Obsidian, and the card's own PDF link pointed
@@ -1744,7 +1761,10 @@ def mark(m, only=None, force=False):
                 for a in an:
                     lab = re.fullmatch(r"([TF])(\d+)[a-z]*", a)
                     if a in bl:
-                        hit = find([loc, " ".join(words[:6]), " ".join(words[-6:])], [bl[a][0]] + every) or find([" ".join(words[i:i + 4]) for i in range(max(0, len(words) - 3))], [bl[a][0]])  # a phrase broken by a hyphenated line end still gets a highlight on its page (issue #16)
+                        hit = find([loc, " ".join(words[:6]), " ".join(words[-6:])], [bl[a][0]] + every)
+                        if not hit:  # a phrase broken by a hyphenated line end still gets a highlight on its page (issue #16)
+                            wq = next(((p, q) for p in [bl[a][0]] + every if 1 <= p <= len(doc) for q in [word_run_quads(fitz, doc[p - 1], words)] if q), None)
+                            hit = wq or find([" ".join(words[i:i + 4]) for i in range(max(0, len(words) - 3))], [bl[a][0]])
                         spots.append(hit or (min(max(bl[a][0], 1), len(doc)), None))
                     elif lab:
                         n_ = ("S" if part == "_SI" else "") + lab.group(2)

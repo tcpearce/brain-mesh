@@ -87,6 +87,7 @@ echo "$out" | grep -q "has changed since it was registered" && pass "a changed s
 cp -r "$ROOT/demo-vault" "$T/demo-vault"; cd "$T/demo-vault"
 python3 "$MESH" upgrade . > /dev/null
 python3 tools/mesh.py build | grep -q "check: 0 errors, 0 warnings" && pass "demo vault builds clean" || fail "demo vault build"
+mkdir -p sources/P001 sources/P002-old-name; python3 tools/mesh.py build | grep -q "check: 0 errors, 0 warnings" && pass "empty leftover source folders are ignored" || fail "empty source folders break build"; rmdir sources/P001 sources/P002-old-name
 python3 tools/mesh.py build | grep -q "0 links expanded" && pass "build is repeatable" || fail "second build changed links"
 sums() { find . -type f \( -name '*.md' -o -name '*.tsv' -o -name '*.json' -o -name '*.pdf' \) | sort | xargs cksum; }
 PYTHONHASHSEED=1 python3 tools/mesh.py build > /dev/null; sums > "$T/s1"
@@ -494,6 +495,7 @@ x=$(ls tensions/X001-*.md); sed -i.bak 's/^status: explained$/status: resolved/;
 (python3 tools/mesh.py check || true) > chk.txt; grep -q "X001: resolved, but no '- resolved_by::'" chk.txt && grep -q "H001: explains X001, which is now resolved" chk.txt && pass "resolving a tension needs resolved_by and flags the hypotheses explaining it" || { grep X001 chk.txt; grep H001 chk.txt; fail "tension resolution"; }
 mv "$x.bak" "$x"
 python3 tools/mesh.py id D | grep -q "^D001$" && python3 tools/mesh.py id C | grep -q "^C001$" && pass "id gives data-set and code ids" || fail "id D C"
+python3 tools/mesh.py id P | grep -q "^P004$" && pass "id P counts source folders named after their cards" || fail "id P with renamed source folders"
 cat > data-sets/D001-batch-rebinding-results.md <<'CARD'
 ---
 type: dataset

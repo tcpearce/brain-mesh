@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.8.1"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.8.2"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -111,13 +111,14 @@ def seal(root, path):
 def SRC(root, pid):
     """A source's folder. It is named after its source card (sources/P012-smith-2021-binding-in-water/), so sources
     can be recognised in Obsidian's file list; it is plain sources/P012/ until that card exists."""
-    hits = [d for d in sorted(glob.glob(J(root, "sources", pid))) + sorted(glob.glob(J(root, "sources", pid + "-*"))) if os.path.isdir(d)]
+    hits = [d for d in sorted(glob.glob(J(root, "sources", pid))) + sorted(glob.glob(J(root, "sources", pid + "-*"))) if os.path.isdir(d) and os.listdir(d)]
     return hits[0] if hits else J(root, "sources", pid)
 
 
 def source_dirs(root):
-    """Every source folder, with its source id: [(P012, path)]."""
-    return [(os.path.basename(d)[:4], d) for d in sorted(glob.glob(J(root, "sources", "P[0-9][0-9][0-9]*"))) if os.path.isdir(d) and re.fullmatch(r"P\d{3}(-[a-z0-9-]+)?", os.path.basename(d))]
+    """Every source folder, with its source id: [(P012, path)]. An empty folder is a leftover (git never tracks one; a
+    sync client such as OneDrive can keep the old folder after a rename is pulled), so it is skipped (issue #6)."""
+    return [(os.path.basename(d)[:4], d) for d in sorted(glob.glob(J(root, "sources", "P[0-9][0-9][0-9]*"))) if os.path.isdir(d) and os.listdir(d) and re.fullmatch(r"P\d{3}(-[a-z0-9-]+)?", os.path.basename(d))]
 
 
 def fixfolders(root):
@@ -1076,7 +1077,8 @@ def cmd_upgrade(vault, quiet=False):
     if me != dst: os.makedirs(os.path.dirname(dst), exist_ok=True); shutil.copy(me, dst)
     docs = J(os.path.dirname(os.path.dirname(me)), "skills")
     if os.path.isdir(docs) and me != dst:
-        shutil.rmtree(J(vault, ".brain-mesh"), ignore_errors=True); shutil.copytree(docs, J(vault, ".brain-mesh", "skills"))
+        # a sync client (OneDrive) can leave the emptied folders behind, so the copy must not need them gone (issue #3)
+        shutil.rmtree(J(vault, ".brain-mesh"), ignore_errors=True); shutil.copytree(docs, J(vault, ".brain-mesh", "skills"), dirs_exist_ok=True)
         wr(J(vault, ".brain-mesh", "VERSION"), VERSION + "\n")
     if not os.path.exists(J(vault, ".gitattributes")): wr(J(vault, ".gitattributes"), GITATTR)
     for d in [p[0] for p in PAGES.values()] + ["references"]: os.makedirs(J(vault, d), exist_ok=True)
@@ -1598,7 +1600,7 @@ def cmd_id(m, kind):
     gone = removed_ids(m.root)
     nxt = lambda xs: max([int(x) for x in xs] + [int(re.sub(r"\D", "", g[len(kind):]) or 0) for g in gone if g.startswith(kind) and re.fullmatch(r"\d+", g[len(kind):].lstrip("-"))] + [0]) + 1
     if re.fullmatch(r"P\d{3}", kind): print(f"{kind}-{nxt(c.id[5:] for c in m.cards.values() if c.fam == 'evidence' and c.id.startswith(kind + '-')):03d}")
-    elif kind == "P": print(f"P{nxt(os.path.basename(d)[1:] for d in glob.glob(J(m.root, 'sources', 'P[0-9][0-9][0-9]'))):03d}")
+    elif kind == "P": print(f"P{nxt(pid[1:] for pid, _d in source_dirs(m.root)):03d}")  # folders renamed after their cards count too (issue #2)
     elif kind == "L": print(f"L{nxt(l[1:] for l in m.lenses):03d}")
     elif kind in PAGES: print(f"{kind}{nxt(c.id[1:] for c in m.pages(kind)):03d}")
     elif kind == "R": print(f"R{nxt(c.id[1:] for c in m.cards.values() if c.fam == 'reference'):04d}")

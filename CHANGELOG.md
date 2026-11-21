@@ -2,6 +2,14 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.8.2 (2026-11-21)
+
+- `id P` counts source folders named after their source cards. Before, once `build` had renamed the folders it found none and offered P001 again (issue #2).
+- `upgrade` completes when a sync client such as OneDrive leaves the emptied `.brain-mesh/` folders behind. Before, it stopped with `FileExistsError` and left the vault without its offline instructions (issue #3).
+- Empty source folders are ignored. A sync client can keep the old, emptied folder when a renamed source folder is pulled, and `build` then reported every source as two folders, one without a source card (issue #6).
+- `brain-mesh-add-paper` says that a new source sits in a plain `sources/P012/` folder until its source card exists, and that the next `build` renames the folder after the card (issue #4).
+- `brain-mesh-access` gains section 8, **Tooling bugs**: record every tooling or instruction fault as an issue on `tcpearce/brain-mesh` (or, without GitHub access, in the vault's `ledger/tooling-bugs.md`) before working around it, and fix only in the repository.
+
 ## 1.8.1 (2026-11-21)
 
 - `sync` no longer stops on local changes. Generated files (`index/`, `*.bib`) changed locally are discarded before the pull, since the build regenerates them. A local edit that clashes with a newer version on GitHub is set aside in the git stash, the GitHub version is kept, and `sync` says which files and how to see the edit. Before, a plain pull refused to run, or left conflict markers.

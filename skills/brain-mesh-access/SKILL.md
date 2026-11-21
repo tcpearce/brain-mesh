@@ -125,7 +125,15 @@ Removing a source (`remove P012`) deletes its whole folder: the PDF, its evidenc
 - **Several agents at once.** Only one session writes a given card at a time. Parallel extraction follows `brain-mesh-batch`: each agent writes only inside its own source folder, and shared files (concepts, findings, data-set and code cards, reference cards) are written by the orchestrating session. `sync` rebases on whatever was pushed in the meantime.
 - **Scheduled runs** report; they do not commit, push or edit unless their instructions say so.
 
-## 8. Never
+## 8. Tooling bugs
+
+When the tooling or these instructions go wrong (a wrong result, a crash, a step that contradicts the documents, a gap that forces a workaround), record it before working around it, so the method can be fixed:
+
+- **With GitHub access:** open an issue on `tcpearce/brain-mesh`: `gh issue create -R tcpearce/brain-mesh --label bug --title "<what goes wrong>" --body-file <file>`. Use `documentation` for a document that misleads and `enhancement` for a missing capability. Say the tooling version (`mesh.py version`), the command, what happened, what was expected, and the cause if you found it. Leave out personal paths, names and paper content.
+- **Without it:** add a dated entry with the same fields to the vault's `ledger/tooling-bugs.md`, and tell the user, so a later session with access can file it.
+- **Fixing it** happens only in the repository (see its README), never in a vault's copy of the tooling. Reference the issue in the fix's commit (`fixes #12`), and tell the user what was recorded and what was fixed.
+
+## 9. Never
 
 - Edit a source PDF, an anchored `_text.md` file, an id, or a generated section.
 - Delete a card with `rm` or the file manager. Use `remove`, which keeps the record and the links straight.

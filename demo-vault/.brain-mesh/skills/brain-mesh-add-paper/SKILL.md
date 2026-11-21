@@ -37,7 +37,7 @@ When it arrives: `python3 tools/mesh.py anchor P012 --si <files...>`. Supplement
 
 1. **Is it already here?** `python3 tools/mesh.py find <DOI>` and `find <distinctive title words>`. A preprint and its published version are one source: keep the published one and note the other in its Citation line.
 2. `python3 tools/mesh.py id P` gives the id, say `P012`.
-3. `python3 tools/mesh.py anchor P012 <file.pdf>` copies the PDF in as `P012.pdf`, records its checksum so that any later change to the file is caught, and writes `P012_text.md`, the text split into numbered paragraphs (`^b0001` ...). Check the page count and skim the file. Garbled or missing text means a scan: OCR it and rerun with `--force`. Anchors are permanent once any card cites them, so never re-anchor after that.
+3. `python3 tools/mesh.py anchor P012 <file.pdf>` copies the PDF in as `P012.pdf`, records its checksum so that any later change to the file is caught, and writes `P012_text.md`, the text split into numbered paragraphs (`^b0001` ...). Check the page count and skim the file. Garbled or missing text means a scan: OCR it and rerun with `--force`. Anchors are permanent once any card cites them, so never re-anchor after that. The new source lives in a plain `sources/P012/` folder until its source card exists; the next `build` then renames the folder after the card (`sources/P012-smith-2021-film-temperature/`). Links are unaffected.
 4. Notes and other plain-text sources anchor the same way.
 5. Supplementary material: `python3 tools/mesh.py anchor P012 --si <files...>` (step 0).
 6. **References.** `python3 tools/mesh.py refs P012` finds the reference list and writes `P012_refs.md`: one entry per reference with its authors, year, title, journal, volume, pages, DOI and kind, and `cited_at::`, the paragraphs that cite it. Citations are traced from the PDF's fonts (superscript numbers in Nature and Cell style, italic bracketed numbers in Science style), so a count in brackets is not taken for a citation. Then check the file against the paper's list: the count, and every entry it names under "check by hand". Fill in what the paper leaves out, chiefly titles and DOIs (Science prints no titles): look them up in PubMed for biomedical work, or with a web search, and copy only what a record confirms; never type one from memory. Then `python3 tools/mesh.py cite P012` turns each entry into a reference card, or adds this source to the card that already exists for the same work (matched by DOI, PubMed id, arXiv id, or first author with year, volume and page). A list in author-year style is not parsed yet: write `P012_refs.md` by hand in the same format. `refs` will not overwrite a checked file without `--force`.
@@ -78,7 +78,7 @@ Writing each card:
 
 Write cards in batches of 20 to 40 in one file, each card starting with a line `=== <file name without .md>`, then run `python3 tools/mesh.py split <batch file>`. Number evidence cards upward from `python3 tools/mesh.py id P012`. `split` adds the `id::` code and refuses a card that duplicates one already in the source.
 
-Write the source card in the first batch.
+Write the source card in the first batch, so that the next `build` names the source's folder after it.
 
 ### Reading values from figures
 

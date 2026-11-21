@@ -153,7 +153,7 @@ updated: 2026-11-20
 - measured_by:: [[batch-rebinding-assay]], [[quartz-crystal-microbalance]]
 ```
 
-- `kind` is `entity`, `variable`, `technique` or `concept`. A variable needs `unit`: a unit, `1` for dimensionless, or `categorical` when its values are themselves concept cards (solvent = water).
+- `kind` is `entity`, `variable`, `count`, `technique` or `concept`. A `count` is a variable that only says how many items a result rests on (`sample-size`). A variable needs `unit`: a unit, `1` for dimensionless, or `categorical` when its values are themselves concept cards (solvent = water).
 - Concept-to-concept relations in Codes: `broader` (is a kind of), `part_of`, `measured_by`, `affects`, `related`. Write the relation on the card of the concept that does the affecting or belonging, for example on the temperature card: `- affects:: [[binding-capacity]] — in water only, [[K001]]`. An `affects` line must cite the finding or evidence card it rests on, because it is a scientific claim and not vocabulary.
 - The block under **Where it appears** is generated: every finding, tension, gap, hypothesis and experiment that uses the concept, its evidence cards, relations pointing at it from other concepts, and the concepts it most often appears with. Keep the two AUTO marker lines in the card.
 - Before creating a concept run `python3 tools/mesh.py concept "<name>"`. If an existing concept covers it, add the new name to that card's `aliases` instead.
@@ -191,6 +191,7 @@ Codes on evidence cards:
 
 - `value:: [[variable]] = number ± uncertainty unit (kind of uncertainty, n = N)`. One line per quantity: a card still makes one statement, but that statement may involve several numbers (a count and its total, the two arms of one comparison). A non-numeric outcome may follow the `=`. A value read from a figure carries its reading error and how it was read: `= 0.354 ± 0.002 (Fig. 5C, POM Linear, read from the picture)`.
 - `stat:: t = 5.4, d.f. = 987, P < 0.0001 (what was compared)` for a test statistic, which is not a quantity of any variable.
+- For a count that only says how many items a result rests on (molecules, stimuli, neurons), use the `sample-size` concept, whose Codes say `kind:: count`. Counts of different things are never compared, so the duplicate and parallel-result checks skip them.
 - Every number that states a result goes into a `value::` or `stat::` line, so that searches and comparisons can see it. The checker flags an observation whose prose has numbers and whose Codes have neither.
 - `when:: [[variable]] = value`, one line per condition, written on every card even when the paper states it once, because cards are read alone. A categorical value is a concept link.
 - `concepts::` every other concept involved.

@@ -23,7 +23,7 @@ PAGES = {  # id prefix: (folder, type, allowed status, link keys in Codes)
     "E": ("experiments", "experiment", ["proposed", "registered", "running", "done", "abandoned"], ["tests", "addresses", "uses", "results"]),
 }
 GAP_KINDS = ["untested-region", "unreplicated", "unresolved-tension", "unexplained", "untested-assumption", "unvalidated-model", "unmeasured", "open-question", "method", "scope"]
-CONCEPT_KINDS = ["entity", "variable", "technique", "concept"]
+CONCEPT_KINDS = ["entity", "variable", "count", "technique", "concept"]  # count: a variable that only counts items (sample-size), never compared across cards
 CONCEPT_RELS = ["broader", "part_of", "measured_by", "affects", "related"]
 SOURCE_STATUS = ["registered", "extracted", "integrated"]
 DEPTHS = ["full", "skim", "none", "missing"]
@@ -230,6 +230,7 @@ class Mesh:
         return out
     def sig(s, c):  # what a result is about: (type, variable, sorted conditions); None when the card carries no value
         var = s.pair(c.get("value"))[0] if c.get("value") else None
+        if var and s.cards[var].get("kind") == "count": return None  # counts of different things (sample-size) are never compared
         return (c.type, var, tuple(sorted((w or "?", v) for w, v, _t in s.whens(c)))) if var else None
     def num(s, c):
         mo = re.search(r"[-+−]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?", plain(s.pair(c.get("value"))[1])) if c.get("value") else None
@@ -812,6 +813,10 @@ def cmd_figure(m, args):
                 if cand:
                     sg = min(cand, key=lambda sg: abs((sg[1] if kind == "y" else sg[0]) - pos(r))); pairs.append(((sg[1] if kind == "y" else sg[0]), v)); marks_ += 1
                 else: pairs.append((pos(r), v))
+            over = opt.get("--yticks") if kind == "y" and opt.get("--yticks") not in (None, True) else None
+            if over:  # tick values given by hand, bottom to top: printed labels are sometimes rounded (-0.22 for -0.225)
+                ov = [float(t) for t in str(over).split(",")]
+                if len(ov) == len(pairs): pairs = [(p_, v_) for (p_, _v), v_ in zip(sorted(pairs, key=lambda r: -r[0]), ov)]; vals_ = sorted(ov)
             f = axis_fit(pairs, log)
             if f and (not best or len(pairs) > best["ticks"]):
                 best = {"fit": f, "ticks": len(pairs), "how": "tick marks" if marks_ == len(pairs) else "label centres", "err_pos": 0.25 if marks_ == len(pairs) else 1.0, "range": (min(vals_), max(vals_)), "span": max(p_ for p_, _v in pairs) - min(p_ for p_, _v in pairs)}
@@ -916,6 +921,9 @@ def cmd_figure(m, args):
     series = {r[1] for r in rows if r[0] in ("bar", "marker")}
     print(f"{pid}-{name}: {len(rows)} rows ({Counter(r[0] for r in rows)}) -> {os.path.relpath(csv, m.root)}; image {os.path.relpath(png, m.root)}")
     print("\n".join("  " + h[2:] for h in head[1:-1]))
+    for k, cal in (("y", ycal), ("x", xcal)):
+        if cal and cal["ticks"] > 2 and cal["fit"][2] > 0.05 * (cal["range"][1] - cal["range"][0]) / (cal["ticks"] - 1):
+            print(f"  check: the {k} tick labels do not lie on a straight line (residual {cal['fit'][2]:.2g}): labels may be rounded (-0.22 for -0.225) or the axis broken or not linear. Give the true values with --{k}ticks, or read each segment separately")
     if legend and len(series - set(legend.values())) and series: print(f"  check: {len(series)} series drawn but {len(legend)} in the legend: {', '.join(sorted(series))}")
     for k, v in issues.items(): print(f"  check: {v} rows with '{k}'")
     print("  Look at the image and the rows together. Drop rows that are not data (axis furniture, legend keys), name the series and categories,\n"

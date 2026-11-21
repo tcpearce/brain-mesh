@@ -2,6 +2,13 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.10.0 (2026-11-21)
+
+- The reading queue puts recent work first (issue #7). Within each list a work's score halves with every 8 years of age (`queue_half_life` in `MESH.json`), unless the work is foundational. Foundational means cited by two or more sources in the brain, cited in two or more paragraphs where one source's methods, models or results rest, marked high, or carrying `foundational::` or a `cited_count::` of at least 500 (`queue_foundational_citations`). Foundational works keep full weight and, once older than the half-life, are marked ⌛. Each queue line now shows the work's year.
+- Reference cards take two optional Codes lines: `foundational:: <why>` and `cited_count:: <n> (<source>, <date>)`. Counts are copied by hand from a record for now; `build` stays offline.
+- `brain-mesh-gaps` rung 2 searches recent work first, then reviews, then the classics they cite. `brain-mesh-add-paper` step 10 reports queue entries with their years.
+- `build` no longer crashes when two reference cards claim the same reference number of one source; the duplicate check reports it instead (issue #9).
+
 ## 1.9.0 (2026-11-21)
 
 Parallel extraction without a mess of concepts.

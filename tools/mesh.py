@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.9.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.10.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -23,6 +23,8 @@ PRIORITY = ["high", "normal", "low"]  # attention, never evidence: front matter 
 FOCUS_W = {"high": 2.0, "elevated": 1.5, "normal": 1.0, "low": 0.5}  # weight of a page a work bears on, by its effective priority
 SRC_W = {"high": 2.0, "elevated": 1.5, "normal": 1.0, "low": 0.25}  # weight of a citing source, by its effective priority
 REVIEW_THR = {"high": 0.25, "elevated": 0.3, "normal": 0.35, "low": 0.5}  # relevance at which a paper owes a gap or tension a decision
+QUEUE_HALF_LIFE = 8  # years: a work's reading-queue score halves with every this many years of age unless it is foundational (MESH.json queue_half_life)
+QUEUE_FOUNDATIONAL_CITES = 500  # a recorded external citation count (cited_count::) at which an old work counts as foundational (MESH.json queue_foundational_citations)
 STALE_DAYS = {"high": 90, "elevated": 180, "normal": 180, "low": 365}  # when a gap search goes stale  # status of a data-set or code card: can it be had?
 CLAIMS_STATUS = ["drafted", "checked"]
 CLAIM_KEYS = ["main_claim", "sub_claim"]
@@ -1775,7 +1777,7 @@ def cmd_build(root):
         for t in EVIDENCE_TYPES:
             rows = [c for c in ev if c.type == t]
             if rows: L += [f"**{t.capitalize()} ({len(rows)})**"] + [f"- {lk(c, one(c.title, 120))} · {c.status}" for c in rows] + [""]
-        cites_ = sorted((int(rn), r) for r in m.cards.values() if r.fam == "reference" and not r.get("retired") for pid, rn, _b in ref_cites(r) if pid == src.id)
+        cites_ = sorted(((int(rn), r) for r in m.cards.values() if r.fam == "reference" and not r.get("retired") for pid, rn, _b in ref_cites(r) if pid == src.id), key=lambda x: (x[0], x[1].id))  # two cards may share a number (issue #9)
         cl = m.cards.get(src.id + "-claims")
         if cl: L = [f"**Claims** ({1 if cl.all('main_claim') else 0} main, {len(cl.all('sub_claim'))} sub): [[{cl.name}|{one(cl.all('main_claim')[0].split(' — ')[0], 140) if cl.all('main_claim') else 'claims card'}]]", ""] + L
         for pre, label in (("D", "Data sets"), ("C", "Code")):
@@ -2559,8 +2561,14 @@ def reading_queue(m):
     """What to read next, from the reference cards, each list sorted by one score: the works you marked high; works
     cited where research gaps rest (★); works a high-priority source cites in two or more paragraphs or in its
     methods or results (◆); works cited where open gaps, tensions and high findings rest; works cited near cards
-    sharing concepts with them; works cited by more than one source. Priority raises a work's score, never hides it."""
+    sharing concepts with them; works cited by more than one source. Priority raises a work's score, never hides it.
+    Recent work comes first: a score halves with every QUEUE_HALF_LIFE years of the work's age, unless the work is
+    foundational (cited by two or more sources, cited in two or more paragraphs of one source where methods, models or
+    results rest on it, marked high, carrying `foundational::`, or with `cited_count::` at or above the threshold)."""
     refs = [r for r in m.cards.values() if r.fam == "reference" and not r.get("retired")]
+    half = float(m.cfg.get("queue_half_life", QUEUE_HALF_LIFE)); fcites = int(m.cfg.get("queue_foundational_citations", QUEUE_FOUNDATIONAL_CITES))
+    now = int(TODAY[:4]); year_of = lambda r: int(r.get("year").strip()) if re.fullmatch(r"\s*\d{4}\s*", r.get("year") or "") else None
+    ages = sorted(max(0, now - y) for y in (year_of(r) for r in refs) if y); mid_age = ages[len(ages) // 2] if ages else 0  # a work with no year gets the median age
     at = defaultdict(list)  # (source, paragraph) -> evidence cards anchored there
     for c in m.evidence():
         for a in m.anchors(c):
@@ -2596,14 +2604,19 @@ def reading_queue(m):
         n_src = len({pid for pid, _n, _b in cites})
         score = sum(h[4] * FOCUS_W[lv(h[0].id)] for h in hits) + sum(SRC_W[lv(pid)] * (1 + math.log2(max(1, len(bs)))) for pid, _n, bs in cites)
         score += 2 * (n_src > 1) + 3 * (r.priority == "high") + 1.5 * len(dc_cites.get(r.id, []))
+        yr = year_of(r); age = max(0, now - yr) if yr else mid_age  # recency (issue #7): old work keeps full weight only when foundational
+        cc = re.match(r"\s*(\d+)", r.get("cited_count") or "")
+        core = any(len(bs) >= 2 and any(c.type in ("method", "observation", "model") for b in bs for c in at.get((pid, b), [])) for pid, _n, bs in cites)
+        found = n_src > 1 or core or r.priority == "high" or bool(r.get("foundational")) or bool(cc and int(cc.group(1)) >= fcites)
+        if not found: score *= 0.5 ** (age / half)
         if r.priority == "low" and not star and not any(lv(h[0].id) == "high" for h in hits): continue
         why_high = [pid for pid, _n, bs in cites if lv(pid) == "high" and (len(bs) >= 2 or any(c.type in ("method", "observation", "model") for b in bs for c in at.get((pid, b), [])))]
         marks = sorted(set(why_high + [h[0].id for h in hits if lv(h[0].id) == "high"] + [f.get(d.id, ("", d.id))[1] or d.id for d in dc_cites.get(r.id, []) for f in [m.focus()]] + ([r.id] if r.priority == "high" else [])))
-        label = f"[[{r.name}|{one(r.title, 80)}]]" + (f" · [doi:{r.get('doi')}](https://doi.org/{r.get('doi')})" if r.get("doi") else (f" · [arXiv:{r.get('arxiv')}](https://arxiv.org/abs/{r.get('arxiv')})" if r.get("arxiv") else ""))
+        label = f"[[{r.name}|{one(r.title, 80)}]]" + (f" ({yr})" if yr else "") + (f" · [doi:{r.get('doi')}](https://doi.org/{r.get('doi')})" if r.get("doi") else (f" · [arXiv:{r.get('arxiv')}](https://arxiv.org/abs/{r.get('arxiv')})" if r.get("arxiv") else ""))
         by = ", ".join(f"{pid} ref {n} ({len(bs)}×)" if bs else f"{pid} ref {n}" for pid, n, bs in cites)
         box = "- [ ] " if r.status == "not-held" else "- [~] "
         why = lambda hs: "; ".join(f"{kind} [[{p.name}|{p.id}]] ({how} [[{m.cards[c].name}|{c}]], where it is cited)" for p, c, kind, how, _w in hs[:3])
-        tail = (f" ◆ {' '.join(marks)}" if marks else "") + f" (score {score:.1f})"
+        tail = (" ⌛ foundational" if found and age > half else "") + (f" ◆ {' '.join(marks)}" if marks else "") + f" (score {score:.1f})"
         key = (-score, r.id)
         line_ = lambda pre, extra: f"{box}{pre}{label} — cited by {by}" + (f"; {extra}" if extra else "") + tail
         if r.priority == "high": tiers["mine"].append((key, line_("", why(hits))))
@@ -2613,7 +2626,7 @@ def reading_queue(m):
         elif near: tiers["near"].append((key, line_("", why(near))))
         if n_src > 1: tiers["multi"].append((key, line_("", "")))
     held = sum(1 for r in refs if r.status == "held")
-    L = [f"_Generated by `build` from {len(refs)} reference cards. Mark progress on the reference card: status `queued` once asked for, `held` once it is a source in the brain (with `- held:: [[P###]]`), `skip` to drop it; `priority: high` on a reference card puts it at the top. `[~]` means queued; `2×` means cited in two paragraphs; ◆ names the high-priority cards that lift a work; each list is sorted by score._", ""]
+    L = [f"_Generated by `build` from {len(refs)} reference cards. Mark progress on the reference card: status `queued` once asked for, `held` once it is a source in the brain (with `- held:: [[P###]]`), `skip` to drop it; `priority: high` on a reference card puts it at the top. `[~]` means queued; `2×` means cited in two paragraphs; ◆ names the high-priority cards that lift a work; each list is sorted by score. Recent work comes first: a score halves with every {half:g} years of age unless the work is foundational, marked ⌛ when it is older than that (cited by two or more sources, in two or more paragraphs where one source's methods or results rest on it, marked high, or carrying `foundational::` or a `cited_count::` of {fcites} or more)._", ""]
     for k, title, cap in (("mine", "Marked high by you: read these first", 50),
                           ("star", "★ Bearing on research gaps (gaps/RESEARCH-GAPS.md)", 50),
                           ("high", "◆ From high-priority sources: cited in two or more paragraphs, or in their methods or results", 50),

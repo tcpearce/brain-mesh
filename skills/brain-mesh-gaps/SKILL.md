@@ -100,6 +100,7 @@ Record every step in the card's **Search log**, dated. The log is what makes an 
 - Build queries from the gap's concept cards. Their names and `aliases` are ready-made synonym lists; combine the variable, the system and the condition.
 - Use whatever search this session offers: literature connectors, a literature-search skill, web search. Use at least two independent routes for a high-priority gap.
 - Follow citations as well as keywords. Start with the works the brain's own sources cite in the passages this gap rests on: the gap's entries in the generated part of `ledger/reading-queue.md`, or the reference cards whose "Cited by" names the gap's evidence cards. Then the most-cited references (`index/frontier.tsv`) and the papers that cite the brain's key sources.
+- Look for recent work first: the last five to ten years, then reviews, then the classic papers those cite. A fundamental older paper that recent work still rests on is admissible, but an old paper alone rarely settles whether a gap is still open.
 - Screen each hit against the gap as stated: does it measure this variable, in this system, under these conditions? A paper on the general topic does not fill a specific gap.
 - Log the date, where you searched, the exact queries, the number of hits, how many were screened, and a one-line verdict on each serious candidate.
 

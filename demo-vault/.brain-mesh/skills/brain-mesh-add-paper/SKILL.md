@@ -252,7 +252,7 @@ This is what the user reads, so it is not optional. For every concept the source
 
 Set the source card's status to `integrated`. Rewrite the Overview in `MAP.md` if the picture has changed. Run `python3 tools/mesh.py build` until there are no errors (the decisions on gaps and tensions and the claims card are checked from here on), then `python3 tools/mesh.py log "add P012 <authors year> (<n> cards); <findings, tensions and gaps changed>"` and `python3 tools/mesh.py sync "add P012"`.
 
-Report to the user in a few lines: the paper's main claim and how far its evidence carries it; cards by type; findings added or re-graded; gaps closed or narrowed and tensions explained or resolved; new tensions and gaps; data sets and code carded; hubs updated; anything bearing on their hypotheses or experiments; what was not extracted and why; and the top of the reading queue: the ★ works bearing on research gaps, then works cited where open gaps and tensions rest, with their DOIs. If the session's files are temporary, hand back the vault archive.
+Report to the user in a few lines: the paper's main claim and how far its evidence carries it; cards by type; findings added or re-graded; gaps closed or narrowed and tensions explained or resolved; new tensions and gaps; data sets and code carded; hubs updated; anything bearing on their hypotheses or experiments; what was not extracted and why; and the top of the reading queue: the ★ works bearing on research gaps, then works cited where open gaps and tensions rest, with their years and DOIs (the queue puts recent work first and marks foundational old works ⌛). If the session's files are temporary, hand back the vault archive.
 
 ## Lens pass: re-reading sources for a new question
 

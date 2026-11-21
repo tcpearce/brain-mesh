@@ -461,6 +461,13 @@ q=ledger/reading-queue.md
 sed -n '/^### ★/,/^### Cited where/p' $q | grep -q "★ \[\[R0003-novak.*research gap \[\[G002-" && pass "the queue stars a work cited where a research gap rests" || { cat $q; fail "queue star"; }
 sed -n '/^### Cited by more than one/,$p' $q | grep -q "R0001-lee-2015.*cited by P001 ref 1 (1×), P002 ref 2 (1×)" && pass "the queue lists works cited by more than one source" || { cat $q; fail "queue multi"; }
 grep -q "R0002-garcia" $q && fail "a work already in the brain is still queued" || pass "works in the brain are left out of the queue"
+for y in 1985 2023; do printf -- '---\ntype: reference\nstatus: not-held\nupdated: 2026-11-21\n---\n# Aged (%s) A work cited where a research gap rests\n\n<!--AUTO:START-->\n<!--AUTO:END-->\n\n## Codes\n- id:: R009%s\n- authors:: Aged, A.\n- year:: %s\n- title:: A work from %s\n- journal:: J. Test.\n- kind:: article\n- cited_by:: [[P001]] ref 9%s — b0004\n' "$y" "${y: -1}" "$y" "$y" "${y: -1}" > "references/R009${y: -1}-aged-$y-work.md"; done
+python3 tools/mesh.py build > /dev/null; s=$(sed -n '/^### ★/,/^### Cited where/p' $q); n3=$(echo "$s" | grep -n "R0093-" | cut -d: -f1); n5=$(echo "$s" | grep -n "R0095-" | cut -d: -f1)
+[ -n "$n3" ] && [ -n "$n5" ] && [ "$n3" -lt "$n5" ] && echo "$s" | grep -q "R0093-.*(2023)" && pass "the queue ranks a recent work above an old one cited the same way, and shows years" || { echo "$s"; fail "queue recency"; }
+sed -i 's/^- kind:: article$/- kind:: article\n- foundational:: the classic statement of the method/' references/R0095-*.md; python3 tools/mesh.py build > /dev/null
+s=$(sed -n '/^### ★/,/^### Cited where/p' $q); n3=$(echo "$s" | grep -n "R0093-" | cut -d: -f1); n5=$(echo "$s" | grep -n "R0095-" | cut -d: -f1)
+[ "$n5" -lt "$n3" ] && echo "$s" | grep -q "R0095-.*⌛ foundational" && pass "an old work marked foundational keeps full weight and is marked ⌛" || { echo "$s"; fail "queue foundational"; }
+rm references/R0093-*.md references/R0095-*.md; python3 tools/mesh.py build > /dev/null
 python3 tools/mesh.py discover genealogy > g.txt; grep -q "R0001 .* is cited by P001, P002 and is not in the brain" g.txt && pass "discover genealogy finds a work two sources lean on that is not in the brain" || { cat g.txt; fail "genealogy"; }
 python3 tools/mesh.py build > /dev/null; cp -r . ../r2; python3 tools/mesh.py build > /dev/null; diff -r -q . ../r2 -x index > /dev/null && pass "building twice changes nothing" || { diff -r -q . ../r2 | head; fail "build not idempotent"; }
 sed -i.bak 's/^status: not-held$/status: skip/' references/R0003-novak-*.md; python3 tools/mesh.py build > /dev/null

@@ -460,6 +460,7 @@ q=ledger/reading-queue.md
 sed -n '/^### ★/,/^### Cited where/p' $q | grep -q "★ \[\[R0003-novak.*research gap \[\[G002-" && pass "the queue stars a work cited where a research gap rests" || { cat $q; fail "queue star"; }
 sed -n '/^### Cited by more than one/,$p' $q | grep -q "R0001-lee-2015.*cited by P001 ref 1 (1×), P002 ref 2 (1×)" && pass "the queue lists works cited by more than one source" || { cat $q; fail "queue multi"; }
 grep -q "R0002-garcia" $q && fail "a work already in the brain is still queued" || pass "works in the brain are left out of the queue"
+python3 tools/mesh.py discover genealogy > g.txt; grep -q "R0001 .* is cited by P001, P002 and is not in the brain" g.txt && pass "discover genealogy finds a work two sources lean on that is not in the brain" || { cat g.txt; fail "genealogy"; }
 python3 tools/mesh.py build > /dev/null; cp -r . ../r2; python3 tools/mesh.py build > /dev/null; diff -r -q . ../r2 -x index > /dev/null && pass "building twice changes nothing" || { diff -r -q . ../r2 | head; fail "build not idempotent"; }
 sed -i.bak 's/^status: not-held$/status: skip/' references/R0003-novak-*.md; python3 tools/mesh.py build > /dev/null
 grep -q "R0003-novak" $q && fail "a skipped work is still queued" || pass "status skip drops a work from the queue"
@@ -468,4 +469,174 @@ python3 tools/mesh.py build > build.txt; grep -q "R0001 is now a source in the b
 cp references/R0004-*.md references/R0099-devries-copy.md; sed -i 's/^- id:: R0004$/- id:: R0099/' references/R0099-devries-copy.md
 (python3 tools/mesh.py check || true) | grep -q "R0099 and R0004 look like the same work\|R0004 and R0099 look like the same work" && pass "check spots two reference cards for one work" || fail "reference dupes"
 python3 tools/mesh.py merge R0004 R0099 > /dev/null && grep -q "^- retired:: merged into" references/R0099-*.md && python3 tools/mesh.py build > build.txt && grep -q "check: 0 errors" build.txt && pass "merge retires a duplicate reference card" || { cat build.txt; fail "reference merge"; }
+# 10. discovery: miners, theory, analogy and seed cards, stamps, rejections and rechecks (1.6.0)
+rm -rf "$T/d"; cp -r "$ROOT/demo-vault" "$T/d"; cd "$T/d"; python3 "$MESH" upgrade . > /dev/null; python3 tools/mesh.py build > /dev/null
+python3 tools/mesh.py discover --top 30 > disc.txt
+grep -q "acetonitrile and swelling related? No evidence card or finding holds both" disc.txt && grep -A2 "acetonitrile and swelling" disc.txt | grep -q "touched by X001, G002" && pass "bridges finds an unjoined concept pair and names the gap that already touches it" || { cat disc.txt; fail "bridges"; }
+grep -q "acetonitrile and water related" disc.txt && fail "bridges proposed two values of one categorical variable" || pass "bridges skips sibling values of one variable"
+sed -n '/^## moderators/,/^## transfer/p' disc.txt | grep -q "solvent = water on one side, acetonitrile on the other" && sed -n '/^## moderators/,/^## transfer/p' disc.txt | grep -q "methods differ: batch-rebinding-assay against quartz-crystal-microbalance" && pass "moderators names the condition and the method that differ between the sides of a tension" || fail "moderators"
+grep -q "Does finding K001 hold with solvent = acetonitrile" disc.txt && grep -q "quartz-crystal-microbalance has been used with solvent = acetonitrile (3), never with solvent = water (method transfer)" disc.txt && pass "transfer finds an untried value for a finding and a method" || fail "transfer"
+grep -q "binding-capacity: 8 values from 3 sources under 5 sets of conditions" disc.txt && ! grep -q "0.41 P002-004" disc.txt && pass "constraints pools numeric values by conditions and skips word outcomes" || fail "constraints"
+grep -q "spans ×11.1: check that every value is in the concept's unit (nm)" disc.txt && pass "constraints flags a spread that suggests mixed units" || fail "constraint units"
+grep -q "P001-009 The assay assumes binding reaches equilibrium within 60 minutes: 12 cards rest on it; nothing tests it" disc.txt && pass "assumptions ranks a load-bearing untested assumption" || fail "assumptions"
+grep -q "observations show solvent changing binding-capacity" disc.txt && grep -A2 "observations show solvent" disc.txt | grep -q "housekeeping" && pass "implied finds an effect in the data that no concept card records, marked as housekeeping" || fail "implied data"
+grep -q "No theory cards yet" disc.txt && pass "theories explains what it needs when there are no theory cards" || fail "theories note"
+mkdir -p theories analogies seeds
+cat > theories/T001-solvent-uptake-swelling-account.md <<'CARD'
+---
+type: theory
+status: active
+updated: 2026-11-21
+---
+# Capacity loss on heating is solvent uptake swelling the network
+
+**Core claim.** Heating raises [[water]] uptake, the film swells and the cavities distort, so [[binding-capacity]] falls; a solvent that does not swell the film shows no loss.
+
+## Codes
+- id:: T001
+- explains:: [[K001]], [[X001]]
+- rivals:: [[T002]]
+- concepts:: [[binding-capacity]], [[swelling]], [[water]], [[temperature]]
+CARD
+cat > theories/T002-thermal-cavity-damage-account.md <<'CARD'
+---
+type: theory
+status: active
+updated: 2026-11-21
+---
+# Capacity loss on heating is thermal damage to the cavities
+
+**Core claim.** Heat itself deforms the imprinted cavities permanently, so [[binding-capacity]] falls whatever the solvent.
+
+## Codes
+- id:: T002
+- explains:: [[K001]]
+- rivals:: [[T001]]
+- concepts:: [[binding-capacity]], [[temperature]]
+CARD
+cat > analogies/A001-film-swelling-like-hydrogel.md <<'CARD'
+---
+type: analogy
+status: proposed
+updated: 2026-11-21
+---
+# Imprinted films swell on heating as hydrogels do
+
+**The mapping.** Temperature drives both; film thickness on one side plays the part of equilibration time on the other (a test mapping).
+
+## Codes
+- id:: A001
+- maps:: [[temperature]] = [[temperature]] — the driver on both sides
+- maps:: [[film-thickness]] = [[equilibration-time]] — what swelling changes
+- from:: [[P001-010]] — cited hydrogel behaviour
+- concepts:: [[imprinted-polymer-film]], [[swelling]]
+CARD
+cat > seeds/S001-does-capacity-track-thickness.md <<'CARD'
+---
+type: seed
+status: new
+updated: 2026-11-21
+---
+# Binding capacity may fall in step with film thickness, film by film
+
+**Idea.** If swelling drives the loss, films that thicken more should lose more [[binding-capacity]]; no card holds both [[film-thickness]] and capacity.
+
+## Codes
+- id:: S001
+- miner:: bridges
+- mined:: bridges:binding-capacity~film-thickness | 2026-11-20 | 3.37 | P001 P002 P003
+- from:: [[P001-005]] — thickness rises 18% in water
+- concepts:: [[binding-capacity]], [[film-thickness]], [[swelling]]
+CARD
+python3 tools/mesh.py build > build.txt; grep -q "check: 0 errors, 0 warnings" build.txt && pass "theory, analogy and seed cards build clean" || { cat build.txt; fail "discovery cards build"; }
+grep -q "^\*\*Theories\*\*" MAP.md && grep -q "^\*\*Seeds to judge" MAP.md && grep -q "^\*\*Theories, analogies and seeds (" concepts/binding-capacity.md && pass "MAP and the concept hubs list theories, analogies and seeds" || fail "discovery cards listed"
+grep -q "in_conflict_with\|explained_by:: \[\[T001-" findings/K001-*.md && pass "a theory's links are mirrored onto the finding" || fail "theory mirror"
+python3 tools/mesh.py theories > th.txt; grep -q "^K001        E     E" th.txt && grep -q "^X001        E     \." th.txt && pass "theories prints the theory × finding matrix" || { cat th.txt; fail "theories matrix"; }
+python3 tools/mesh.py discover theories analogies > disc.txt
+grep -q "Nothing in the brain decides between T001 and T002" disc.txt && pass "theories finds two theories nothing separates" || { cat disc.txt; fail "unseparated"; }
+grep -q "on the base side temperature affects film-thickness; does temperature affect equilibration-time on the target side" disc.txt && pass "analogies carries a relation across the mapping as a prediction" || { cat disc.txt; fail "analogy prediction"; }
+python3 tools/mesh.py discover bridges --top 40 > disc.txt; grep -A3 "binding-capacity affect film-thickness" disc.txt | grep -q "already carded as S001" && pass "a signal already carded says so" || fail "carded"
+sed -i.bak 's/^- maps:: \[\[film-thickness\]\] = \[\[equilibration-time\]\] — what swelling changes$/- maps:: [[film-thickness]] — what swelling changes/' analogies/A001-*.md
+(python3 tools/mesh.py check || true) | grep -q "A001: each 'maps::' line reads" && pass "an analogy mapping needs two concepts" || fail "maps check"
+mv analogies/A001-*.md.bak analogies/A001-film-swelling-like-hydrogel.md
+sed -i.bak '/^- mined:: /d' seeds/S001-*.md; (python3 tools/mesh.py check || true) | grep -q "S001: came from the bridges miner but has no '- mined::' stamp" && pass "a mined seed needs its stamp" || fail "stamp missing"
+mv seeds/S001-*.md.bak seeds/S001-does-capacity-track-thickness.md
+python3 tools/mesh.py dismiss bridges:analyte-x~film-thickness "too vague" > /dev/null 2>&1 && fail "dismiss took a two-word reason" || pass "dismiss wants the reason in a few words"
+python3 tools/mesh.py dismiss bridges:analyte-x~film-thickness "analyte identity cannot change thickness here" > /dev/null
+grep -q "^- [0-9-]* | bridges:analyte-x~film-thickness | [0-9.]* | P001 P002 P003 | analyte identity" ledger/signals.md && pass "a rejection is recorded with its basis and reason" || fail "dismiss ledger"
+python3 tools/mesh.py discover bridges --top 40 > disc.txt; ! grep -q "analyte-x and film-thickness" disc.txt && grep -q "1 hidden because they were rejected" disc.txt && pass "a rejected signal is hidden" || fail "rejection hidden"
+python3 tools/mesh.py discover --recheck > re.txt; grep -q "Standing: nothing changed (1)" re.txt && pass "recheck: a stamped card with nothing new is standing" || { cat re.txt; fail "standing"; }
+printf 'Thickness and capacity were measured on the same six films at 25 and 45 C in water.\n\nFilms that thickened more lost more binding capacity, r = 0.91.\n\nSwelling in water raised film thickness by 21 percent at 45 C.\n' > p4.txt
+python3 tools/mesh.py anchor P004 p4.txt > /dev/null
+cat > batch.md <<'CARD'
+=== P004-lee-2026-thickness-and-capacity
+---
+type: source
+status: extracted
+updated: 2026-11-22
+---
+# Lee (2026) Thickness and capacity on the same films
+
+**What they did.** Measured thickness and capacity on the same films (an invented test source).
+
+## Cards from this source
+<!--AUTO:START-->
+<!--AUTO:END-->
+
+## Codes
+- kind:: other
+- authors:: Lee, A.
+- year:: 2026
+- coverage:: all | full | three paragraphs
+- coverage:: Supplementary material | none | none
+
+=== P004-001-capacity-loss-tracks-thickening
+---
+type: observation
+status: measured
+updated: 2026-11-22
+---
+# Films that thicken more lose more binding capacity in water
+
+Across six films heated from 25 to 45 °C in [[water]], the loss of [[binding-capacity]] correlated with the rise in [[film-thickness]], r = 0.91.
+
+**Source:** Lee 2026, para 2.
+
+## Codes
+- stat:: r = 0.91 (capacity loss against thickening, six films)
+- concepts:: [[binding-capacity]], [[film-thickness]], [[water]]
+- missing:: method — the test source gives none
+- anchor:: [[P004_text#^b0002]]
+- loc:: "Films that thickened more lost more binding capacity"
+
+=== P004-002-swelling-thickens-film-21-percent
+---
+type: observation
+status: measured
+updated: 2026-11-22
+---
+# Swelling in water thickens the film by 21% at 45 °C
+
+[[swelling|Swelling]] in [[water]] raised [[film-thickness]] by 21% at 45 °C.
+
+**Source:** Lee 2026, para 3.
+
+## Codes
+- value:: [[film-thickness]] = 21
+- when:: [[temperature]] = 45 degC
+- when:: [[solvent]] = [[water]]
+- concepts:: [[swelling]]
+- missing:: method — the test source gives none
+- anchor:: [[P004_text#^b0003]]
+- loc:: "Swelling in water raised film thickness by 21 percent"
+CARD
+python3 tools/mesh.py split batch.md > /dev/null; python3 tools/mesh.py build > /dev/null
+python3 tools/mesh.py discover --recheck > re.txt
+sed -n '/^## Dissolved/,/^## Weakened/p' re.txt | grep -q "S001" && grep -q "no longer produced; now held together by P004-001" re.txt && pass "recheck: a new source dissolves a seed's signal and names the card that did it" || { cat re.txt; fail "dissolved"; }
+sed -n '/^## Rejected signals with new evidence/,/^## Standing/p' re.txt | grep -q "bridges:analyte-x~film-thickness: rejected .*new sources since: P004" && pass "recheck: a rejection that a new source bears on is re-opened" || { cat re.txt; fail "reopened"; }
+python3 tools/mesh.py discover bridges --top 40 > disc.txt; grep -q "REOPENED: judged before on" disc.txt && pass "discover shows the re-opened signal again, saying why" || fail "reopened in discover"
+python3 tools/mesh.py health > h.txt; grep -q "S001 bridges:binding-capacity~film-thickness \[stamped 2026-11-20, newer evidence 2026-11-22\]" h.txt && pass "health lists mined cards with newer evidence" || fail "health stamps"
+sed -i.bak 's/^status: new$/status: answered/; s/^- miner:: bridges$/- miner:: bridges\n- answered_by:: [[P004-001]] — thickening and loss correlate film by film/' seeds/S001-*.md; rm seeds/*.bak
+python3 tools/mesh.py build > build.txt; grep -q "check: 0 errors" build.txt && ! grep -q "S001" build.txt && grep -q "answers:: \[\[S001-" sources/P004-*/P004-001-*.md && pass "an answered seed builds clean and the evidence shows what it answers" || { cat build.txt; fail "answered"; }
+python3 tools/mesh.py discover --recheck > re.txt; grep -q "0 stamped cards" re.txt && pass "a closed seed is no longer followed" || fail "closed seed followed"
 echo "ALL TESTS PASSED"

@@ -2,6 +2,17 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.6.0 (2026-11-21)
+
+Discovery: mining the brain, with the user, for new hypotheses and links, and following every mined card as sources arrive.
+
+- **New document `brain-mesh-discover`.** Interactive by rule: the miners print signals, Claude judges them and proposes cards with the case for each (where it comes from, why it is worth a card, whether it is already known, the fastest way to kill it), and writes only what the user accepts. Housekeeping signals (`links`, `implied:data`, `genealogy:held`) are done and reported. Reading passes (theory, analogy, inversion, levels, red-team) produce proposals the same way. Unattended runs write proposals to `ledger/proposals.md` and no cards.
+- **`discover [miner ...] [--focus concept] [--top n] [--all]`** runs eleven miners over the Codes: `bridges` (Swanson's ABC across sources), `moderators` (what differs between the sides of tensions, contested findings and disagreeing parallel results), `transfer` (outcomes, methods and findings never tried at another value of a categorical variable), `implied` (chained effects with their signs, direct and indirect effects that disagree, loops, effects in the data no hub records), `constraints` (each quantity pooled across sources by conditions, with unit checks), `genealogy` (cited works several sources lean on; held works with no card for what they are cited for), `assumptions` (load-bearing, untested, shared), `oddities`, `theories` (the theory × finding matrix), `analogies` (relations that carry across a mapping) and `links`. Each signal has a stable key, the sources it rests on, the cards that already touch it, and a ready stamp line.
+- **New cards.** `theories/T###` (status active, strained, abandoned; `explains::`, `conflicts_with::`, `includes::`, `rivals::`), `analogies/A###` (proposed, productive, failed; `maps:: [[base]] = [[target]] — role`) and `seeds/S###` (new, developing, promoted, answered, dropped; `miner::`, `from::`, `promoted_to::`, `answered_by::`). Theories and analogies keep a grading history. MAP and the concept hubs list them; `theories` prints the matrix.
+- **Lifecycle.** A card made from a signal carries `- mined:: <key> | <date> | <score> | <sources>`. `discover --recheck` re-runs the miners behind every live stamped card and every rejection, and sorts them into dissolved (naming the new cards that now hold the signal's concepts), strengthened, weakened, changed, re-opened and standing. `dismiss <key> <reason>` records a rejection in `ledger/signals.md`; `discover` hides it until a new source bears on it. A closed card's stamp counts as a judgement in the same way. `health` lists mined cards with evidence newer than their stamp. The add-paper integrate step, the batch merge phase and housekeeping now run the recheck.
+- **Axes for mining.** add-paper asks for species, preparation, level of organisation and stimulus class as categorical `when::` conditions, so the miners can look across them.
+- Miner scores use the rarity of concepts in evidence and findings only, so writing discovery cards never moves a score. `check` validates the new cards (mapping lines, stamps, promotion and answer links, dropped reasons).
+
 ## 1.5.0 (2026-11-21)
 
 Citations: every source's reference list becomes reference cards, and the reading queue suggests what to read next.

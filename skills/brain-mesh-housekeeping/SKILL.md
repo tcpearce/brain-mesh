@@ -32,6 +32,7 @@ Work through the results in this order. Fix what is clear. Bring to the user any
 10. **References.** `check` warns when a source's reference list is extracted but not turned into cards (`cite P012`), when two reference cards look like the same work (merge them: the survivor takes over every `cited_by::` line), and when a card has no year or a malformed DOI. `health` counts the papers whose reference list was never extracted: run `refs` on them (add-paper step 1). Read the generated list in `ledger/reading-queue.md` and set statuses on the reference cards: `queued` for what the user is fetching, `skip` for what will not be read, so the list stays short. Cards a later source has made `held` need nothing.
 10. **Hubs that have grown long.** Split: create narrower concept cards with `- broader::` pointing at the hub, move the relevant lines to them, and re-point the cards whose statement is specifically about the narrower concept.
 11. **Experiments registered or running for a long time; sources not yet integrated.** Ask the user, or finish the integration.
+12. **Mined cards with newer evidence.** Run `python3 tools/mesh.py discover --recheck` and take the changes to the user (`brain-mesh-discover` section 8). The housekeeping signals of `discover` (`links`, `implied:data`, `genealogy:held`) can be done without asking; everything else from the miners is proposed, never written unasked.
 
 Finish with `build`, then `python3 tools/mesh.py log "housekeeping: <what was done>"`.
 

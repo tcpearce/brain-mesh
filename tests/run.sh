@@ -472,6 +472,7 @@ python3 tools/mesh.py refs P001 > /dev/null 2>&1 && fail "refs overwrote a check
 python3 tools/mesh.py cite P001 | grep -q "4 new reference cards" && python3 tools/mesh.py cite P002 | grep -q "1 new reference cards, 2 references matched" && pass "a work cited by two sources gets one reference card" || fail "cite dedupe"
 grep -q "^status: held" references/R0002-garcia-2023-*.md && grep -q "^- held:: \[\[P002\]\]" references/R0002-*.md && pass "a cited work already in the brain is marked held" || fail "held"
 python3 tools/mesh.py build > build.txt; grep -q "check: 0 errors" build.txt && pass "a vault with reference cards builds clean" || { cat build.txt; fail "build refs"; }
+python3 tools/mesh.py find novak > f.txt 2>&1 && grep -q "^R0003" f.txt && pass "find lists reference cards among its hits" || { cat f.txt; fail "find references"; }
 grep -q "^@article{novak2005thermal," references/library.bib && grep -q "^@article{P001," references/library.bib && grep -q "^@misc{branwen2020scaling," $S2/P002_refs.bib && pass "BibTeX for each source and for the library" || fail "bibtex"
 grep -q "pages = {230--238}" $S2/P002_refs.bib && grep -q "author = {Smith, A. and Jones, B.}" references/library.bib && pass "BibTeX names and page ranges are well formed" || fail "bibtex fields"
 grep -q '^```bibtex$' references/R0003-novak-*.md && grep -q "as ref 3, cited at \[\[P001_text#^b0004|b0004\]\]" references/R0003-novak-*.md && pass "a reference card shows its BibTeX and where it is cited" || fail "reference card"

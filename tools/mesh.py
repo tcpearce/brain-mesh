@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.14.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.14.1"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -2168,10 +2168,10 @@ def cmd_find(m, args):
         else: words.append(a.lower())
     phrase = " ".join(words)
     alts = [{phrase, "[[" + m.alias[phrase]}] if phrase in m.alias else [{w} | ({"[[" + m.alias[w]} if w in m.alias else set()) for w in words]
-    order = {"page": 0, "concept": 1, "source": 2, "evidence": 3}
+    order = {"page": 0, "concept": 1, "source": 2, "claims": 3, "evidence": 4, "reference": 5}  # any other family sorts last (issue #13)
     rows = [c for c in m.cards.values() if not c.get("retired") and all(any(x in c.raw.lower() for x in alt) for alt in alts)
             and (not opt["--type"] or c.type == opt["--type"]) and (not opt["--source"] or c.id.startswith(opt["--source"]))]
-    rows.sort(key=lambda c: (order[c.fam], c.id)); lim = int(opt["--limit"])
+    rows.sort(key=lambda c: (order.get(c.fam, 9), c.id)); lim = int(opt["--limit"])
     for c in rows[:lim]: print(f"{c.id}\t{c.type}/{c.status or '-'}\t{one(c.title, 150)}")
     print(f"{len(rows)} hits" + (f" (showing {lim}; narrow with more words, --type or --source)" if len(rows) > lim else ""))
 
@@ -3332,7 +3332,7 @@ def cite_places(m, pid, main, top, pos=None):
                 for ln in bk.get("lines", []):
                     for sp in ln["spans"]:
                         t, italic = sp["text"], bool(sp["flags"] & 2) or bool(re.search(r"[.\-,](I|It|Italic|Oblique|BoldItalic)\b|Italic", sp["font"]))
-                        sup = bool(sp["flags"] & 1) and not re.search(r"(\d|[−\-^×]|\d\s?[a-zA-Zµμ]{1,3})\s*$", before)  # not 10^-4 or mm^2
+                        sup = bool(sp["flags"] & 1) and not re.search(r"(\d|[−\-^×\[]|\d\s?[a-zA-Zµμ]{1,3})\s*$", before)  # not 10^-4, mm^2 or an isotope label [14C] (issue #14)
                         ita = italic and re.search(r"[(,–\-]\s*$", before) is not None
                         if re.fullmatch(NUM, t) and (sup or ita) and len(norm(before)) >= 6:
                             ctx = norm(before)[-24:]

@@ -2,6 +2,11 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.14.1 (2026-11-21)
+
+- `find` no longer crashes when its hits include reference, data-set or code cards (issue #13).
+- An isotope label such as "[¹⁴C]" is no longer read as a superscript citation; on Haddad et al. 2008 this removes two false citations of reference 14 (issue #14).
+
 ## 1.14.0 (2026-11-21)
 
 - The concept scan puts each concept's key equations and figures on its hub (issue #12).

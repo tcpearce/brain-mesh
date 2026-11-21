@@ -9,8 +9,9 @@ updated: 2026-11-20
 
 ## Where it appears
 <!--AUTO:START-->
-**Findings, tensions, gaps, hypotheses and experiments (2)**
+**Findings, tensions, gaps, hypotheses and experiments (3)**
 - [[E001-heat-cool-cycle-two-solvents|E001 Heat-then-cool cycle in water and acetonitrile with one assay]] · done
+- [[K001-capacity-falls-on-heating-in-water|K001 In water, binding capacity of the imprinted film for analyte X falls about threefold between 25 and 45 °C]] · probable
 - [[X001-does-heat-or-solvent-uptake-lower-capacity|X001 Does heating itself lower binding capacity, or only heating in water?]] · explained
 
 **Evidence: 12 cards from 3 sources** (observation 10, limitation 1, oddity 1)
@@ -27,7 +28,7 @@ updated: 2026-11-20
 - [[P001-008-organic-solvents-not-tested|Organic solvents were not tested]] · limitation
 - [[P001-006-transient-capacity-rise-at-35c|One film at 35 °C showed an unexplained transient rise in capacity]] · oddity
 
-**Appears alongside:** [[temperature]] (13) · [[binding-capacity]] (12) · [[imprinted-polymer-film]] (11) · [[water]] (10) · [[analyte-x]] (9) · [[acetonitrile]] (6) · [[batch-rebinding-assay]] (4) · [[swelling]] (3) · [[film-thickness]] (2)
+**Appears alongside:** [[temperature]] (14) · [[binding-capacity]] (13) · [[imprinted-polymer-film]] (12) · [[water]] (11) · [[analyte-x]] (10) · [[acetonitrile]] (6) · [[batch-rebinding-assay]] (4) · [[swelling]] (3) · [[film-thickness]] (2)
 
 <!--AUTO:END-->
 

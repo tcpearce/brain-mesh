@@ -33,7 +33,7 @@ updated: 2026-11-20
 - [[P002-007-single-film-thickness-tested|Only one film thickness, 200 nm, was tested]] · limitation
 - [[P001-006-transient-capacity-rise-at-35c|One film at 35 °C showed an unexplained transient rise in capacity]] · oddity
 
-**Appears alongside:** [[binding-capacity]] (16) · [[temperature]] (15) · [[solvent]] (11) · [[analyte-x]] (10) · [[water]] (8) · [[acetonitrile]] (6) · [[batch-rebinding-assay]] (5) · [[swelling]] (4) · [[film-thickness]] (3) · [[quartz-crystal-microbalance]] (1)
+**Appears alongside:** [[binding-capacity]] (16) · [[temperature]] (15) · [[solvent]] (12) · [[analyte-x]] (10) · [[water]] (8) · [[acetonitrile]] (6) · [[batch-rebinding-assay]] (5) · [[swelling]] (4) · [[film-thickness]] (3) · [[quartz-crystal-microbalance]] (1)
 
 <!--AUTO:END-->
 

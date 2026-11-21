@@ -27,7 +27,7 @@ updated: 2026-11-20
 - [[P001-008-organic-solvents-not-tested|Organic solvents were not tested]] · limitation
 - [[P001-006-transient-capacity-rise-at-35c|One film at 35 °C showed an unexplained transient rise in capacity]] · oddity
 
-**Appears alongside:** [[temperature]] (13) · [[binding-capacity]] (12) · [[solvent]] (10) · [[imprinted-polymer-film]] (8) · [[analyte-x]] (6) · [[swelling]] (6) · [[batch-rebinding-assay]] (3) · [[acetonitrile]] (2) · [[film-thickness]] (2)
+**Appears alongside:** [[temperature]] (13) · [[binding-capacity]] (12) · [[solvent]] (11) · [[imprinted-polymer-film]] (8) · [[analyte-x]] (6) · [[swelling]] (6) · [[batch-rebinding-assay]] (3) · [[acetonitrile]] (2) · [[film-thickness]] (2)
 
 <!--AUTO:END-->
 

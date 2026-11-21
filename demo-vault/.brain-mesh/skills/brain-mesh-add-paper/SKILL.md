@@ -129,11 +129,39 @@ A link should tell a reader something they would want to follow. Do not link car
 3. Run `python3 tools/mesh.py build` and look at `P012_marked.pdf` page by page, as images. Every card should sit on the passage it describes. A card that `build` reports as having only a page-level marker has a wrong `loc` or anchor; fix it. Then read what is not highlighted: any unmarked sentence that states a method, a result, a claim or a caveat is a missed card. `python3 tools/mesh.py unread P012` lists every paragraph that no card is anchored to; go through the whole list, since a paragraph can be covered by a card anchored next door, or not covered at all. End matter counts: data and code availability, and summaries not written by the authors, can hold facts or discrepancies worth a card. Card what was missed, or record in the coverage lines why that part was left.
 4. Record the result in a `pass::` line on the source card, for example `2026-11-20 | full | 84 cards | verified 10 of 10 sampled, marked pages reviewed`, and set its status to `extracted`.
 
-## 8. Integrate upward
+## 8. Integrate upward: update a card or create one
 
-`python3 tools/mesh.py related P012` lists the findings, tensions, gaps, hypotheses and experiments that share concepts with the new source. Then:
+As the brain grows, two failures threaten it. Lumping: one finding becomes a catch-all whose sentence is no longer true of all it cites. Splitting: near-identical findings, gaps or tensions multiply and scatter the evidence for one idea. Every kind of card has an identity, what makes two of them the same card. New material that matches an existing card's identity updates that card. Material that differs only in scope gets a sibling card, with the scope in its title, linked to the first. Only genuinely new material gets a new card.
 
-- For each main result and claim: add it to an existing finding as `support` or `against` and re-grade the finding; or open a tension if it disagrees with existing evidence; or write a new finding if nothing covers it.
+| Card | The same card when… | A new source usually means |
+|---|---|---|
+| Evidence | same source and same statement | new cards, linked to the earlier ones; never edit another source's cards |
+| Concept | the same thing is meant (a synonym is an alias) | update the hub; a narrower concept only when a result depends on the distinction |
+| Finding | same proposition, same scope (variable, conditions, population) | add `support` or `against` and re-grade; a sibling finding when the conditions differ |
+| Tension | the same question would settle it | add to its sides or explanations; a new tension only for a different disagreement |
+| Gap | the same measurement would close it | narrow it, mark it fillable, or close it; a new gap only for different missing evidence |
+| Hypothesis | the same predictions | update its status; a rival hypothesis only if some observation could tell the two apart |
+| Experiment | its registered design | never reused: new results go under its amendments and results |
+
+Two tests keep findings honest:
+
+- **The one-sentence test.** The finding's title must stay true of every card it cites. If adding the new evidence would make the title need "except", "mostly" or "in some conditions", give the new conditions their own finding.
+- **The agreement test.** Cards that measure the same quantity under the same conditions must agree within their errors. If they do not, the finding is `contested`: open a tension rather than averaging the disagreement away inside one finding.
+
+`python3 tools/mesh.py place P012` does the first sorting. For every observation, claim, model and caveat of the new source it lists the findings, tensions, gaps and hypotheses it most likely bears on (ranked by the rare concepts they share, and by whether the page already rests on the same quantity) and says what each match calls for:
+
+- **within the finding's scope**: add it as `support` or `against` and re-grade;
+- **OUTSIDE the finding's scope**: a sibling finding, scoped in its title and `when::` lines, unless the claim truly holds there too, in which case widen the scope in both title and Codes;
+- **CONFLICTS** with evidence the finding already cites: add it as `against` and open or extend a tension;
+- **no scope yet**: give the finding `when::` lines first, then decide.
+
+It ends with the results that bear on nothing yet: each may start a new finding if it passes the one-sentence test and is worth building on, or may stand alone. The placement report is a starting point, not the decision: read the finding and the card before acting.
+
+Whenever a finding, tension, gap or hypothesis changes status, add a `- graded:: <date> <status> — <why>` line below its earlier ones. `check` enforces the scope (a finding citing evidence outside its `when::` lines), the agreement test (supporting cards that disagree beyond error) and the grading history.
+
+Then:
+
+- For each main result and claim, act on the placement report as above.
 - Turn the authors' open questions and limitations into gap candidates (`brain-mesh-gaps`), searching existing gaps first.
 - **Check the workbench.** Does the source support or undermine an open hypothesis, or already answer a planned or registered experiment? Say so on that card, under `## Amendments` for a registered experiment, and tell the user at once.
 - If the source was in `ledger/reading-queue.md`, mark it ingested and revisit the gap it was meant to fill.

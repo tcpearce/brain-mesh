@@ -208,9 +208,10 @@ Codes on evidence cards:
 
 Written by Claude across sources. One proposition, disagreement or unknown per card. Each cites evidence cards and lists its concepts in `concepts::`.
 
-- **Finding `K`.** `# <the proposition, with its scope>`, **In brief.**, `## Evidence` (for and against, in words, with links), `## Where it holds and where it breaks`, `## What would change this`. Codes: `support::`, `against::`. Status: `single-source`, `tentative`, `probable`, `established`, `contested`. Grade on independent sources, directness and replication, not on how confident the authors sound.
+- **Finding `K`.** `# <the proposition, with its scope>`, **In brief.**, `## Evidence` (for and against, in words, with links), `## Where it holds and where it breaks`, `## What would change this`. Codes: `support::`, `against::`, and the scope as `when::` lines like those on evidence cards (`- when:: [[solvent]] = [[water]]`, `- when:: [[temperature]] = 25 to 45 degC`; several lines for one variable allow several values). The scope in Codes must match the scope in the title. Status: `single-source`, `tentative`, `probable`, `established`, `contested`. Grade on independent sources, directness and replication, not on how confident the authors sound.
 - **Tension `X`.** **The disagreement.**, `## Sides`, `## Possible explanations` (differing conditions, methods or definitions first), `## What would settle it`. Codes: `sides::`. Status: `open`, `explained`, `resolved`.
 - **Gap `G`.** See `brain-mesh-gaps`.
+- **Grading history.** Findings, tensions, gaps and hypotheses keep one `- graded:: <date> <status> — <why>` line per change of status, oldest first, so each carries its own reasoning trail (`- graded:: 2026-11-21 probable — P003 replicates P001 in the same conditions`). `build` starts the history of a card that has none; `check` warns when the status differs from the last `graded::` line.
 
 ### Workbench cards
 

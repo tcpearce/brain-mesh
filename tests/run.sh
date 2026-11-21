@@ -396,4 +396,20 @@ if python3 -c "import matplotlib" 2>/dev/null; then
   mv "$f.bak" "$f"; python3 tools/mesh.py latex P001-001 | grep -q "compare the transcription" && pass "latex renders an equation beside the original" || fail "latex render"
 fi
 else echo "skip equation tests: PyMuPDF not installed"; fi
+# 8. where new evidence goes: scoped findings, disagreements, placement, grading history (1.4.0)
+cp -r "$ROOT/demo-vault" "$T/k"; cd "$T/k"; cp "$MESH" tools/mesh.py
+S1=$(ls -d sources/P001*); S2=$(ls -d sources/P002*); S3=$(ls -d sources/P003*)
+grep -q "^- graded:: .* probable — " findings/K001-*.md && pass "findings carry a grading history" || fail "grading history"
+python3 tools/mesh.py place P003-004 > place.txt; grep -q "OUTSIDE the finding's scope (solvent = acetonitrile" place.txt && pass "place sends out-of-scope evidence to a sibling finding" || fail "place outside scope"
+python3 tools/mesh.py place P003-001 > place.txt; grep -q "already cited here" place.txt && pass "place knows what a finding already cites" || fail "place cited"
+sed -i.bak 's/^- support:: \(.*\)$/- support:: \1, [[P002-002]]/' findings/K001-*.md
+(python3 tools/mesh.py check || true) | grep -q "K001: cites P002-002, which lies outside the finding's scope" && pass "a finding citing evidence outside its scope is flagged" || fail "scope check"
+mv findings/K001-*.md.bak /tmp/k001.bak; f=$(ls findings/K001-*.md); cp /tmp/k001.bak "$f"
+g=$(ls $S3/P003-001-*.md); sed -i.bak 's/= 4.0 ± 0.3/= 2.0 ± 0.3/; s/was 4.0 ± 0.3/was 2.0 ± 0.3/' "$g"
+(python3 tools/mesh.py check || true) | grep -q "K001: cites P00[13]-00[13] (.*) and P00[13]-00[13] (.*) as support, but they measure the same quantity" && pass "supporting evidence that disagrees beyond error is flagged" || fail "disagreement check"
+mv "$g.bak" "$g"
+sed -i.bak 's/^status: probable$/status: established/' "$f"
+(python3 tools/mesh.py check || true) | grep -q "K001: status is established but its last 'graded::' line says probable" && pass "a status change without a graded:: line is flagged" || fail "graded check"
+sed -i.bak 's/^\(- graded:: .* probable — .*\)$/\1\n- graded:: 2026-11-21 established — a third independent source replicates it/' "$f"
+(python3 tools/mesh.py check || true) | grep -q "K001: status is" && fail "graded:: line not accepted" || pass "a graded:: line records the change"
 echo "ALL TESTS PASSED"

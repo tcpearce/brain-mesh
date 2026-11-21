@@ -19,9 +19,12 @@ Water only. In acetonitrile the capacity does not fall ([[P002-004-no-change-on-
 A replication in water with a second method, or kinetics showing the 45 °C films had not reached equilibrium ([[P001-009-equilibrium-assumed-within-60-min|assumed, not shown]]).
 
 ## Codes
+- graded:: 2026-11-20 probable — status when the grading history began
 - id:: K001
 - support:: [[P003-001-capacity-4-0-at-25c-water]], [[P003-002-capacity-1-4-at-45c-water]], [[P001-003-capacity-4-2-at-25c-water]], [[P001-004-capacity-1-3-at-45c-water]]
 - against::
+- when:: [[solvent]] = [[water]]
+- when:: [[temperature]] = 25 to 45 degC
 - concepts:: [[binding-capacity]], [[temperature]], [[water]], [[imprinted-polymer-film]], [[analyte-x]]
 
 ## Linked from

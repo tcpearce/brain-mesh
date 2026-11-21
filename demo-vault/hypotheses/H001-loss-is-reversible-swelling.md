@@ -19,6 +19,7 @@ Capacity falls with an 18% thickening in water ([[K001-capacity-falls-on-heating
 - If damage: it stays near the 45 °C value.
 
 ## Codes
+- graded:: 2026-11-20 supported — status when the grading history began
 - id:: H001
 - explains:: [[K001-capacity-falls-on-heating-in-water]], [[X001-does-heat-or-solvent-uptake-lower-capacity]]
 - concepts:: [[binding-capacity]], [[swelling]], [[temperature]], [[water]]

@@ -2,6 +2,16 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.4.0 (2026-11-21)
+
+Deciding, as the brain grows, whether a new source updates an existing card or needs a new one.
+
+- **Identity rules** in add-paper step 8: what makes two cards of each kind the same card (finding: same proposition and scope; tension: same settling question; gap: same closing measurement; hypothesis: same predictions), with the one-sentence test against lumping and the agreement test for conflicting evidence. Housekeeping gains rules for splitting and merging synthesis cards.
+- **Scoped findings.** Findings carry `when::` lines for their scope. `check` warns when a finding cites evidence outside its scope.
+- **Agreement check.** `check` warns when a finding's supporting cards from different sources measure the same quantity under the same conditions and disagree beyond their errors.
+- **Placement report.** New command `place P012`: for each new card, the findings, tensions, gaps and hypotheses it bears on, and whether it fits within a finding's scope, lies outside it, or conflicts with what the finding cites; plus the results that bear on nothing yet.
+- **Grading history.** `graded:: <date> <status> — <why>` lines on findings, tensions, gaps and hypotheses; `build` starts the history where there is none, and `check` warns when a status changes without a new line.
+
 ## 1.3.0 (2026-11-21)
 
 From the user's first look at the test vault in Obsidian.

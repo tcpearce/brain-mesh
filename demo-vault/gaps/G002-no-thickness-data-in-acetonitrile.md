@@ -21,6 +21,7 @@ The swelling explanation ([[H001-loss-is-reversible-swelling|hypothesis H001]]) 
 Ellipsometry of the same films in both solvents at 25 and 45 °C.
 
 ## Codes
+- graded:: 2026-11-20 confirmed — status when the grading history began
 - id:: G002
 - kind:: unmeasured
 - priority:: 2

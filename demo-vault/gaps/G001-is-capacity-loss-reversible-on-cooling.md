@@ -20,6 +20,7 @@ The authors raise the question themselves ([[P001-011-reversibility-on-cooling-u
 A heat-then-cool cycle on the same films with capacity read at each step.
 
 ## Codes
+- graded:: 2026-11-20 closed — status when the grading history began
 - id:: G001
 - kind:: open-question
 - priority:: 1

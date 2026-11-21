@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.3.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.4.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -472,6 +472,20 @@ class Mesh:
                     if k in LINK_KEYS and k not in keys: E.append(f"{i}: '{k}::' is not a link key for a {typ} {keys}")
                 n = lambda k: len([t for v in c.all(k) for t in s.ids(v)[0]])
                 if i[0] == "K" and not n("support"): W.append(f"{i}: finding has no support")
+                if i[0] == "K":
+                    sup = [s.cards[t] for v in c.all("support") for t in s.ids(v)[0] if s.cards[t].fam == "evidence"]
+                    agn = [s.cards[t] for v in c.all("against") for t in s.ids(v)[0] if s.cards[t].fam == "evidence"]
+                    if not s.scope_of(c): notes["findings without a scope (when:: lines)"] += 1
+                    for e in sup + agn:
+                        st, why = s.scope_report(c, e)
+                        if st == "outside": W.append(f"{i}: cites {e.id}, which lies outside the finding's scope ({why}). Widen the scope only if the claim holds there too; otherwise give that evidence its own scoped finding, or drop the citation")
+                    for a_, b_, va, vb in s.disagreements(sup):
+                        W.append(f"{i}: cites {a_.id} ({va:g}) and {b_.id} ({vb:g}) as support, but they measure the same quantity under the same conditions and disagree beyond their errors. Make the finding contested and open a tension, or move one to against::")
+                if i[0] in "KXGH":
+                    gl = c.all("graded"); last = re.match(r"\s*(\d{4}-\d\d-\d\d)\s+([a-z-]+)", gl[-1]) if gl else None
+                    if gl and not last: W.append(f"{i}: 'graded::' lines read '<date> <status> — <why>'")
+                    elif last and last.group(2) != c.status: W.append(f"{i}: status is {c.status} but its last 'graded::' line says {last.group(2)}. Add '- graded:: {TODAY} {c.status} — <why>' below the others")
+                    elif last and len(reason(gl[-1]).split()) < 2: W.append(f"{i}: the last 'graded::' line needs ' — ' and the reason for the status")
                 if i[0] == "X" and n("sides") < 2: W.append(f"{i}: tension needs at least two sides")
                 if i[0] == "G":
                     if c.get("kind") not in GAP_KINDS: E.append(f"{i}: kind '{c.get('kind')}' not in {GAP_KINDS}")
@@ -504,6 +518,60 @@ class Mesh:
             if mo and rows:
                 v = float(mo.group(0).replace("−", "-")); dec = len(mo.group(0).split(".")[1]) if "." in mo.group(0) else 0
                 if not any(abs(v - x) <= max(1.5 * e, 0.5 * 10 ** -dec) + 1e-9 for x, e in rows): W.append(f"{i}: value {mo.group(0)} matches no row of {', '.join(os.path.basename(f) for f in files)} within its reading error")
+
+    def numval(s, rest):
+        """(value, uncertainty) from the text after '=' in a value line; (None, None) when it holds no number."""
+        t = plain(rest).replace("−", "-")
+        mo = re.search(r"([-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)(?:\s*±\s*(\d+(?:\.\d+)?(?:[eE][-+]?\d+)?))?", t)
+        return (float(mo.group(1)), float(mo.group(2)) if mo.group(2) else None) if mo else (None, None)
+
+    def scope_of(s, k):
+        """A finding's scope from its when:: lines: {variable: [(value, categorical)]}. Several lines for one variable
+        allow several values (prediction target = neural similarity, or = odour description)."""
+        out = defaultdict(list)
+        for w, v, cat in s.whens(k):
+            if w: out[w].append((v, cat))
+        return out
+
+    def in_scope(s, allowed, cond):
+        """Whether one condition of an evidence card lies within a scope: True, False, or None when it cannot be told."""
+        v, cat = cond
+        nums = lambda t: [float(x) for x in re.findall(r"[-+]?\d+(?:\.\d+)?", t.replace("−", "-"))]
+        verdicts = []
+        for sv, scat in allowed:
+            if scat or cat: verdicts.append(sv == v if (scat and cat) else None); continue
+            a, b = nums(sv), nums(v)
+            if not a or not b: verdicts.append(True if sv.strip().lower() == v.strip().lower() else None); continue
+            lo, hi = min(a), max(a)
+            if re.search(r"≤|<=|below|under|up to|at most", sv): lo = float("-inf")
+            if re.search(r"≥|>=|above|over|at least", sv): hi = float("inf")
+            verdicts.append(all(lo - 1e-9 <= x <= hi + 1e-9 for x in b))
+        if any(x is True for x in verdicts): return True
+        return False if verdicts and all(x is False for x in verdicts) else None
+
+    def scope_report(s, k, e):
+        """How evidence card e sits against finding k's scope: ('within' | 'outside' | 'unscoped', what lies outside)."""
+        sc = s.scope_of(k)
+        if not sc: return "unscoped", ""
+        out = [f"{w} = {v} where the finding says {' or '.join(x for x, _c in sc[w])}" for w, v, cat in s.whens(e) if w in sc and s.in_scope(sc[w], (v, cat)) is False]
+        return ("outside", "; ".join(out)) if out else ("within", "")
+
+    def disagreements(s, cards):
+        """Pairs of cards from different sources that measure the same quantity under the same conditions and differ by
+        more than twice their combined uncertainty (or by more than 10% when neither states one)."""
+        by, out = defaultdict(list), []
+        for c in cards:
+            if s.sig(c): by[s.sig(c)].append(c)
+        for cs in by.values():
+            for x in range(len(cs)):
+                for y in range(x + 1, len(cs)):
+                    a_, b_ = cs[x], cs[y]
+                    if a_.id[:4] == b_.id[:4]: continue
+                    (va, ua), (vb, ub) = s.numval(s.pair(a_.get("value"))[1]), s.numval(s.pair(b_.get("value"))[1])
+                    if va is None or vb is None: continue
+                    tol = 2 * math.sqrt((ua or 0) ** 2 + (ub or 0) ** 2) if (ua or ub) else 0.1 * max(abs(va), abs(vb))
+                    if abs(va - vb) > tol: out.append((a_, b_, va, vb))
+        return out
 
     def dependants(s, seeds):
         """Every card that rests, directly or through other cards, on the seeds: {card id: steps away}."""
@@ -1315,8 +1383,19 @@ def frontier(m):
 
 def lk(c, label=None): return f"[[{c.name}|{label or c.id + ' ' + one(c.title, 110)}]]"
 
+def seed_grades(m):
+    """Start the grading history of findings, tensions, gaps and hypotheses that have none, with their present status."""
+    k = 0
+    for c in m.pages("KXGH"):
+        if c.all("graded") or "\n## Codes" not in c.raw: continue
+        date = str(c.fm.get("updated") or TODAY)[:10]
+        wr(c.path, c.raw.replace("\n## Codes\n", f"\n## Codes\n- graded:: {date} {c.status} — status when the grading history began\n", 1)); k += 1
+    if k: print(f"grading history started on {k} cards")
+
+
 def cmd_build(root):
     fixnames(root); fixfolders(root)
+    seed_grades(Mesh(root))
     n = fixlinks(Mesh(root))
     m = Mesh(root)
     def fill(card, L):  # replace the AUTO block of a hub card
@@ -1664,6 +1743,60 @@ def cmd_staged(m):
     print(f"{len(names)} staged concepts. Merge each into an existing concept (add an alias) or create it once, then fix the links in the source's cards and delete the P###_concepts.md files.")
 
 
+def rarity(m):
+    """Weight of each concept: rare concepts count for much, a concept on every card for almost nothing."""
+    pool = [c for c in m.cards.values() if c.fam in ("evidence", "page") and not c.get("retired")]
+    df = Counter(t for c in pool for t in m.terms(c)); n_ = len(pool) + 1
+    return lambda t: math.log(n_ / df[t]) if df[t] else 0.0
+
+
+def relevance(m, a, b, w):
+    sa, sb = m.terms(a), m.terms(b)
+    den = math.sqrt(sum(w(t) for t in sa) * sum(w(t) for t in sb)) or 1.0
+    words = lambda c: toks(c.title) - STOP
+    return 0.75 * sum(w(t) for t in sa & sb) / den + 0.25 * jac(words(a), words(b))
+
+
+def cmd_place(m, target, top=4, floor=0.15):
+    """Where new evidence goes. For each observation, claim, model, limitation, assumption, question or oddity of a
+    source (or one card): the findings, tensions, gaps and hypotheses it most likely bears on, and what each match
+    calls for: support within a finding's scope, a sibling finding outside it, a tension where it conflicts."""
+    cards = m.evidence(target) if re.fullmatch(r"P\d{3}", target) else [need(m, target)]
+    pages, w = m.pages("KXGH"), rarity(m)
+    cited = {p.id: {t for k in PAGES[p.id[0]][3] for v in p.all(k) for t in m.ids(v)[0]} for p in pages}
+    var = lambda c: m.pair(c.get("value"))[0] if c.get("value") else None
+    unplaced = []
+    for a in [c for c in cards if c.type in ("observation", "claim", "model", "limitation", "assumption", "question", "oddity") and not c.get("retired")]:
+        rows = []
+        for p in pages:
+            sc = relevance(m, a, p, w)
+            if var(a) and any(m.cards[t].fam == "evidence" and var(m.cards[t]) == var(a) for t in cited[p.id]): sc += 0.15  # the page already rests on this quantity
+            if sc >= floor or a.id in cited[p.id]: rows.append((sc, p))
+        rows = sorted(rows, key=lambda r: (-r[0], r[1].id))[:top]
+        if not rows:
+            if a.type in ("observation", "claim", "model"): unplaced.append(a)
+            continue
+        print(f"{a.id} [{a.type}] {one(a.title, 100)}")
+        for sc, p in rows:
+            if a.id in cited[p.id]: act = "already cited here"
+            elif p.id[0] == "K":
+                st, why = m.scope_report(p, a)
+                sup = [m.cards[t] for v in p.all("support") for t in m.ids(v)[0] if m.cards[t].fam == "evidence"]
+                clash = sorted({(y if x is a else x).id for x, y, _a, _b in m.disagreements(sup + [a]) if a in (x, y)})
+                if clash: act = f"CONFLICTS with {', '.join(clash)} under the same conditions: add it as against:: and open or extend a tension"
+                elif st == "outside": act = f"OUTSIDE the finding's scope ({why}): a sibling finding with that scope in its title, unless the claim truly holds there too"
+                elif st == "within": act = "within the finding's scope: add as support:: or against:: and re-grade; a status change needs a graded:: line"
+                else: act = "the finding has no scope yet: give it when:: lines, then decide between support, against and a sibling finding"
+            elif p.id[0] == "X": act = "bears on this disagreement: add it to a side, or to the possible explanations"
+            elif p.id[0] == "G": act = "may narrow or close this gap: compare it with the gap's 'What would close it'"
+            else: act = "bears on this hypothesis: does it support or refute one of its predictions?"
+            print(f"   {sc:.2f}  {p.id} [{p.type}/{p.status}] {one(p.title, 80)}\n         -> {act}")
+    if unplaced:
+        print(f"\n{len(unplaced)} observations, claims or models bear on no finding, tension, gap or hypothesis:")
+        for a in unplaced[:25]: print(f"   {a.id} [{a.type}] {one(a.title, 100)}")
+        print("Each may start a new finding if it passes the one-sentence test and is a result worth building on, or may stand alone.")
+
+
 def cmd_related(m, pid):
     mine = set().union(*[m.terms(c) for c in m.evidence(pid)] or [set()])
     for n, c in sorted(((len(mine & m.terms(c)), c) for c in m.pages("KXGHE")), key=lambda r: (-r[0], r[1].id)):
@@ -1691,6 +1824,7 @@ matrix <var> [<var>] [--all]  cross-tab observations by condition (also: type, s
 sample <P###> [n]             random cards beside their source text, for spot checks
 unread <P###> [min chars]     paragraphs of a source that no card is anchored to, for finding missed cards
 progress <P###>               where the extraction of a source stands, for resuming it
+place <P###|id>               where new evidence goes: findings, tensions, gaps and hypotheses each card bears on, and what each match calls for
 equations <P###> [--si]       displayed equations of a source, with boxes to crop (figure ... eq4) and transcribe into LaTeX
 latex <card id>               render a card's equation:: lines beside the cropped original, to check the transcription
 staged                        concepts proposed by extraction agents, with the existing concepts they resemble
@@ -1720,6 +1854,7 @@ def main():
     if c == "anchor": cmd_anchor(m, a[0], [x for x in a[1:] if not x.startswith("--")], "--force" in a, "--si" in a, "--correction" in a)
     elif c == "figure": cmd_figure(m, a)
     elif c == "progress": cmd_progress(m, a[0])
+    elif c == "place": cmd_place(m, a[0])
     elif c == "equations": cmd_equations(m, a[0], "_SI" if "--si" in a else "")
     elif c == "latex": cmd_latex(m, a[0])
     elif c == "staged": cmd_staged(m)

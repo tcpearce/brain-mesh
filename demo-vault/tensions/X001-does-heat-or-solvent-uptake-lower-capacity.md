@@ -19,6 +19,7 @@ updated: 2026-11-20
 Both solvents, both temperatures, one method, with [[film-thickness|thickness]] measured in each condition.
 
 ## Codes
+- graded:: 2026-11-20 explained — status when the grading history began
 - id:: X001
 - sides:: [[P001-007-swelling-distorts-cavities]], [[P002-005-heat-alone-does-not-degrade-cavities]]
 - concepts:: [[binding-capacity]], [[temperature]], [[solvent]], [[water]], [[acetonitrile]], [[swelling]], [[film-thickness]]

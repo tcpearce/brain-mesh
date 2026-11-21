@@ -37,7 +37,7 @@ solvent	concept	concept			Solvent	concepts/solvent.md
 swelling	concept	concept			Swelling	concepts/swelling.md
 temperature	concept	concept			Temperature	concepts/temperature.md
 water	concept	concept			Water	concepts/water.md
-K001	page	finding	probable	analyte-x binding-capacity imprinted-polymer-film temperature water	In water, binding capacity of the imprinted film for analyte X falls about threefold between 25 and 45 °C	findings/K001-capacity-falls-on-heating-in-water.md
+K001	page	finding	probable	analyte-x binding-capacity imprinted-polymer-film solvent temperature water	In water, binding capacity of the imprinted film for analyte X falls about threefold between 25 and 45 °C	findings/K001-capacity-falls-on-heating-in-water.md
 X001	page	tension	explained	acetonitrile binding-capacity film-thickness solvent swelling temperature water	Does heating itself lower binding capacity, or only heating in water?	tensions/X001-does-heat-or-solvent-uptake-lower-capacity.md
 G001	page	gap	closed	binding-capacity swelling temperature water	Is the loss of binding capacity on heating in water reversible on cooling?	gaps/G001-is-capacity-loss-reversible-on-cooling.md
 G002	page	gap	confirmed	acetonitrile film-thickness imprinted-polymer-film swelling temperature	Film thickness has never been measured in acetonitrile, so swelling is not ruled in or out there	gaps/G002-no-thickness-data-in-acetonitrile.md

@@ -34,6 +34,15 @@ Work through the results in this order. Fix what is clear. Bring to the user any
 
 Finish with `build`, then `python3 tools/mesh.py log "housekeeping: <what was done>"`.
 
+## Splitting and merging synthesis cards
+
+The identity rules in `brain-mesh-add-paper` step 8 decide when two findings, tensions, gaps or hypotheses are one card, and when one card has become two.
+
+- **Split a finding** when the one-sentence test fails, when `check` reports evidence outside its scope or supporting cards that disagree, or when its evidence falls into groups by condition with different results. Write a sibling finding for each scope, with the scope in its title and `when::` lines, and move the evidence to the finding it belongs to. Keep the original card for the scope it still describes, or retire it as a pointer to its successors with `merge`; never delete it. Record the change with a `graded::` line on each card involved.
+- **Split a tension** whose sides argue about different quantities or conditions: one tension per question that would settle it.
+- **Merge two findings, tensions, gaps or hypotheses** whose identities match (same proposition and scope, same settling question, same closing measurement, same predictions), as below.
+- A gap partly filled by a new source is narrowed, not duplicated: rewrite what is still missing, and keep the evidence that narrowed it in its Codes.
+
 ## Merging
 
 Never delete a card file; other cards and the user's own notes may point at it.

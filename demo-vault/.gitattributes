@@ -1,0 +1,6 @@
+# Keep text files in LF on every system, so a build on Windows changes nothing; PDFs and images are binary.
+* text=auto eol=lf
+*.pdf binary
+*.png binary
+*.jpg binary
+*.xlsx binary

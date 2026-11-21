@@ -2,6 +2,11 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.4.1 (2026-11-21)
+
+- **Builds on Windows match builds elsewhere.** Files are always written with LF line endings, and every path the tooling writes into a file (the card index, the marked PDFs' links, the marking signature) uses forward slashes. Before, a build on Windows rewrote files with Windows line endings and back-slashed paths, so they no longer matched the repository and `git pull` refused to run.
+- Vaults get a `.gitattributes` that keeps text files in LF and treats PDFs and images as binary.
+
 ## 1.4.0 (2026-11-21)
 
 Deciding, as the brain grows, whether a new source updates an existing card or needs a new one.

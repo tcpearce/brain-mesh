@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.4.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.4.1"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -53,9 +53,13 @@ def ranked(counter, n=None):
     return sorted(counter.items(), key=lambda r: (-r[1], str(r[0])))[:n]
 
 
-def wr(p, t):
+GITATTR = "# Keep text files in LF on every system, so a build on Windows changes nothing; PDFs and images are binary.\n* text=auto eol=lf\n*.pdf binary\n*.png binary\n*.jpg binary\n*.xlsx binary\n"
+def relp(p, root):
+    """A path relative to the vault, always with forward slashes, so files the tooling writes are identical on Windows."""
+    return os.path.relpath(p, root).replace(os.sep, "/")
+def wr(p, t):  # always LF line endings: a build on Windows must produce the same files as anywhere else
     os.makedirs(os.path.dirname(p), exist_ok=True)
-    with open(p, "w", encoding="utf-8") as f: f.write(t)
+    with open(p, "w", encoding="utf-8", newline="\n") as f: f.write(t)
 def squeeze(s): return re.sub(r"[^a-z0-9]+", "", unicodedata.normalize("NFKC", str(s)).lower())
 def one(s, n=150):
     s = " ".join(str(s).split())
@@ -225,7 +229,7 @@ class Mesh:
                 m1, m2 = re.fullmatch(r"(P\d{3}-\d{3})(-[a-z0-9-]+)?", b), re.fullmatch(r"(P\d{3})(-[a-z][a-z0-9-]*)?", b)
                 if m1 and b.startswith(pid): add(f, "evidence", m1.group(1))
                 elif m2 and m2.group(1) == pid: add(f, "source", pid)
-                else: s.err.append(f"{os.path.relpath(f, root)}: name must be {pid}-<slug>.md (source card) or {pid}-NNN-<slug>.md (evidence card); if it was renamed, `build` puts the id back from its '- id::' line")
+                else: s.err.append(f"{relp(f, root)}: name must be {pid}-<slug>.md (source card) or {pid}-NNN-<slug>.md (evidence card); if it was renamed, `build` puts the id back from its '- id::' line")
             if pid not in s.cards: s.err.append(f"{pid}: folder has no source card")
         for f in sorted(glob.glob(J(root, "concepts", "*.md"))):
             b = os.path.basename(f)[:-3]
@@ -708,6 +712,7 @@ def cmd_init(path, name, topic):
     wr(J(path, "ledger", "CHANGELOG.md"), f"# Changelog (append only, newest last)\n\n- {TODAY} brain mesh created\n")
     wr(J(path, "ledger", "lenses.md"), "# Lens passes (targeted re-reads of the sources)\n")
     wr(J(path, ".gitignore"), "# Everything a vault needs is versioned, including index/ and the marked PDFs, so a pull is enough to browse it.\n__pycache__/\n*.pyc\n*.tmp\n.DS_Store\n.trash/\nindex/.new.md\nindex/.scratch/\n.obsidian/workspace*.json\n")
+    wr(J(path, ".gitattributes"), GITATTR)
     wr(J(path, "ledger", "reading-queue.md"), "# Reading queue (papers found that are not yet in the brain)\n\n| ref | would fill | priority | access | status |\n|---|---|---|---|---|\n")
     cmd_upgrade(path, quiet=True)
     print(f"Brain mesh '{name}' created at {os.path.abspath(path)} with tooling {VERSION} (open this folder as an Obsidian vault)")
@@ -723,6 +728,7 @@ def cmd_upgrade(vault, quiet=False):
     if os.path.isdir(docs) and me != dst:
         shutil.rmtree(J(vault, ".brain-mesh"), ignore_errors=True); shutil.copytree(docs, J(vault, ".brain-mesh", "skills"))
         wr(J(vault, ".brain-mesh", "VERSION"), VERSION + "\n")
+    if not os.path.exists(J(vault, ".gitattributes")): wr(J(vault, ".gitattributes"), GITATTR)
     gi = J(vault, ".gitignore")
     if os.path.exists(gi) and "index/.scratch/" not in rd(gi): wr(gi, rd(gi).rstrip("\n") + "\nindex/.scratch/\n")
     cfg = json.loads(rd(J(vault, "MESH.json")))
@@ -780,7 +786,7 @@ def anchor_correction(m, pid, srcs):
             b = " ".join(re.sub(r"(\w)-\n(\w)", r"\1\2", unicodedata.normalize("NFKC", b)).split())
             if b and not re.fullmatch(r"[\d\s|.-]+", b): n += 1; lines += [f"{b} ^c{n:04d}", ""]
     wr(out, "\n".join(lines))
-    print(f"{pid}_correction: pages {n0 + 1}-{n0 + sum(1 for _ in pages)} added, paragraphs c{last + 1:04d}-c{n:04d} -> {os.path.relpath(out, m.root)}\n"
+    print(f"{pid}_correction: pages {n0 + 1}-{n0 + sum(1 for _ in pages)} added, paragraphs c{last + 1:04d}-c{n:04d} -> {relp(out, m.root)}\n"
           f"Now note the correction on the source card (a coverage line), fix each affected card keeping its id, and add to it\n"
           f"'- corrected:: {TODAY} — <what changed>' and an anchor into the correction ([[{pid}_correction_text#^c{last + 1:04d}]]).")
 
@@ -834,7 +840,7 @@ def cmd_anchor(m, pid, srcs, force=False, si=False, correction=False):
             for chunk in parts + [cur]:
                 n += 1; chars += len(chunk); lines += [f"{chunk} ^{letter}{n:04d}", ""]
     wr(out, "\n".join(lines))
-    print(f"{pid}{part}: {len(pages)} pages, {n} paragraph blocks, {chars} chars via {how} -> {os.path.relpath(out, m.root)}")
+    print(f"{pid}{part}: {len(pages)} pages, {n} paragraph blocks, {chars} chars via {how} -> {relp(out, m.root)}")
     if chars < 200 * max(1, len(pages)): print("warn: very little text; probably scanned. OCR it, then re-run with --force.")
 
 
@@ -862,7 +868,7 @@ def figure_grid(m, fitz, page, key, pno):
     for y in range(50, int(H) + 1, 50): page.insert_text((1, y - 1), str(y), fontsize=5, color=(0.8, 0, 0))
     d = J(m.root, "index", ".scratch"); os.makedirs(d, exist_ok=True)
     out = J(d, f"{key}-p{pno}-grid.png"); page.get_pixmap(dpi=110).save(out)
-    print(f"grid image: {os.path.relpath(out, m.root)} (lines every 25 points, labelled every 50).\n"
+    print(f"grid image: {relp(out, m.root)} (lines every 25 points, labelled every 50).\n"
           f"View it, choose one panel's box in points (x0,y0,x1,y1, taking in its tick labels and legend), then:\n"
           f"  python3 tools/mesh.py figure {key[:4]} {pno} x0,y0,x1,y1 F2a" + (" --si" if key.endswith("_SI") else ""))
 
@@ -972,14 +978,14 @@ def cmd_figure(m, args):
     if len(a) < 2: sys.exit("figure <P###> <page> [x0,y0,x1,y1 <name>] [--si]")
     pid, pno, part = a[0], int(a[1]), "_SI" if "--si" in opt else ""
     pdf = J(SRC(m.root, pid), pid + part + ".pdf")
-    if not os.path.exists(pdf): sys.exit(f"figure: no {os.path.relpath(pdf, m.root)}")
+    if not os.path.exists(pdf): sys.exit(f"figure: no {relp(pdf, m.root)}")
     doc = fitz.open(pdf); page = doc[pno - 1]
     if len(a) < 4: return figure_grid(m, fitz, page, pid + part, pno)
     clip, name = fitz.Rect(*[float(x) for x in a[2].split(",")]), a[3]
     if re.fullmatch(r"eq[0-9a-z]+", name):  # an equation (eq4 for a numbered one, eqf5b for one inside Fig. 5B): the image only, for transcribing into LaTeX
         out = J(SRC(m.root, pid), f"{pid}-{name}.png"); pad = fitz.Rect(clip.x0 - 2, clip.y0 - 2, clip.x1 + 2, clip.y1 + 2)
         page.get_pixmap(dpi=300, clip=pad).save(out)
-        print(f"{os.path.relpath(out, m.root)}: transcribe it into LaTeX by reading the image. Put the LaTeX in the card's prose as a $$ block,\n"
+        print(f"{relp(out, m.root)}: transcribe it into LaTeX by reading the image. Put the LaTeX in the card's prose as a $$ block,\n"
               f"embed the image under it with ![[{pid}-{name}.png]], add '- equation:: <the same LaTeX> ({name.replace('eq', 'eq. ')})' and an anchor '{name}, p{pno}',\n"
               f"then check the transcription with: python3 tools/mesh.py latex <card id>")
         return
@@ -987,7 +993,7 @@ def cmd_figure(m, args):
     d = SRC(m.root, pid); png, csv = J(d, f"{pid}-{name}.png"), J(d, f"{pid}-{name}.csv")
     if os.path.exists(csv) and "--force" not in opt:  # never overwrite a data file that may have been checked by hand
         sc = J(m.root, "index", ".scratch"); os.makedirs(sc, exist_ok=True); csv = J(sc, os.path.basename(csv))
-        print(f"note: {pid}-{name}.csv exists, so this reading goes to {os.path.relpath(csv, m.root)} for comparison (--force replaces it)")
+        print(f"note: {pid}-{name}.csv exists, so this reading goes to {relp(csv, m.root)} for comparison (--force replaces it)")
     page.get_pixmap(dpi=300, clip=clip).save(png)
     touches = lambda r: r[2] >= clip.x0 and r[0] <= clip.x1 and r[3] >= clip.y0 and r[1] <= clip.y1  # a line has a zero-width box, which Rect.intersects rejects
     pics = [fitz.Rect(im["bbox"]) & clip for im in page.get_image_info() if touches(im["bbox"])]
@@ -999,14 +1005,14 @@ def cmd_figure(m, args):
         nat = main_["width"] / (fitz.Rect(main_["bbox"]).width / 72) if main_ and fitz.Rect(main_["bbox"]).width else 0
         if opt.get("--yticks") not in (None, True):
             rows, notes = raster_bars(fitz, page, clip, [float(t) for t in str(opt["--yticks"]).split(",")], nat)
-            if rows is None: print(f"{pid}-{name}: {notes}. Check the box and the tick values against {os.path.relpath(png, m.root)}, or read the panel by eye."); return
+            if rows is None: print(f"{pid}-{name}: {notes}. Check the box and the tick values against {relp(png, m.root)}, or read the panel by eye."); return
             fmt_ = lambda v, e: "" if v is None else f"{v:.{max(0, min(6, -math.floor(math.log10(e)) + 1)) if e else 4}f}"
             head = [f"# {pid} {name}: read by brain mesh {VERSION} from the picture in {os.path.basename(pdf)} page {pno}, box {clip.x0:.0f},{clip.y0:.0f},{clip.x1:.0f},{clip.y1:.0f} (PDF points)"] + ["# " + n_ for n_ in notes] + ["# Bars are listed left to right; name each series and category from the image. Check every row against the image."]
             body = ["kind,series,x_label,x,y,y_low,y_high,read_error,check"] + [",".join([r[0], r[1], r[2], "", fmt_(r[4], r[7]), fmt_(r[5], r[7]), fmt_(r[6], r[7]), f"{r[7]:.2g}", r[8]]) for r in rows]
             wr(csv, "\n".join(head + body) + "\n")
-            print(f"{pid}-{name}: {len(rows)} bars read from the picture -> {os.path.relpath(csv, m.root)}; image {os.path.relpath(png, m.root)}\n  " + "\n  ".join(notes))
+            print(f"{pid}-{name}: {len(rows)} bars read from the picture -> {relp(csv, m.root)}; image {relp(png, m.root)}\n  " + "\n  ".join(notes))
             return
-        print(f"{pid}-{name}: this panel is a picture, not a drawing (about {nat:.0f} dpi). Wrote {os.path.relpath(png, m.root)}.\n"
+        print(f"{pid}-{name}: this panel is a picture, not a drawing (about {nat:.0f} dpi). Wrote {relp(png, m.root)}.\n"
               "For a bar chart, read the tick values off that image and rerun with --yticks v1,v2,... (bottom to top) to measure the bars from the pixels.\n"
               "Otherwise read it by eye: give each value a reading error of at least half the finest tick interval, say in the card that it was\n"
               "read by eye, and write the values to the .csv by hand in the same columns.")
@@ -1151,7 +1157,7 @@ def cmd_figure(m, args):
     body = ["kind,series,x_label,x,y,y_low,y_high,read_error,check"] + [",".join([r[0], r[1].replace(",", " "), r[2].replace(",", " "), fmt(r[3], X(0)[1] if xcal else None), fmt(r[4], r[7]), fmt(r[5], r[7]), fmt(r[6], r[7]), f"{r[7]:.2g}" if r[7] is not None else "", r[8]]) for r in rows]
     wr(csv, "\n".join(head + body) + "\n")
     series = {r[1] for r in rows if r[0] in ("bar", "marker")}
-    print(f"{pid}-{name}: {len(rows)} rows ({Counter(r[0] for r in rows)}) -> {os.path.relpath(csv, m.root)}; image {os.path.relpath(png, m.root)}")
+    print(f"{pid}-{name}: {len(rows)} rows ({Counter(r[0] for r in rows)}) -> {relp(csv, m.root)}; image {relp(png, m.root)}")
     print("\n".join("  " + h[2:] for h in head[1:-1]))
     for k, cal in (("y", ycal), ("x", xcal)):
         if cal and cal["ticks"] > 2 and cal["fit"][2] > 0.05 * (cal["range"][1] - cal["range"][0]) / (cal["ticks"] - 1):
@@ -1174,7 +1180,7 @@ def cmd_equations(m, pid, part=""):
         except ImportError: import fitz
     except ImportError: sys.exit("equations needs PyMuPDF (pip install pymupdf)")
     pdf = J(SRC(m.root, pid), pid + part + ".pdf")
-    if not os.path.exists(pdf): sys.exit(f"equations: no {os.path.relpath(pdf, m.root)}")
+    if not os.path.exists(pdf): sys.exit(f"equations: no {relp(pdf, m.root)}")
     found = 0
     for pno, page in enumerate(fitz.open(pdf), 1):
         lines_ = []
@@ -1230,7 +1236,7 @@ def cmd_latex(m, cid):
         mt = re.sub(r"\\[lr]vert(?![A-Za-z])", "|", mt)
         try:
             fig.text(0.5, 0.18 if crops else 0.35, f"${mt}$", fontsize=16, ha="center"); out = J(d, f"{c.id}-eq{k}.png"); fig.savefig(out, dpi=150)
-            print(f"{os.path.relpath(out, m.root)}: compare the transcription with the original")
+            print(f"{relp(out, m.root)}: compare the transcription with the original")
         except Exception as ex:
             print(f"equation {k}: matplotlib cannot render it ({([l for l in str(ex).splitlines() if l.strip()] or [type(ex).__name__])[-1][:110]}); check it in Obsidian instead")
         plt.close(fig)
@@ -1249,7 +1255,7 @@ def cmd_split(m, batch, update=False):
     parts, made, skipped, fresh = re.split(r"^=== *(\S+?)(?:\.md)? *$", rd(batch), flags=re.M), 0, [], []
     for name, content in zip(parts[1::2], parts[2::2]):
         ev, pg = re.fullmatch(r"(P\d{3})(-\d{3})?-[a-z0-9-]+", name), re.fullmatch(r"([KXGHE])\d{3}-[a-z0-9-]+", name)
-        if ev: folder, cid = os.path.relpath(SRC(m.root, ev.group(1)), m.root), ev.group(1) + (ev.group(2) or "")
+        if ev: folder, cid = relp(SRC(m.root, ev.group(1)), m.root), ev.group(1) + (ev.group(2) or "")
         elif pg: folder, cid = PAGES[pg.group(1)][0], name[:4]
         elif re.fullmatch(r"[a-z0-9][a-z0-9-]*", name) and not re.match(r"[pkxghel]\d{3}", name): folder, cid = "concepts", name
         else: skipped.append(f"{name}: not a valid card file name"); continue
@@ -1316,7 +1322,7 @@ def mark(m, only=None, force=False):
             if not os.path.exists(pdf): continue
             ev = [c for c in m.evidence(pid) if part in where_(c)]
             ev.sort(key=lambda c: c.id)
-            sig = hashlib.sha1(json.dumps([vault, os.path.getsize(pdf), src.get("retracted"), os.path.relpath(SRC(m.root, pid), m.root)] + [[c.id, c.name, c.type, c.status, c.title, c.get("loc"), c.all("anchor")] for c in ev]).encode()).hexdigest()
+            sig = hashlib.sha1(json.dumps([vault, os.path.getsize(pdf), src.get("retracted"), relp(SRC(m.root, pid), m.root)] + [[c.id, c.name, c.type, c.status, c.title, c.get("loc"), c.all("anchor")] for c in ev]).encode()).hexdigest()
             if not force and marks.get(key, {}).get("sig") == sig and os.path.exists(out): continue
             doc, cards, rows, edge = fitz.open(out if os.path.exists(out) else pdf), {}, Counter(), {}
             bl = {k: v for k, v in m.blocks(pid).items() if k[0] == PARTS[part]}
@@ -1354,7 +1360,7 @@ def mark(m, only=None, force=False):
                     row = (pno, round(x), round(y / 8)); tag = fitz.Rect(x, y + 8.5 * rows[row], x + w, y + 8 + 8.5 * rows[row]); rows[row] += 1
                     t = page.add_freetext_annot(tag, label, fontsize=fs, text_color=(0.1, 0.1, 0.45), fill_color=col)
                     t.set_info(title="brain-mesh", subject=c.id); t.update()  # a free-text annotation displays its content, so the tag keeps just the id
-                    page.insert_link({"kind": fitz.LINK_URI, "from": tag, "uri": f"obsidian://open?vault={vault}&file={urllib.parse.quote(os.path.relpath(c.path, m.root))}"})
+                    page.insert_link({"kind": fitz.LINK_URI, "from": tag, "uri": f"obsidian://open?vault={vault}&file={urllib.parse.quote(relp(c.path, m.root))}"})
                     first = first or {"page": pno, "annot": (h or t).xref, "how": "highlight" if h else "page"}
                 cards[c.id] = first
             if len(doc) and src.get("retracted") and not part:  # a retracted source says so on its first page
@@ -1447,7 +1453,7 @@ def cmd_build(root):
     m = Mesh(root); notes, ix = m.check(), J(root, "index")
     tsv = lambda rows: "\n".join("\t".join(" ".join(str(c).split()) for c in r) for r in rows) + "\n"
     live = [c for c in m.cards.values() if not c.get("retired")]
-    wr(J(ix, "cards.tsv"), tsv([["id", "family", "type", "status", "concepts", "title", "path"]] + [[c.id, c.fam, c.type, c.status + (" null" if c.get("null") else ""), " ".join(sorted(m.terms(c))), c.title, os.path.relpath(c.path, root)] for c in live]))
+    wr(J(ix, "cards.tsv"), tsv([["id", "family", "type", "status", "concepts", "title", "path"]] + [[c.id, c.fam, c.type, c.status + (" null" if c.get("null") else ""), " ".join(sorted(m.terms(c))), c.title, relp(c.path, root)] for c in live]))
     wr(J(ix, "edges.tsv"), tsv([["from", "rel", "to"]] + m.edges()))
     wr(J(ix, "aliases.tsv"), tsv([["alias", "concept"]] + sorted(m.alias.items())))
     srcs = [c for c in m.cards.values() if c.fam == "source"]
@@ -1546,7 +1552,7 @@ def cmd_gapsdoc(m):
     out = J(m.root, "gaps", "RESEARCH-GAPS.md")
     head = rd(out).split("<!--AUTO:START")[0] if os.path.exists(out) else f"# Research gaps: {m.cfg.get('name')}\n\n_Introduction: scope of the brain, how gaps were identified and searched, and the headline gaps. Rewrite when the list changes._\n\n"
     wr(out, head + "<!--AUTO:START (rebuilt by `mesh.py gapsdoc`; do not edit below)-->\n" + "\n".join(L) + "\n")
-    print(f"{len(conf)} research gaps written to {os.path.relpath(out, m.root)}")
+    print(f"{len(conf)} research gaps written to {relp(out, m.root)}")
 
 def need(m, i):
     cid = m.resolve(i) or m.resolve(i.lower()) or m.alias.get(" ".join(i.lower().split()))
@@ -1555,7 +1561,7 @@ def need(m, i):
 
 def cmd_show(m, i):
     c = need(m, i)
-    print(os.path.relpath(c.path, m.root) + "\n" + c.raw)
+    print(relp(c.path, m.root) + "\n" + c.raw)
     if c.fam == "evidence":
         bl = m.blocks(c.id[:4])
         for a in m.anchors(c):
@@ -1805,7 +1811,7 @@ def cmd_related(m, pid):
     print("SOURCES sharing concepts: " + (", ".join(f"{p} ({n} cards)" for p, n in ranked(other, 10)) or "none"))
 
 def cmd_log(m, msg):
-    with open(J(m.root, "ledger", "CHANGELOG.md"), "a", encoding="utf-8") as f: f.write(f"- {TODAY} {msg}\n")
+    with open(J(m.root, "ledger", "CHANGELOG.md"), "a", encoding="utf-8", newline="\n") as f: f.write(f"- {TODAY} {msg}\n")
 
 HELP = """version | upgrade <vault>     tooling version; run `upgrade` from the repository copy to update a vault
 init <dir> <name> <topic>     create a vault                  anchor <P###> <file> [--force]  paragraph-anchored text

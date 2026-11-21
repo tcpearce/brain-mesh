@@ -16,6 +16,7 @@ updated: 2026-11-20
 - loc:: "batch rebinding assay with UV detection at 254 nm"
 
 ## Linked from
+- replicated_by:: [[P003-005-own-batch-rebinding-uv-n4|Own films were measured by batch rebinding with UV detection, four films per condition]] — the same assay as Smith and Jones, with four films per condition instead of three
 - used_by:: [[E001-heat-cool-cycle-two-solvents|Heat-then-cool cycle in water and acetonitrile with one assay]]
 - used_to_obtain:: [[P001-003-capacity-4-2-at-25c-water|Binding capacity for analyte X is 4.2 at 25 °C in water]]
 - used_to_obtain:: [[P001-004-capacity-1-3-at-45c-water|Binding capacity for analyte X falls to 1.3 at 45 °C in water]]

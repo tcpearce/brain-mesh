@@ -18,9 +18,14 @@ P002-005	contradicts	P001-007
 P002-006	supports	P001-007
 P002-007	qualifies	P002-005
 P003-001	replicates	P001-003
+P003-001	obtained_by	P003-005
 P003-002	replicates	P001-004
+P003-002	obtained_by	P003-005
 P003-003	extends	P001-004
+P003-003	obtained_by	P003-005
 P003-004	replicates	P002-002
+P003-004	obtained_by	P003-005
+P003-005	replicates	P001-002
 binding-capacity	measured_by	batch-rebinding-assay
 binding-capacity	measured_by	quartz-crystal-microbalance
 film-thickness	related	swelling

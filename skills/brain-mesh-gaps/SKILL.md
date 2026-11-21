@@ -34,6 +34,7 @@ Skipping a rung is the main way this goes wrong: proposing an experiment that pa
 | numeric variables never measured as an outcome | `unmeasured` |
 | source units not fully extracted | an extraction gap, rung 1 |
 | most-cited sources not in the brain | a brain gap, rung 2 |
+| evidence the sources do not give (`missing::`) | marked "supplementary material unread": an extraction gap, rung 1, so get the supplementary material. Otherwise a missing method or basis that a finding or design depends on is a gap of kind `method` or `untested-assumption`, and missing data or statistics a gap of kind `unmeasured` |
 
 For each sparse pair the scan names, run `python3 tools/mesh.py matrix <variable> <variable>` to see exactly which combinations nobody has measured. Read the **Open questions** and **Relationships** sections of the main concept hubs too: a relationship stated with no finding behind it is a gap. The marked PDFs help with rung 1: passages with no highlight were never carded.
 

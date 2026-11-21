@@ -57,5 +57,5 @@ updated: 2026-11-20
 - coverage:: Methods | full | film preparation and rebinding assay
 - coverage:: Results | full | capacity at two temperatures, thickness change, one anomaly
 - coverage:: Discussion | full | swelling explanation, limits, open question
-- coverage:: SI | missing | none published
+- coverage:: Supplementary material | none | none published
 - pass:: 2026-11-20 | full | 11 cards | verified 11 of 11

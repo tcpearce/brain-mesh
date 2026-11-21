@@ -10,17 +10,17 @@ What it says: binding capacity of the imprinted film falls about threefold on he
 Start with a concept below, for example [[binding-capacity|Binding capacity]] or [[temperature|Temperature]].
 
 <!--AUTO:START (rebuilt by `mesh.py build`; do not edit by hand)-->
-**Counts:** 3 sources · 22 evidence cards (observation 10, claim 3, method 3, limitation 2, assumption 1, cited 1, oddity 1, question 1) · 12 concepts · K 1 · X 1 · G 2 · H 1 · E 1
+**Counts:** 3 sources · 23 evidence cards (observation 10, method 4, claim 3, limitation 2, assumption 1, cited 1, oddity 1, question 1) · 12 concepts · K 1 · X 1 · G 2 · H 1 · E 1
 
 **Concepts (start here): the most-used hubs**
-- [[binding-capacity|Binding capacity]] · variable · 17 cards from 3 sources
-- [[imprinted-polymer-film|Imprinted polymer film]] · entity · 17 cards from 3 sources
+- [[binding-capacity|Binding capacity]] · variable · 18 cards from 3 sources
+- [[imprinted-polymer-film|Imprinted polymer film]] · entity · 18 cards from 3 sources
 - [[temperature|Temperature]] · variable · 16 cards from 3 sources
 - [[solvent|Solvent]] · variable · 12 cards from 3 sources
 - [[analyte-x|Analyte X]] · entity · 9 cards from 3 sources
 - [[water|Water]] · entity · 9 cards from 3 sources
+- [[batch-rebinding-assay|Batch rebinding assay]] · technique · 6 cards from 2 sources
 - [[acetonitrile|Acetonitrile]] · entity · 5 cards from 2 sources
-- [[batch-rebinding-assay|Batch rebinding assay]] · technique · 5 cards from 2 sources
 - [[swelling|Swelling]] · concept · 5 cards from 3 sources
 - [[film-thickness|Film thickness]] · variable · 2 cards from 2 sources
 - [[equilibration-time|Equilibration time]] · variable · 1 cards from 1 sources
@@ -39,7 +39,7 @@ Start with a concept below, for example [[binding-capacity|Binding capacity]] or
 - [[P002-garcia-2023-binding-retained-acetonitrile|P002 Garcia & Chen (2023) Imprinted polymer films retain analyte X binding at elevated temperature in acetonitrile]] · integrated
 - [[P003-own-2026-heat-cool-cycle-results|P003 Own result (2026) Heat-then-cool cycle in water and acetonitrile, experiment E001]] · integrated
 
-**Not fully extracted:** P001 SI = missing
+**Not fully extracted:** P001 Supplementary material = none; P002 Supplementary material = none; P003 Supplementary material = none
 
 **Most-cited sources not yet in the brain:** lee 2015 (1)
 
@@ -49,5 +49,5 @@ Start with a concept below, for example [[binding-capacity|Binding capacity]] or
 - 2026-11-20 add P002 Garcia & Chen 2023 (8 cards); new X001; P002-008 merged into P001-010
 - 2026-11-20 register E001 testing H001; ingest own result P003 (4 cards); H001 supported, K001 probable, G001 closed, X001 explained; new G002
 
-**Integrity:** 0 errors, 0 warnings; 5 observations without obtained_by; 1 flagged cards; 1 claims without based_on
+**Integrity:** 0 errors, 0 warnings; 1 flagged cards
 <!--AUTO:END-->

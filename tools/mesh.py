@@ -7,12 +7,13 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.0.4"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.1.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
 ORIGIN = ["authors", "claude"]
 VIA = ["text", "table", "figure", "si", "inferred"]
+MISSING = ["method", "basis", "data", "statistics", "sample-size", "definition"]  # what a source can fail to give: `- missing:: method — ...`
 EVIDENCE_RELS = ["obtained_by", "based_on", "qualifies", "underlies", "supports", "contradicts", "replicates", "extends"]
 PAGES = {  # id prefix: (folder, type, allowed status, link keys in Codes)
     "K": ("findings", "finding", ["established", "probable", "tentative", "single-source", "contested"], ["support", "against"]),
@@ -74,6 +75,24 @@ def seal(root, path):
     p, name = J(root, "ledger", "checksums.txt"), os.path.basename(path)
     keep = [l for l in (rd(p).splitlines() if os.path.exists(p) else ["# Checksums of the source files as registered. The sources are the ground truth; they must never change."]) if l.split()[:1] != [name]]
     wr(p, "\n".join(keep + [f"{name} {sha(path)} {TODAY}"]) + "\n")
+
+def source_files(root, pid):
+    """The registered, sealed files of a source: its PDF or original, and any supplementary files."""
+    d = J(root, "sources", pid)
+    return sorted(glob.glob(J(d, pid + ".pdf")) + glob.glob(J(d, pid + "_original.*")) + glob.glob(J(d, pid + "_SI.pdf")) + glob.glob(J(d, pid + "_SI-*")))
+
+
+NUMWORD = re.compile(r"(?<![\w.\-−])[-−]?\d+(?:[.,]\d+)*(?![\w\-])")
+
+
+def result_numbers(text):
+    """Numbers in a card's prose that state a result: figure, table, page and reference numbers, years and card ids
+    are left out, and so are digits inside names (C8, Ca2+, 2-deoxyglucose)."""
+    t = re.sub(r"\*\*(Source|Basis|Data|Citation):\*\*.*", " ", plain(text))
+    t = re.sub(r"\b(?:Supplementary\s+)?(?:Fig(?:ure)?s?|Tables?|refs?|Eqs?|pp?)\.?\s*S?\d+[A-Za-z]?(?:\s*(?:,|and|to|–|-)\s*S?\d*[A-Za-z]?)*", " ", t, flags=re.I)
+    t = re.sub(r"\b(?:19|20)\d{2}\b|\b[PKXGHEL]\d{3}(?:-\d{3})?\b", " ", t)
+    return NUMWORD.findall(t)
+
 
 def find_root():
     c = [os.environ.get("MESH_ROOT"), os.path.dirname(os.path.dirname(os.path.abspath(__file__)))]
@@ -155,25 +174,44 @@ class Mesh:
             r = s.resolve(t); (good if r else bad).append(r or t.strip())
         return good, bad
     def aux(s, t):  # link targets that are files or notes, not cards
-        mo = re.fullmatch(r"(P\d{3})(\.pdf|_marked\.pdf|_text|_original(\.\w+)?|-[TF]\d+[a-z]*\.\w+)", t.strip())
+        mo = re.fullmatch(r"(P\d{3})(\.pdf|_marked\.pdf|_text|_original(\.\w+)?|_SI\.pdf|_SI_marked\.pdf|_SI_text|_SI-[\w.-]+\.\w+|-S?[TF]\d+[a-z]*(?:-[a-z0-9]+)?\.\w+)", t.strip())
         return bool(mo and mo.group(1) in s.cards) or t.strip() in NOTES
     def blocks(s, pid):
+        """Anchored paragraphs of a source: b#### in P###_text.md, s#### in the supplementary P###_SI_text.md."""
         if pid not in s._blocks:
-            p, d, page = J(s.root, "sources", pid, pid + "_text.md"), {}, 0
-            for line in (rd(p).splitlines() if os.path.exists(p) else []):
-                pg, bl = re.fullmatch(r"## Page (\d+)", line), re.fullmatch(r"(.*) \^(b\d{4})", line)
-                if pg: page = int(pg.group(1))
-                elif bl: d[bl.group(2)] = (page, bl.group(1))
+            d = {}
+            for part, letter in (("", "b"), ("_SI", "s")):
+                p, page = J(s.root, "sources", pid, pid + part + "_text.md"), 0
+                for line in (rd(p).splitlines() if os.path.exists(p) else []):
+                    pg, bl = re.fullmatch(r"## Page (\d+)", line), re.fullmatch(r"(.*) \^(" + letter + r"\d{4})", line)
+                    if pg: page = int(pg.group(1))
+                    elif bl: d[bl.group(2)] = (page, bl.group(1))
             s._blocks[pid] = d
         return s._blocks[pid]
+    def si_state(s, pid):
+        """'anchored' (supplementary files are in the vault), 'missing' (exists but was not supplied), 'none' (the
+        source has none), 'read' (read but not stored) or 'unstated' (no coverage line says)."""
+        if os.path.exists(J(s.root, "sources", pid, pid + "_SI_text.md")) or glob.glob(J(s.root, "sources", pid, pid + "_SI-*")): return "anchored"
+        for v in (s.cards[pid].all("coverage") if pid in s.cards else []):
+            r = [x.strip() for x in v.split("|")]
+            if len(r) > 1 and re.search(r"supplement|\bSI\b", r[0], re.I): return {"missing": "missing", "none": "none"}.get(r[1], "read")
+        return "unstated"
+    def staged(s, pid=None):
+        """Concepts proposed by extraction agents in sources/P###/P###_concepts.md, not yet merged into concepts/."""
+        out = {}
+        for f in sorted(glob.glob(J(s.root, "sources", pid or "P[0-9][0-9][0-9]", (pid or "P[0-9][0-9][0-9]") + "_concepts.md"))):
+            for name in re.findall(r"^=== *(\S+?)(?:\.md)? *$", rd(f), re.M): out.setdefault(name, []).append(os.path.basename(f)[:4])
+        return out
     def terms(s, c):
         if c.id not in s._terms: s._terms[c.id] = {i for k, v in c.codes if k in ("concepts", "value", "when") for i in s.ids(v)[0] if s.cards[i].fam == "concept"}
         return s._terms[c.id]
     def anchors(s, c):
         out = []
         for tok in [t.strip() for v in c.all("anchor") for t in re.split(r"[,;]\s*", v)]:
-            b, pg = re.search(r"\^?(b\d{4})\b", tok), re.search(r"\.pdf#page=(\d+)", tok)
-            out.append(b.group(1) if b else "p" + pg.group(1) if pg else tok)
+            b, pg = re.search(r"\^?([bs]\d{4})\b", tok), re.search(r"(_SI)?\.pdf#page=(\d+)", tok)
+            if b: out.append(b.group(1))
+            elif pg: out.append(("SI-p" if pg.group(1) else "p") + pg.group(2))
+            else: out.append(tok)
         return [a for a in out if a]
     def pair(s, v):  # "[[var]] = rest" -> (var id, rest)
         mo = re.match(r"\s*\[\[([^\]|#]+)[^\]]*\]\]\s*=\s*(.*)$", v)
@@ -224,7 +262,9 @@ class Mesh:
             if len(squeeze(c.prose())) < 25: E.append(f"{i}: the human-readable part is missing or too thin")
             if c.name == i and c.fam != "concept": W.append(f"{i}: file name has no meaningful slug")
             for t, _a, _d in WIKI.findall(c.raw):
-                if not s.resolve(t) and not s.aux(t): E.append(f"{i}: broken link [[{t.strip()}]]")
+                if not s.resolve(t) and not s.aux(t):
+                    if only and t.strip() in s.staged(only): W.append(f"{i}: links [[{t.strip()}]], a concept proposed in {only}_concepts.md and not yet merged")
+                    else: E.append(f"{i}: broken link [[{t.strip()}]]")
             for k, v in c.codes:
                 if k in LINK_KEYS and not s.ids(v)[0] and v: E.append(f"{i}: '{k}::' has no card link")
             prose_terms = {r for t, _a, _d in WIKI.findall(c.human) for r in [s.resolve(t)] if r and s.cards[r].fam == "concept"}
@@ -242,17 +282,21 @@ class Mesh:
                 bl, src, has_block, an = s.blocks(pid), "", False, s.anchors(c)
                 if not an: E.append(f"{i}: no '- anchor::' code")
                 for a in an:
-                    if re.fullmatch(r"b\d{4}", a):
+                    if re.fullmatch(r"[bs]\d{4}", a):
                         has_block = True
                         if a in bl: src += " " + bl[a][1]
-                        else: E.append(f"{i}: anchor {a} not in {pid}_text.md")
-                    elif re.fullmatch(r"T\d+", a):
-                        p = J(s.root, "sources", pid, f"{pid}-{a}.csv")
+                        else: E.append(f"{i}: anchor {a} not in {pid}{'_SI' if a[0] == 's' else ''}_text.md")
+                    elif re.fullmatch(r"(SI-)?T\d+", a):
+                        p = J(s.root, "sources", pid, f"{pid}-{'S' if a.startswith('SI') else ''}{a.split('-')[-1]}.csv")
                         if os.path.exists(p): src += " " + rd(p)
-                        else: W.append(f"{i}: table {a} has no sources/{pid}/{pid}-{a}.csv")
+                        else: W.append(f"{i}: table {a} has no sources/{pid}/{os.path.basename(p)}")
+                    elif re.fullmatch(r"SI-[\w.-]+", a) and glob.glob(J(s.root, "sources", pid, f"{pid}_{a}.*")):
+                        for f in glob.glob(J(s.root, "sources", pid, f"{pid}_{a}.*")):
+                            if f.lower().endswith((".csv", ".tsv", ".txt", ".md")): src += " " + rd(f)
                     elif not re.fullmatch(r"(F\d+[a-z]*|p\d+|eq\d+|SI\S*)", a): E.append(f"{i}: bad anchor '{a}'")
-                var, rest = s.pair(c.get("value")) if c.get("value") else (None, "")
-                if c.get("value") and (not var or s.cards[var].fam != "concept"): E.append(f"{i}: 'value::' must start with a [[variable]] concept link then ' = '")
+                vals = [s.pair(v) for v in c.all("value")]
+                for var, _r in vals:
+                    if not var or s.cards[var].fam != "concept": E.append(f"{i}: 'value::' must start with a [[variable]] concept link then ' = '")
                 for wv, val, is_term in s.whens(c):
                     if not wv or s.cards[wv].fam != "concept": E.append(f"{i}: 'when::' must start with a [[variable]] concept link then ' = '")
                     elif s.cards[wv].get("unit") == "categorical" and not is_term: E.append(f"{i}: when {wv} is categorical, so its value must be a concept link (got '{val}')")
@@ -261,24 +305,39 @@ class Mesh:
                     if loc:
                         if squeeze(loc) not in squeeze(src): W.append(f"{i}: loc phrase not found in the anchored source")
                     elif via == "text" and has_block: W.append(f"{i}: no '- loc::' phrase")
-                    num = re.search(r"[-+−]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?", plain(rest))
-                    v = float(num.group(0).replace("−", "-")) if num else 0
-                    if v and origin == "authors":
-                        nums = [float(x) for x in re.findall(r"\d+(?:\.\d+)?", re.sub(r"(?<=\d),(?=\d{3}\b)", "", src))]
-                        ex = math.floor(math.log10(abs(v))); near = lambda x: any(math.isclose(n, x, rel_tol=1e-6) for n in nums)
-                        if not (any(near(abs(v) * 10 ** (3 * k)) for k in range(-4, 5)) or (near(abs(v) / 10 ** ex) and near(10) and near(abs(ex)))):
-                            W.append(f"{i}: value {num.group(0)} not found in the anchored source")
+                    nums = [float(x) for x in re.findall(r"\d+(?:\.\d+)?", re.sub(r"(?<=\d),(?=\d{3}\b)", "", src))]
+                    near = lambda x: any(math.isclose(n, x, rel_tol=1e-6) for n in nums)
+                    for _var, rest in vals:
+                        num = re.search(r"[-+−]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?", plain(rest))
+                        v = float(num.group(0).replace("−", "-")) if num else 0
+                        if v and origin == "authors":
+                            ex = math.floor(math.log10(abs(v)))
+                            if not (any(near(abs(v) * 10 ** (3 * k)) for k in range(-4, 5)) or (near(abs(v) / 10 ** ex) and near(10) and near(abs(ex)))):
+                                W.append(f"{i}: value {num.group(0)} not found in the anchored source")
+                if via == "figure" and vals: s.figure_values(c, pid, an, vals, W)
+                if c.type == "observation" and not vals and not c.get("stat") and result_numbers(c.prose()):
+                    W.append(f"{i}: the prose states result numbers ({', '.join(result_numbers(c.prose())[:4])}) but Codes have no '- value::' or '- stat::' line, so searches and comparisons cannot see them")
                 for k, v in c.codes:
                     if k in EVIDENCE_RELS and any(t[:4] != pid for t in s.ids(v)[0]) and len(reason(v).split()) < 3: E.append(f"{i}: '{k}::' links another source, so it needs ' — ' and a reason of a few words")
-                if c.get("value") and s.num(c) and s.num(c) not in re.sub(r"\s|(?<=\d),(?=\d{3}\b)", "", plain(c.prose())): W.append(f"{i}: the value {s.num(c)} in Codes does not appear in the prose above it; make the two agree")
+                digits = re.sub(r"\s|(?<=\d),(?=\d{3}\b)", "", plain(c.prose()))
+                for _var, rest in vals:
+                    mo = re.search(r"[-+−]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?", plain(rest))
+                    if mo and mo.group(0) not in digits: W.append(f"{i}: the value {mo.group(0)} in Codes does not appear in the prose above it; make the two agree")
                 if os.path.exists(J(s.root, "sources", pid, pid + ".pdf")):
-                    if not re.search(r"\[\[" + pid + r"(_marked)?\.pdf", c.human): W.append(f"{i}: the prose has no link to the PDF; add '[[{pid}.pdf#page=N|open page]]' to its Source line")
-                    k = s.marks().get(pid, {}).get("cards", {}).get(i)
+                    if not re.search(r"\[\[" + pid + r"(_SI)?(_marked)?\.pdf", c.human): W.append(f"{i}: the prose has no link to the PDF; add '[[{pid}.pdf#page=N|open page]]' to its Source line")
+                    k = s.marks().get(pid, {}).get("cards", {}).get(i) or s.marks().get(pid + "_SI", {}).get("cards", {}).get(i)
                     if k and k["how"] != "highlight" and has_block: W.append(f"{i}: its loc phrase could not be found on the PDF page, so it has only a page-level marker; correct the loc or the anchor")
                 rels = {k for k, _v in c.codes}
                 if c.type == "cited" and not c.get("ref"): W.append(f"{i}: cited card has no '- ref::'")
-                if c.type == "claim" and "based_on" not in rels: notes["claims without based_on"] += 1
-                if c.type == "observation" and "obtained_by" not in rels: notes["observations without obtained_by"] += 1
+                miss = set()
+                for v in c.all("missing"):
+                    k_ = re.split(r"[\s—:]+", v.strip(), maxsplit=1)[0]; miss.add(k_)
+                    if k_ not in MISSING: E.append(f"{i}: 'missing:: {k_}' is not one of {MISSING}")
+                    elif len(reason(v).split()) < 3: W.append(f"{i}: 'missing:: {k_}' needs ' — ' and a few words on what the source leaves out")
+                if c.type == "claim" and "based_on" not in rels and "basis" not in miss:
+                    W.append(f"{i}: claim has no '- based_on::' link to the evidence it rests on; link it, or record '- missing:: basis — <what the source does not give>'")
+                if c.type == "observation" and "obtained_by" not in rels and "method" not in miss:
+                    W.append(f"{i}: observation has no '- obtained_by::' link to the method card that produced it; link it, or record '- missing:: method — <what the source does not say>'")
                 if c.get("flag"): notes["flagged cards"] += 1
             elif c.fam == "source":
                 if c.type != "source": E.append(f"{i}: type must be 'source'")
@@ -291,8 +350,12 @@ class Mesh:
                 for r in cov:
                     if len(r) < 2 or r[1] not in DEPTHS: E.append(f"{i}: coverage '{' | '.join(r)}' needs depth in {DEPTHS}")
                 if not s.blocks(i): W.append(f"{i}: no anchored {i}_text.md")
-                files = glob.glob(J(s.root, "sources", i, i + ".pdf")) + glob.glob(J(s.root, "sources", i, i + "_original.*"))
-                if not files: W.append(f"{i}: the source file itself is not in the vault, so page links are dead")
+                files = source_files(s.root, i)
+                if not [f for f in files if "_SI" not in os.path.basename(f)]: W.append(f"{i}: the source file itself is not in the vault, so page links are dead")
+                si, gaps_ = s.si_state(i), sum(1 for c_ in s.evidence(i) if c_.get("missing"))
+                if si == "missing": W.append(f"{i}: supplementary material is listed as missing. Ask the user for it, or find it on the publisher's page, and anchor it with `mesh.py anchor {i} --si <files>`; until then methods and results may be incomplete" + (f", and the {gaps_} cards recording evidence as missing:: may be answered there" if gaps_ else ""))
+                elif si == "unstated": notes["sources not saying whether they have supplementary material"] += 1
+                if si == "anchored" and any(re.search(r"supplement|\bSI\b", r[0], re.I) and r[1:2] == ["missing"] for r in cov): W.append(f"{i}: the supplementary material is anchored but a coverage line still says missing; update it")
                 for f in files:
                     rec = s.sums().get(os.path.basename(f))
                     if not rec: W.append(f"{i}: no checksum recorded for {os.path.basename(f)}; run `mesh.py seal {i}`")
@@ -327,6 +390,29 @@ class Mesh:
                 if i[0] == "E" and c.status == "done" and not n("results"): W.append(f"{i}: done but no '- results::' source")
         if not only: s.dupes(E, W)
         return notes
+
+    def figure_values(s, c, pid, an, vals, W):
+        """A value read from a figure needs its reading error, and must match a row of the panel's data file
+        (sources/P###/P###-F2.csv, written by `mesh.py figure`) within that error."""
+        i = c.id
+        if any("±" not in r for _v, r in vals): W.append(f"{i}: a value read from a figure needs its reading error, e.g. '= 0.52 ± 0.01 (Fig. 2, vector read)'")
+        figs = [a for a in an if re.fullmatch(r"(SI-)?F\d+[a-z]*", a)]
+        files = [f for a in figs for f in glob.glob(J(s.root, "sources", pid, f"{pid}-{'S' if a.startswith('SI') else ''}{a.split('-')[-1]}*.csv"))]
+        if figs and not files: W.append(f"{i}: values read from {', '.join(figs)} but there is no figure data file; read the panel with `mesh.py figure {pid} <page>`"); return
+        rows = []
+        for f in files:
+            lines = [l for l in rd(f).splitlines() if l.strip() and not l.startswith("#")]
+            head = lines[0].split(",") if lines else []
+            for l in lines[1:]:
+                r = dict(zip(head, l.split(",")))
+                err = float(r.get("read_error") or 0) if re.fullmatch(r"[\d.eE+-]+", r.get("read_error") or "") else 0
+                for k in ("y", "y_low", "y_high", "x"):
+                    if re.fullmatch(r"-?[\d.]+(?:[eE][-+]?\d+)?", r.get(k) or ""): rows.append((float(r[k]), err))
+        for _v, rest in vals:
+            mo = re.search(r"[-+−]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?", plain(rest.split("±")[0]))
+            if mo and rows:
+                v = float(mo.group(0).replace("−", "-")); dec = len(mo.group(0).split(".")[1]) if "." in mo.group(0) else 0
+                if not any(abs(v - x) <= max(1.5 * e, 0.5 * 10 ** -dec) + 1e-9 for x, e in rows): W.append(f"{i}: value {mo.group(0)} matches no row of {', '.join(os.path.basename(f) for f in files)} within its reading error")
 
     def dupes(s, E, W):
         """Duplicate rules. Same source + same statement is a duplicate; other source + same statement must be linked, never merged."""
@@ -424,7 +510,7 @@ def cmd_init(path, name, topic):
     wr(J(path, "SCHEMA.md"), SCHEMA_MD.format(v=SCHEMA))
     wr(J(path, "ledger", "CHANGELOG.md"), f"# Changelog (append only, newest last)\n\n- {TODAY} brain mesh created\n")
     wr(J(path, "ledger", "lenses.md"), "# Lens passes (targeted re-reads of the sources)\n")
-    wr(J(path, ".gitignore"), "# Everything a vault needs is versioned, including index/ and the marked PDFs, so a pull is enough to browse it.\n__pycache__/\n*.pyc\n*.tmp\n.DS_Store\n.trash/\nindex/.new.md\n.obsidian/workspace*.json\n")
+    wr(J(path, ".gitignore"), "# Everything a vault needs is versioned, including index/ and the marked PDFs, so a pull is enough to browse it.\n__pycache__/\n*.pyc\n*.tmp\n.DS_Store\n.trash/\nindex/.new.md\nindex/.scratch/\n.obsidian/workspace*.json\n")
     wr(J(path, "ledger", "reading-queue.md"), "# Reading queue (papers found that are not yet in the brain)\n\n| ref | would fill | priority | access | status |\n|---|---|---|---|---|\n")
     cmd_upgrade(path, quiet=True)
     print(f"Brain mesh '{name}' created at {os.path.abspath(path)} with tooling {VERSION} (open this folder as an Obsidian vault)")
@@ -440,6 +526,8 @@ def cmd_upgrade(vault, quiet=False):
     if os.path.isdir(docs) and me != dst:
         shutil.rmtree(J(vault, ".brain-mesh"), ignore_errors=True); shutil.copytree(docs, J(vault, ".brain-mesh", "skills"))
         wr(J(vault, ".brain-mesh", "VERSION"), VERSION + "\n")
+    gi = J(vault, ".gitignore")
+    if os.path.exists(gi) and "index/.scratch/" not in rd(gi): wr(gi, rd(gi).rstrip("\n") + "\nindex/.scratch/\n")
     cfg = json.loads(rd(J(vault, "MESH.json")))
     if not cfg.get("obsidian_vault"):  # pin the name the PDF tags use, so clones in other folders do not re-mark the PDFs
         cfg["obsidian_vault"] = os.path.basename(os.path.abspath(vault)); wr(J(vault, "MESH.json"), json.dumps(cfg, indent=1) + "\n")
@@ -472,21 +560,42 @@ def pdf_pages(pdf):
         return [paras(pg.extract_text()) for pg in PdfReader(pdf).pages], "pypdf"
     except ImportError: sys.exit("No PDF text extractor: pip install pymupdf (or pdfplumber), or install poppler.")
 
-def cmd_anchor(m, pid, src, force=False):
+def cmd_anchor(m, pid, srcs, force=False, si=False):
+    """Register a source file (or, with --si, its supplementary files) and write the paragraph-anchored text."""
     if not re.fullmatch(r"P\d{3}", pid): sys.exit("anchor: first argument is a source id such as P012")
     d = J(m.root, "sources", pid); os.makedirs(d, exist_ok=True)
-    out = J(d, pid + "_text.md")
-    if os.path.exists(out) and not force: sys.exit(f"{pid}_text.md exists and anchors are permanent. --force only if no card cites it yet.")
-    if src.lower().endswith(".pdf"):
+    part, letter = ("_SI", "s") if si else ("", "b")
+    out = J(d, pid + part + "_text.md")
+    if os.path.exists(out) and not force: sys.exit(f"{os.path.basename(out)} exists and anchors are permanent. --force only if no card cites it yet.")
+    note = ""
+    if si:
+        pdfs = [f for f in srcs if f.lower().endswith(".pdf")]
+        for f in [f for f in srcs if not f.lower().endswith(".pdf")]:  # data files, spreadsheets, code: stored and sealed, cited as SI-<name>
+            stem = re.sub(r"[^A-Za-z0-9.]+", "-", os.path.splitext(os.path.basename(f))[0]).strip("-").lower()
+            dst = J(d, f"{pid}_SI-{stem}{os.path.splitext(f)[1].lower()}"); shutil.copy(f, dst); seal(m.root, dst)
+            print(f"stored {os.path.basename(dst)} (cite it as anchor SI-{stem})")
+        if not pdfs: return
+        dst = J(d, pid + "_SI.pdf")
+        if len(pdfs) == 1: shutil.copy(pdfs[0], dst)
+        else:  # several supplementary PDFs become one, in the order given; the header records which pages came from which file
+            try: import pymupdf as fitz
+            except ImportError: import fitz
+            doc, spans = fitz.open(), []
+            for f in pdfs:
+                n0 = len(doc); doc.insert_pdf(fitz.open(f)); spans.append(f"pages {n0 + 1}-{len(doc)}: {os.path.basename(f)}")
+            doc.save(dst); note = "Merged from " + "; ".join(spans) + "."
+        pages, how = pdf_pages(dst)
+    elif srcs[0].lower().endswith(".pdf"):
         dst = J(d, pid + ".pdf")
-        if os.path.abspath(src) != os.path.abspath(dst): shutil.copy(src, dst)
+        if os.path.abspath(srcs[0]) != os.path.abspath(dst): shutil.copy(srcs[0], dst)
         pages, how = pdf_pages(dst)
     else:
-        dst = J(d, f"{pid}_original{os.path.splitext(src)[1]}")
-        if os.path.abspath(src) != os.path.abspath(dst): shutil.copy(src, dst)
-        pages, how = [re.split(r"\n\s*\n", rd(src))], "plain text"
+        dst = J(d, f"{pid}_original{os.path.splitext(srcs[0])[1]}")
+        if os.path.abspath(srcs[0]) != os.path.abspath(dst): shutil.copy(srcs[0], dst)
+        pages, how = [re.split(r"\n\s*\n", rd(srcs[0]))], "plain text"
     seal(m.root, dst)
-    lines, n, chars = [f"# {pid} anchored text ({how})", "", "An index of paragraphs for anchors and checks. Read the source itself for figures, tables and equations.", ""], 0, 0
+    title = f"{pid} supplementary material" if si else pid
+    lines, n, chars = [f"# {title} anchored text ({how})", "", "An index of paragraphs for anchors and checks. Read the source itself for figures, tables and equations." + (" " + note if note else ""), ""], 0, 0
     for pno, blks in enumerate(pages, 1):
         lines += [f"## Page {pno}", ""]
         for b in blks:
@@ -497,10 +606,321 @@ def cmd_anchor(m, pid, src, force=False):
                 if cur and len(cur) + len(sent) > 450: parts.append(cur); cur = sent
                 else: cur = (cur + " " + sent).strip()
             for chunk in parts + [cur]:
-                n += 1; chars += len(chunk); lines += [f"{chunk} ^b{n:04d}", ""]
+                n += 1; chars += len(chunk); lines += [f"{chunk} ^{letter}{n:04d}", ""]
     wr(out, "\n".join(lines))
-    print(f"{pid}: {len(pages)} pages, {n} paragraph blocks, {chars} chars via {how} -> {os.path.relpath(out, m.root)}")
+    print(f"{pid}{part}: {len(pages)} pages, {n} paragraph blocks, {chars} chars via {how} -> {os.path.relpath(out, m.root)}")
     if chars < 200 * max(1, len(pages)): print("warn: very little text; probably scanned. OCR it, then re-run with --force.")
+
+
+NUMLABEL = re.compile(r"[-−–]?\d+(?:\.\d+)?%?")
+
+
+def figure_grid(m, fitz, page, key, pno):
+    """The page with a grid in PDF points, so a panel's box can be chosen by eye, and an inventory of the page."""
+    W, H = page.rect.width, page.rect.height
+    dr, imgs = page.get_drawings(), page.get_image_info()
+    print(f"{key} page {pno}: {W:.0f} x {H:.0f} points; {len(dr)} vector paths; {len(imgs)} raster images")
+    big = [im for im in imgs if min(fitz.Rect(im["bbox"]).width, fitz.Rect(im["bbox"]).height) >= 15 and fitz.Rect(im["bbox"]).width * fitz.Rect(im["bbox"]).height >= 1500]
+    for im in big[:8]:
+        b = fitz.Rect(im["bbox"]); print(f"  picture at {b.x0:.0f},{b.y0:.0f},{b.x1:.0f},{b.y1:.0f} ({im['width']} x {im['height']} px): values inside it can only be read by eye")
+    if len(big) > 8: print(f"  … {len(big) - 8} more pictures")
+    for b in page.get_text("blocks"):
+        if b[6] == 0 and re.match(r"\s*(Supplementary\s+)?(Fig(ure)?\.?|Table)\s*S?\d+", b[4]): print(f"  caption at y {b[1]:.0f}: {one(b[4], 100)}")
+    letters = [(sp["bbox"], sp["text"].strip()) for bk in page.get_text("dict")["blocks"] if bk.get("type") == 0 for ln in bk["lines"] if len([x for x in ln["spans"] if x["text"].strip()]) == 1 for sp in ln["spans"] if re.fullmatch(r"[A-Za-z]", sp["text"].strip()) and sp["size"] >= 7 and sp["flags"] & 16]
+    if letters: print("  panel letters: " + ", ".join(f"{t} at {b[0]:.0f},{b[1]:.0f}" for b, t in letters))
+    sh = page.new_shape()
+    for x in range(0, int(W) + 1, 25): sh.draw_line((x, 0), (x, H)); sh.finish(color=(0.9, 0.1, 0.1) if x % 100 == 0 else (1, 0.65, 0.65), width=0.35 if x % 100 == 0 else 0.15)
+    for y in range(0, int(H) + 1, 25): sh.draw_line((0, y), (W, y)); sh.finish(color=(0.9, 0.1, 0.1) if y % 100 == 0 else (1, 0.65, 0.65), width=0.35 if y % 100 == 0 else 0.15)
+    sh.commit()
+    for x in range(0, int(W) + 1, 50): page.insert_text((x + 1, 7), str(x), fontsize=5, color=(0.8, 0, 0))
+    for y in range(50, int(H) + 1, 50): page.insert_text((1, y - 1), str(y), fontsize=5, color=(0.8, 0, 0))
+    d = J(m.root, "index", ".scratch"); os.makedirs(d, exist_ok=True)
+    out = J(d, f"{key}-p{pno}-grid.png"); page.get_pixmap(dpi=110).save(out)
+    print(f"grid image: {os.path.relpath(out, m.root)} (lines every 25 points, labelled every 50).\n"
+          f"View it, choose one panel's box in points (x0,y0,x1,y1, taking in its tick labels and legend), then:\n"
+          f"  python3 tools/mesh.py figure {key[:4]} {pno} x0,y0,x1,y1 F2a" + (" --si" if key.endswith("_SI") else ""))
+
+
+def axis_fit(pairs, log):
+    """Least-squares map from page position to value through the tick labels: value = a + b * position (log10 for log axes)."""
+    xs, ys = [p for p, _v in pairs], [math.log10(v) if log else v for _p, v in pairs]
+    n, mx, my = len(xs), sum(xs) / len(xs), sum(ys) / len(ys)
+    sxx = sum((x - mx) ** 2 for x in xs)
+    if not sxx: return None
+    b = sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / sxx; a = my - b * mx
+    rms = math.sqrt(sum((y - (a + b * x)) ** 2 for x, y in zip(xs, ys)) / (n - 2)) if n > 2 else 0.0
+    return a, b, rms
+
+
+def raster_bars(fitz, page, clip, ticks, native_dpi, dpi=300):
+    """Read a bar chart that is a picture. The y axis is the longest dark vertical line, its tick marks are the dark
+    stubs just left of it, and the tick values are given bottom to top; each bar is a run of columns of one colour
+    standing on the baseline, its top where most of its columns end, and an error bar the darker line through it.
+    Returns (rows, notes) or (None, reason)."""
+    pix = page.get_pixmap(dpi=dpi, clip=clip); W, H, n, sm = pix.width, pix.height, pix.n, pix.samples
+    px = lambda x, y: tuple(sm[(y * W + x) * n:(y * W + x) * n + 3])
+    dark = lambda c: max(c) < 150  # thin lines in a resampled picture are grey, not black
+    blank = lambda c: min(c) > 225
+    dist = lambda a, b: math.sqrt(sum((x - y) ** 2 for x, y in zip(a, b)))
+    def vrun(x):  # longest run of dark pixels in a column: (length, top, bottom)
+        best, cur, top = (0, 0, 0), 0, 0
+        for y in range(H):
+            if dark(px(x, y)):
+                if not cur: top = y
+                cur += 1
+                if cur > best[0]: best = (cur, top, y)
+            else: cur = 0
+        return best
+    runs = [vrun(x) for x in range(W)]
+    longest = max(r[0] for r in runs)
+    if longest < 0.3 * H: return None, "no axis line found"
+    def stubs(ax, top_, base):  # groups of rows where a short dark mark runs left from the line, unbroken
+        def left(y):
+            k = 0
+            while ax - 1 - k >= 0 and dark(px(ax - 1 - k, y)): k += 1
+            return k
+        rows_ = [y for y in range(top_, min(H, base + 2)) if 3 <= left(y) <= 40]
+        g = []
+        for y in rows_:
+            if g and y - g[-1][-1] <= 1: g[-1].append(y)
+            else: g.append([y])
+        return g
+    lines, x = [], 0
+    while x < W:  # every long dark vertical line; the y axis is the one with tick marks on its left (a neighbouring panel's frame has none)
+        if runs[x][0] >= 0.6 * longest:
+            x0_ = x
+            while x + 1 < W and runs[x + 1][0] >= 0.6 * longest: x += 1
+            lines.append((x0_, x))
+        x += 1
+    ax = max(lines, key=lambda l: (len(stubs(l[0], *runs[l[0]][1:])), -l[0]))[0]
+    _l, top_, base = runs[ax]
+    tickrows = stubs(ax, top_, base)
+    ax = max(x_ for l in lines if l[0] == ax for x_ in [l[1]])  # bars start right of the line's right edge
+    bot = base  # the baseline: a long dark row near the foot of the axis, or the axis foot itself when no x axis is drawn
+    while base > bot - 0.15 * (bot - top_) and sum(1 for x in range(ax, W) if dark(px(x, base))) < 0.3 * (W - ax): base -= 1
+    if base <= bot - 0.15 * (bot - top_): base = bot
+    centres = sorted(((g[0] + g[-1]) / 2 for g in tickrows), reverse=True)  # bottom first
+    if len(centres) != len(ticks): return None, f"found {len(centres)} tick marks but {len(ticks)} tick values were given (rows from the bottom: {', '.join(f'{c:.0f}' for c in centres)})"
+    fit = axis_fit(list(zip(centres, ticks)), False); a_, b_, rms = fit
+    pxerr = max(1.0, dpi / native_dpi) if native_dpi else 1.0  # an edge is uncertain by one pixel of the original picture
+    e = math.sqrt(rms ** 2 + (b_ * pxerr) ** 2)
+    val = lambda y: a_ + b_ * y
+    cols = []
+    for x in range(ax + 3, W):
+        y = base - 2; c0 = px(x, y)
+        if blank(c0): cols.append(None); continue
+        while y > 0 and not blank(px(x, y - 1)): y -= 1
+        cols.append((x, y, c0) if base - y >= 3 else None)
+    groups = []
+    for c in cols:
+        if c and groups and groups[-1][-1][0] == c[0] - 1 and dist(groups[-1][-1][2], c[2]) < 60: groups[-1].append(c)
+        elif c: groups.append([c])
+    out = []
+    for g in [g for g in groups if len(g) >= 0.02 * W and len(g) >= 6]:
+        tops = Counter(c[1] for c in g); bar_top = tops.most_common(1)[0][0]
+        colour = Counter(c[2] for c in g).most_common(1)[0][0]
+        hi = min(c[1] for c in g); yl = yh = None
+        if hi < bar_top - 2:
+            xc = min((c for c in g if c[1] == hi), key=lambda c: abs(c[0] - (g[0][0] + g[-1][0]) / 2))[0]
+            y = hi
+            while y + 1 < base and (dist(px(xc, y + 1), colour) > 40 or y + 1 <= bar_top): y += 1
+            yh, yl = val(hi), val(y) if y > bar_top + 1 else None
+        out.append(["bar (picture)", "#%02x%02x%02x" % colour, "", None, val(bar_top), yl, yh, e, "" if yl is not None or yh is None else "lower whisker hidden or absent"])
+    return out, [f"y axis: linear, {len(ticks)} tick marks found in the picture, values given by hand ({ticks[0]:g} to {ticks[-1]:g}); fit residual {rms:.2g}; one pixel = {abs(b_):.2g} at {dpi} dpi" + (f" (picture resolution {native_dpi:.0f} dpi)" if native_dpi else "")]
+
+
+def cmd_figure(m, args):
+    """figure P012 <page> [--si]: the page with a coordinate grid and an inventory, to choose a panel's box.
+    figure P012 <page> <x0,y0,x1,y1> <name> [--si] [--logx] [--logy] [--ycal v@pos,v@pos] [--xcal ...] [--force]:
+    read one panel. Writes P012-<name>.png (the panel at 300 dpi) and P012-<name>.csv: every bar, marker, error bar
+    and line vertex in the PDF's vector drawing, converted to data values through the axis tick labels, each row with
+    its reading error and any failed plausibility check. A panel that is a picture gets the image only."""
+    try:
+        try: import pymupdf as fitz
+        except ImportError: import fitz
+    except ImportError: sys.exit("figure needs PyMuPDF (pip install pymupdf)")
+    opt = {x.split("=")[0]: (x.split("=", 1)[1] if "=" in x else True) for x in args if x.startswith("--")}
+    a = [x for x in args if not x.startswith("--")]
+    for k in ("--ycal", "--xcal", "--yticks"):  # "--ycal 0@512,0.8@340" given as two words
+        if k in opt and opt[k] is True and k in args and args.index(k) + 1 < len(args): opt[k] = args[args.index(k) + 1]; a.remove(opt[k])
+    if len(a) < 2: sys.exit("figure <P###> <page> [x0,y0,x1,y1 <name>] [--si]")
+    pid, pno, part = a[0], int(a[1]), "_SI" if "--si" in opt else ""
+    pdf = J(m.root, "sources", pid, pid + part + ".pdf")
+    if not os.path.exists(pdf): sys.exit(f"figure: no {os.path.relpath(pdf, m.root)}")
+    doc = fitz.open(pdf); page = doc[pno - 1]
+    if len(a) < 4: return figure_grid(m, fitz, page, pid + part, pno)
+    clip, name = fitz.Rect(*[float(x) for x in a[2].split(",")]), a[3]
+    if not re.fullmatch(r"S?[TF]\d+[a-z]*(-[a-z0-9]+)?", name): sys.exit("figure: name the panel F2, F5c, SF3 (supplementary figure 3) or F2-left")
+    d = J(m.root, "sources", pid); png, csv = J(d, f"{pid}-{name}.png"), J(d, f"{pid}-{name}.csv")
+    if os.path.exists(csv) and "--force" not in opt:  # never overwrite a data file that may have been checked by hand
+        sc = J(m.root, "index", ".scratch"); os.makedirs(sc, exist_ok=True); csv = J(sc, os.path.basename(csv))
+        print(f"note: {pid}-{name}.csv exists, so this reading goes to {os.path.relpath(csv, m.root)} for comparison (--force replaces it)")
+    page.get_pixmap(dpi=300, clip=clip).save(png)
+    touches = lambda r: r[2] >= clip.x0 and r[0] <= clip.x1 and r[3] >= clip.y0 and r[1] <= clip.y1  # a line has a zero-width box, which Rect.intersects rejects
+    pics = [fitz.Rect(im["bbox"]) & clip for im in page.get_image_info() if touches(im["bbox"])]
+    drs = [dr for dr in page.get_drawings() if touches(dr["rect"])]
+    words = [w for w in page.get_text("words") if touches(w[:4])]
+    if sum(p.width * p.height for p in pics) > 0.4 * clip.width * clip.height and len(drs) < 10:
+        ims = [im for im in page.get_image_info() if touches(im["bbox"])]
+        main_ = max(ims, key=lambda im: (fitz.Rect(im["bbox"]) & clip).get_area(), default=None)
+        nat = main_["width"] / (fitz.Rect(main_["bbox"]).width / 72) if main_ and fitz.Rect(main_["bbox"]).width else 0
+        if opt.get("--yticks") not in (None, True):
+            rows, notes = raster_bars(fitz, page, clip, [float(t) for t in str(opt["--yticks"]).split(",")], nat)
+            if rows is None: print(f"{pid}-{name}: {notes}. Check the box and the tick values against {os.path.relpath(png, m.root)}, or read the panel by eye."); return
+            fmt_ = lambda v, e: "" if v is None else f"{v:.{max(0, min(6, -math.floor(math.log10(e)) + 1)) if e else 4}f}"
+            head = [f"# {pid} {name}: read by brain mesh {VERSION} from the picture in {os.path.basename(pdf)} page {pno}, box {clip.x0:.0f},{clip.y0:.0f},{clip.x1:.0f},{clip.y1:.0f} (PDF points)"] + ["# " + n_ for n_ in notes] + ["# Bars are listed left to right; name each series and category from the image. Check every row against the image."]
+            body = ["kind,series,x_label,x,y,y_low,y_high,read_error,check"] + [",".join([r[0], r[1], r[2], "", fmt_(r[4], r[7]), fmt_(r[5], r[7]), fmt_(r[6], r[7]), f"{r[7]:.2g}", r[8]]) for r in rows]
+            wr(csv, "\n".join(head + body) + "\n")
+            print(f"{pid}-{name}: {len(rows)} bars read from the picture -> {os.path.relpath(csv, m.root)}; image {os.path.relpath(png, m.root)}\n  " + "\n  ".join(notes))
+            return
+        print(f"{pid}-{name}: this panel is a picture, not a drawing (about {nat:.0f} dpi). Wrote {os.path.relpath(png, m.root)}.\n"
+              "For a bar chart, read the tick values off that image and rerun with --yticks v1,v2,... (bottom to top) to measure the bars from the pixels.\n"
+              "Otherwise read it by eye: give each value a reading error of at least half the finest tick interval, say in the card that it was\n"
+              "read by eye, and write the values to the .csv by hand in the same columns.")
+        return
+    val = lambda t: float(t.replace("−", "-").replace("–", "-").rstrip("%"))
+    nums = [(w[:4], val(w[4])) for w in words if NUMLABEL.fullmatch(w[4])]
+    segs = [(min(p1.x, p2.x), min(p1.y, p2.y), max(p1.x, p2.x), max(p1.y, p2.y), dr) for dr in drs for it in dr["items"] if it[0] == "l" for p1, p2 in [it[1:3]]]
+    def cluster(items, keyf, tol=2.5):
+        out = []
+        for it in sorted(items, key=keyf):
+            if out and abs(keyf(it) - keyf(out[-1][-1])) <= tol: out[-1].append(it)
+            else: out.append([it])
+        return out
+    def calib(kind, manual, log):
+        if manual:  # "--ycal 0@512.3,0.8@340.1": values at page positions, for axes whose labels are not text
+            pairs = [(float(p), float(v)) for v, p in (t.split("@") for t in manual.split(","))]
+            return {"fit": axis_fit(pairs, log), "ticks": len(pairs), "how": "given by hand", "err_pos": 0.5, "range": (min(v for _p, v in pairs), max(v for _p, v in pairs)), "span": max(p_ for p_, _v in pairs) - min(p_ for p_, _v in pairs)}
+        best = None
+        if kind == "y":  # labels in a column sharing a right edge (left axis) or a left edge (right axis), values monotonic up the page
+            groups = cluster(nums, lambda r: r[0][2]) + cluster(nums, lambda r: r[0][0])
+            pos = lambda r: (r[0][1] + r[0][3]) / 2
+        else:  # labels in a row sharing a baseline, values increasing left to right
+            groups = cluster(nums, lambda r: (r[0][1] + r[0][3]) / 2)
+            pos = lambda r: (r[0][0] + r[0][2]) / 2
+        for g in groups:
+            g = list({(round(pos(r), 1), r[1]): r for r in g}.values())
+            if len(g) < 2 or len({r[1] for r in g}) < 2 or (log and min(r[1] for r in g) <= 0): continue
+            ordered = sorted(g, key=pos)
+            vals_ = [r[1] for r in ordered]
+            if not (all(x > y for x, y in zip(vals_, vals_[1:])) if kind == "y" else all(x < y for x, y in zip(vals_, vals_[1:]))): continue
+            pairs, marks_ = [], 0
+            for r in g:  # refine each label's position with its tick mark, if there is one
+                (x0, y0, x1, y1), v = r
+                if kind == "y": cand = [sg for sg in segs if sg[3] - sg[1] < 0.4 and 0.8 < sg[2] - sg[0] < 9 and (abs(sg[0] - x1) < 10 or abs(sg[2] - x0) < 10) and y0 - 1 <= sg[1] <= y1 + 1]
+                else: cand = [sg for sg in segs if sg[2] - sg[0] < 0.4 and 0.8 < sg[3] - sg[1] < 9 and abs(sg[3] - y0) < 10 and x0 - 1 <= sg[0] <= x1 + 1]
+                if cand:
+                    sg = min(cand, key=lambda sg: abs((sg[1] if kind == "y" else sg[0]) - pos(r))); pairs.append(((sg[1] if kind == "y" else sg[0]), v)); marks_ += 1
+                else: pairs.append((pos(r), v))
+            f = axis_fit(pairs, log)
+            if f and (not best or len(pairs) > best["ticks"]):
+                best = {"fit": f, "ticks": len(pairs), "how": "tick marks" if marks_ == len(pairs) else "label centres", "err_pos": 0.25 if marks_ == len(pairs) else 1.0, "range": (min(vals_), max(vals_)), "span": max(p_ for p_, _v in pairs) - min(p_ for p_, _v in pairs)}
+        return best
+    ycal, xcal = calib("y", opt.get("--ycal") if opt.get("--ycal") is not True else None, "--logy" in opt), calib("x", opt.get("--xcal") if opt.get("--xcal") is not True else None, "--logx" in opt)
+    def lattice(vals_):
+        """Some figures were drawn on a coarse coordinate grid, so every edge sits on a multiple of one step. That step,
+        not the PDF's numeric precision, limits how exactly a value can be read."""
+        u = sorted({round(v, 2) for v in vals_})
+        diffs = [b - a for a, b in zip(u, u[1:]) if b - a > 0.05]
+        if len(diffs) < 4: return 0.0
+        q = min(diffs)
+        return q if q > 0.2 and sum(1 for d_ in diffs if abs(d_ / q - round(d_ / q)) * q < 0.06) >= 0.8 * len(diffs) else 0.0
+    def conv(cal, pos, log):
+        if not cal: return None, None
+        a_, b_, rms = cal["fit"]; v = a_ + b_ * pos
+        e = math.sqrt(rms ** 2 + (b_ * cal["err_pos"]) ** 2 + (b_ * cal.get("grid", 0) / 2) ** 2)
+        return (10 ** v, 10 ** v * (10 ** e - 1)) if log else (v, e)
+    Y = lambda pos: conv(ycal, pos, "--logy" in opt)
+    X = lambda pos: conv(xcal, pos, "--logx" in opt)
+    hexc = lambda c: "#%02x%02x%02x" % tuple(round(255 * x) for x in c[:3]) if c else "none"
+    white = lambda c: c and min(c[:3]) > 0.97
+    lines_ = {}
+    for w in words:  # words grouped into text lines, for legends and category labels
+        lines_.setdefault((w[5], w[6]), []).append(w)
+    tlines = [(fitz.Rect(min(w[0] for w in ws), min(w[1] for w in ws), max(w[2] for w in ws), max(w[3] for w in ws)), " ".join(w[4] for w in sorted(ws, key=lambda w: w[0]))) for ws in lines_.values()]
+    legend, boxes, marks_, verts = {}, [], [], []
+    for dr in drs:
+        r, fill, kinds = fitz.Rect(dr["rect"]), dr.get("fill"), {it[0] for it in dr["items"]}
+        if r.width > 0.9 * clip.width and r.height > 0.9 * clip.height: continue  # frame or background
+        if fill and not white(fill) and r.width > 0.5 and r.height > 0.5:  # zero-area fills draw nothing
+            right = [t for t in tlines if 0 <= t[0].x0 - r.x1 <= 15 and abs((t[0].y0 + t[0].y1) / 2 - (r.y0 + r.y1) / 2) < 4]
+            if r.width < 12 and r.height < 12 and right: legend[hexc(fill)] = right[0][1]; continue
+            if r.width >= 1.0 and r.height >= 0.3 and kinds <= {"re", "l", "qu"} and len(dr["items"]) <= 6 and not (r.width < 7 and r.height < 7 and "re" not in kinds): boxes.append((r, hexc(fill)))
+            elif r.width < 8 and r.height < 8: marks_.append((r, hexc(fill)))
+        elif dr.get("color") and "l" in kinds:  # a data line is a connected path with at least one sloping segment; caps and whiskers are not
+            chains = []
+            for it in [it for it in dr["items"] if it[0] == "l"]:
+                p_, q_ = it[1], it[2]
+                if chains and abs(chains[-1][-1].x - p_.x) < 0.05 and abs(chains[-1][-1].y - p_.y) < 0.05: chains[-1].append(q_)
+                else: chains.append([p_, q_])
+            for ch in chains:
+                if len(ch) >= 3 and any(abs(a_.x - b_.x) > 0.5 and abs(a_.y - b_.y) > 0.5 for a_, b_ in zip(ch, ch[1:])): verts += [(pt, hexc(dr["color"])) for pt in ch]
+    if ycal: ycal["grid"] = lattice([b[0].y0 for b in boxes] + [mk[0].y0 for mk in marks_] + [p_.y for p_, _c in verts])
+    if xcal: xcal["grid"] = lattice([b[0].x0 for b in boxes] + [mk[0].x0 for mk in marks_] + [p_.x for p_, _c in verts])
+    vsegs = [sg for sg in segs if sg[2] - sg[0] < 0.4 and sg[3] - sg[1] > 0.8 and sg[3] - sg[1] < 0.8 * ((ycal or {}).get("span") or clip.height)]  # not the axis line
+    bottom = max([b[0].y1 for b in boxes] + [mk[0].y1 for mk in marks_] + [clip.y0])
+    cats = [t for t in tlines if t[0].y0 >= bottom - 1]
+    def category(cx, lo, hi):
+        near = [t for t in cats if lo - 15 <= (t[0].x0 + t[0].x1) / 2 <= hi + 15]
+        if not near: return ""
+        first = min(near, key=lambda t: (abs((t[0].x0 + t[0].x1) / 2 - cx), t[0].y0)); mid = (first[0].x0 + first[0].x1) / 2
+        stack = sorted([t for t in cats if abs((t[0].x0 + t[0].x1) / 2 - mid) <= 3], key=lambda t: t[0].y0)
+        out = [stack[0]] if stack else [first]
+        for t in stack[1:]:
+            if t[0].y0 - out[-1][0].y1 <= 4: out.append(t)
+            else: break
+        return " ".join(t[1] for t in out)
+    def errbar(lo, hi, cx):
+        c_ = [sg for sg in vsegs if lo - 0.6 <= sg[0] <= hi + 0.6]
+        return min(c_, key=lambda sg: abs(sg[0] - cx)) if c_ else None
+    def series_of(col):
+        if col in legend or not legend: return legend.get(col, col)
+        rgb = lambda h: tuple(int(h[k:k + 2], 16) for k in (1, 3, 5))
+        best = min(legend, key=lambda k: sum((x - y) ** 2 for x, y in zip(rgb(k), rgb(col))))
+        return legend[best] if sum((x - y) ** 2 for x, y in zip(rgb(best), rgb(col))) < 30 ** 2 else col
+    rows, issues = [], Counter()
+    def add(kind, series, cx, ypos, lo_x, hi_x, ylow=None, yhigh=None):
+        y, e = Y(ypos); xv = X(cx)[0]
+        sg = errbar(lo_x, hi_x, cx); yl = yh = None
+        if sg: yh, yl = Y(sg[1])[0], Y(sg[3])[0]
+        chk = []
+        if y is not None and ycal:
+            lo_r, hi_r = ycal["range"]; span = hi_r - lo_r
+            if not (lo_r - 0.05 * span <= y <= hi_r + 0.05 * span): chk.append("outside the axis range")
+            if yl is not None and not (min(yl, yh) - 2 * e <= y <= max(yl, yh) + 2 * e): chk.append("error bar does not reach the value")
+            elif yl is not None and abs(y - yl) <= 2 * e < abs(yh - y): chk.append("only the upper whisker is drawn")
+            elif yl is not None and abs(yh - y) <= 2 * e < abs(y - yl): chk.append("only the lower whisker is drawn")
+            elif yl is not None and abs(abs(yh - y) - abs(y - yl)) > 0.25 * max(abs(yh - y), abs(y - yl), 1e-12) and min(abs(yh - y), abs(y - yl)) > 2 * e: chk.append("asymmetric error bar")
+        for c_ in chk: issues[c_] += 1
+        rows.append([kind, series_of(series), category(cx, lo_x, hi_x), xv, y, yl, yh, e, "; ".join(chk)])
+    for r, col in sorted(boxes, key=lambda b: b[0].x0):
+        top, bot = Y(r.y0)[0], Y(r.y1)[0]
+        ypos = r.y1 if (top is not None and bot is not None and abs(bot) > abs(top) and bot < 0) else r.y0  # a bar below zero ends at its bottom edge
+        add("bar", col, (r.x0 + r.x1) / 2, ypos, r.x0, r.x1)
+    for r, col in sorted(marks_, key=lambda b: b[0].x0): add("marker", col, (r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2, r.x0, r.x1)
+    for p_, col in verts: add("line", col, p_.x, p_.y, p_.x, p_.x)
+    def fmt(v, e):
+        if v is None: return ""
+        dec = max(0, min(6, -math.floor(math.log10(e)) + 1)) if e else 4
+        return f"{v:.{dec}f}"
+    head = [f"# {pid} {name}: read by brain mesh {VERSION} from {os.path.basename(pdf)} page {pno}, box {clip.x0:.0f},{clip.y0:.0f},{clip.x1:.0f},{clip.y1:.0f} (PDF points)"]
+    for k, cal, log in (("y", ycal, "--logy" in opt), ("x", xcal, "--logx" in opt)):
+        if cal:
+            a_, b_, rms = cal["fit"]
+            head.append(f"# {k} axis: {'log' if log else 'linear'}, {cal['ticks']} ticks from {cal['range'][0]:g} to {cal['range'][1]:g}, placed by {cal['how']}; fit residual {rms:.2g}; position error {cal['err_pos']} pt" + (f"; the drawing sits on a {cal['grid']:.2f} pt grid, which limits precision" if cal.get("grid") else ""))
+        else: head.append(f"# {k} axis: not calibrated (no numeric tick labels found; give --{k}cal value@position,value@position)")
+    if legend: head.append("# series: " + "; ".join(f"{k} = {v}" for k, v in legend.items()))
+    head.append("# Check every row against the image before a card cites it. read_error is in the axis unit (relative for a log axis).")
+    body = ["kind,series,x_label,x,y,y_low,y_high,read_error,check"] + [",".join([r[0], r[1].replace(",", " "), r[2].replace(",", " "), fmt(r[3], X(0)[1] if xcal else None), fmt(r[4], r[7]), fmt(r[5], r[7]), fmt(r[6], r[7]), f"{r[7]:.2g}" if r[7] is not None else "", r[8]]) for r in rows]
+    wr(csv, "\n".join(head + body) + "\n")
+    series = {r[1] for r in rows if r[0] in ("bar", "marker")}
+    print(f"{pid}-{name}: {len(rows)} rows ({Counter(r[0] for r in rows)}) -> {os.path.relpath(csv, m.root)}; image {os.path.relpath(png, m.root)}")
+    print("\n".join("  " + h[2:] for h in head[1:-1]))
+    if legend and len(series - set(legend.values())) and series: print(f"  check: {len(series)} series drawn but {len(legend)} in the legend: {', '.join(sorted(series))}")
+    for k, v in issues.items(): print(f"  check: {v} rows with '{k}'")
+    print("  Look at the image and the rows together. Drop rows that are not data (axis furniture, legend keys), name the series and categories,\n"
+          "  and keep the read_error in each card's value line: '= 0.52 ± 0.01 (Fig. 2, read from the vector drawing)'.")
+
 
 def cmd_id(m, kind):
     nxt = lambda xs: max([int(x) for x in xs] + [0]) + 1
@@ -564,67 +984,77 @@ def tagspot(page, lines, q, cid):
 def mark(m, only=None, force=False):
     """Write every evidence card onto a marked copy of its source PDF (P###_marked.pdf): a highlight at its locator
     phrase coloured by card type, a margin tag that opens the card in Obsidian, and the card's own PDF link pointed
-    at that highlight. The original PDF is never touched, and annotations the user adds to the marked copy are kept.
-    Returns None when PyMuPDF is missing."""
+    at that highlight. A supplementary PDF (P###_SI.pdf) gets its own marked copy for the cards anchored in it. The
+    originals are never touched, and annotations the user adds to a marked copy are kept. Returns None when PyMuPDF
+    is missing."""
     try:
         try: import pymupdf as fitz
         except ImportError: import fitz
     except ImportError: return None
     mp = J(m.root, "index", "marks.json"); marks = m.marks()
     vault, done = urllib.parse.quote(m.cfg.get("obsidian_vault") or os.path.basename(os.path.abspath(m.root))), []
+    is_si = lambda a: a.startswith("SI") or bool(re.fullmatch(r"s\d{4}", a))
     for src in [c for c in m.cards.values() if c.fam == "source" and (not only or c.id == only)]:
-        pid = src.id; pdf, out = J(m.root, "sources", pid, pid + ".pdf"), J(m.root, "sources", pid, pid + "_marked.pdf")
-        if not os.path.exists(pdf): continue
-        ev = sorted(m.evidence(pid), key=lambda c: c.id)
-        sig = hashlib.sha1(json.dumps([vault, os.path.getsize(pdf)] + [[c.id, c.name, c.type, c.status, c.title, c.get("loc"), c.all("anchor")] for c in ev]).encode()).hexdigest()
-        if not force and marks.get(pid, {}).get("sig") == sig and os.path.exists(out): continue
-        doc, cards, rows, edge, bl = fitz.open(out if os.path.exists(out) else pdf), {}, Counter(), {}, m.blocks(pid)
-        for page in doc:  # remove only brain-mesh's own marks; anything the user added to the marked copy stays
-            for a_ in [a_ for a_ in page.annots() or [] if a_.info.get("title") == "brain-mesh"]: page.delete_annot(a_)
-            for l_ in [l_ for l_ in page.get_links() if str(l_.get("uri", "")).startswith("obsidian://open")]: page.delete_link(l_)
-        flags = fitz.TEXT_DEHYPHENATE | fitz.TEXT_PRESERVE_WHITESPACE  # no TEXT_PRESERVE_LIGATURES: "fi" must match a typeset ligature
-        find = lambda texts, pages: next(((p, q) for t in texts if len(t) > 5 for p in pages if 1 <= p <= len(doc) for q in [doc[p - 1].search_for(t, quads=True, flags=flags)] if q), None)
-        every = list(range(1, len(doc) + 1))
-        for c in ev:
-            col, loc, spots = MARK_COLOURS.get(c.type, (1, 1, 0)), c.get("loc").strip("\"'“”"), []
-            an, words = m.anchors(c), c.get("loc").strip("\"'“”").split()
-            stated = [int(a[1:]) for a in an if re.fullmatch(r"p\d+", a)]
-            for a in an:
-                lab = re.fullmatch(r"([TF])(\d+)[a-z]*", a)
-                if a in bl: spots.append(find([loc, " ".join(words[:6]), " ".join(words[-6:])], [bl[a][0]] + every) or (min(max(bl[a][0], 1), len(doc)), None))
-                elif lab:
-                    hit = find([f"Table {lab.group(2)}"] if lab.group(1) == "T" else [f"Figure {lab.group(2)}", f"Fig. {lab.group(2)}", f"Fig {lab.group(2)}"], stated + every)
-                    spots.append((hit[0], hit[1][:1]) if hit else ((stated or [1])[0], None))
-            spots = spots or [(p, None) for p in stated if 1 <= p <= len(doc)] or [(1, None)]
-            first, seen = None, set()
-            for pno, quads in spots:
-                page = doc[pno - 1]
-                where = (pno, round(quads[0].rect.x0), round(quads[0].rect.y0)) if quads else (pno,)
-                if where in seen: continue  # two anchors of one card that resolve to the same passage get one mark
-                seen.add(where)
-                if pno not in edge: edge[pno] = textlines(page)
-                if quads:
-                    h = page.add_highlight_annot(quads); h.set_colors(stroke=col)
-                    h.set_info(title="brain-mesh", subject=c.id, content=f"{c.id} · {c.type}/{c.status}\n{c.title}"); h.update()
-                    y = quads[0].rect.y0; label, x, w, fs = tagspot(page, edge[pno], quads[0].rect, c.id)
-                else: h, y, label, x, w, fs = None, 24, c.id, 2, 36, 5.5
-                row = (pno, round(x), round(y / 8)); tag = fitz.Rect(x, y + 8.5 * rows[row], x + w, y + 8 + 8.5 * rows[row]); rows[row] += 1
-                t = page.add_freetext_annot(tag, label, fontsize=fs, text_color=(0.1, 0.1, 0.45), fill_color=col)
-                t.set_info(title="brain-mesh", subject=c.id); t.update()  # a free-text annotation displays its content, so the tag keeps just the id
-                page.insert_link({"kind": fitz.LINK_URI, "from": tag, "uri": f"obsidian://open?vault={vault}&file={urllib.parse.quote(os.path.relpath(c.path, m.root))}"})
-                first = first or {"page": pno, "annot": (h or t).xref, "how": "highlight" if h else "page"}
-            cards[c.id] = first
-        if len(doc):
-            lg = doc[0].add_freetext_annot(fitz.Rect(30, 2, doc[0].rect.width - 30, 16), LEGEND, fontsize=5, text_color=(0.3, 0.3, 0.3)); lg.set_info(title="brain-mesh"); lg.update()
-        doc.save(out + ".tmp", deflate=True, garbage=3); doc.close(); os.replace(out + ".tmp", out)
-        for c in ev:  # point the card's own PDF link at its highlight
-            k = cards[c.id]; frag = f"#page={k['page']}&annotation={k['annot']}R"
-            head, sep, tail = c.raw.partition("\n## Codes")
-            new = re.sub(r"\[\[" + pid + r"(?:_marked)?\.pdf(?:#[^\]|]*)?(\|[^\]]*)?\]\]", lambda mo: f"[[{pid}_marked.pdf{frag}{mo.group(1) or '|open page'}]]", head, count=1) + sep + tail
-            if new != c.raw: wr(c.path, new)
-        marks[pid] = {"sig": sig, "cards": cards}; done.append(pid)
+        pid = src.id; has_si = os.path.exists(J(m.root, "sources", pid, pid + "_SI.pdf"))
+        for part in ("", "_SI"):
+            key = pid + part; pdf, out = J(m.root, "sources", pid, key + ".pdf"), J(m.root, "sources", pid, key + "_marked.pdf")
+            if not os.path.exists(pdf): continue
+            if part: ev = [c for c in m.evidence(pid) if any(is_si(a) for a in m.anchors(c))]
+            else: ev = [c for c in m.evidence(pid) if not has_si or not m.anchors(c) or any(not is_si(a) for a in m.anchors(c))]
+            ev.sort(key=lambda c: c.id)
+            sig = hashlib.sha1(json.dumps([vault, os.path.getsize(pdf)] + [[c.id, c.name, c.type, c.status, c.title, c.get("loc"), c.all("anchor")] for c in ev]).encode()).hexdigest()
+            if not force and marks.get(key, {}).get("sig") == sig and os.path.exists(out): continue
+            doc, cards, rows, edge = fitz.open(out if os.path.exists(out) else pdf), {}, Counter(), {}
+            bl = {k: v for k, v in m.blocks(pid).items() if (k[0] == "s") == bool(part)}
+            for page in doc:  # remove only brain-mesh's own marks; anything the user added to the marked copy stays
+                for a_ in [a_ for a_ in page.annots() or [] if a_.info.get("title") == "brain-mesh"]: page.delete_annot(a_)
+                for l_ in [l_ for l_ in page.get_links() if str(l_.get("uri", "")).startswith("obsidian://open")]: page.delete_link(l_)
+            flags = fitz.TEXT_DEHYPHENATE | fitz.TEXT_PRESERVE_WHITESPACE  # no TEXT_PRESERVE_LIGATURES: "fi" must match a typeset ligature
+            find = lambda texts, pages: next(((p, q) for t in texts if len(t) > 5 for p in pages if 1 <= p <= len(doc) for q in [doc[p - 1].search_for(t, quads=True, flags=flags)] if q), None)
+            every = list(range(1, len(doc) + 1))
+            for c in ev:
+                col, loc, spots = MARK_COLOURS.get(c.type, (1, 1, 0)), c.get("loc").strip("\"'“”"), []
+                words = loc.split()
+                an = [a[3:] if a.startswith("SI-") else a for a in m.anchors(c) if is_si(a) == bool(part)]
+                stated = [int(a[1:]) for a in an if re.fullmatch(r"p\d+", a)]
+                for a in an:
+                    lab = re.fullmatch(r"([TF])(\d+)[a-z]*", a)
+                    if a in bl: spots.append(find([loc, " ".join(words[:6]), " ".join(words[-6:])], [bl[a][0]] + every) or (min(max(bl[a][0], 1), len(doc)), None))
+                    elif lab:
+                        n_ = ("S" if part else "") + lab.group(2)
+                        hit = find([f"Table {n_}"] if lab.group(1) == "T" else [f"Figure {n_}", f"Fig. {n_}", f"Fig {n_}"], stated + every)
+                        spots.append((hit[0], hit[1][:1]) if hit else ((stated or [1])[0], None))
+                spots = spots or [(p, None) for p in stated if 1 <= p <= len(doc)] or [(1, None)]
+                first, seen = None, set()
+                for pno, quads in spots:
+                    page = doc[pno - 1]
+                    where = (pno, round(quads[0].rect.x0), round(quads[0].rect.y0)) if quads else (pno,)
+                    if where in seen: continue  # two anchors of one card that resolve to the same passage get one mark
+                    seen.add(where)
+                    if pno not in edge: edge[pno] = textlines(page)
+                    if quads:
+                        h = page.add_highlight_annot(quads); h.set_colors(stroke=col)
+                        h.set_info(title="brain-mesh", subject=c.id, content=f"{c.id} · {c.type}/{c.status}\n{c.title}"); h.update()
+                        y = quads[0].rect.y0; label, x, w, fs = tagspot(page, edge[pno], quads[0].rect, c.id)
+                    else: h, y, label, x, w, fs = None, 24, c.id, 2, 36, 5.5
+                    row = (pno, round(x), round(y / 8)); tag = fitz.Rect(x, y + 8.5 * rows[row], x + w, y + 8 + 8.5 * rows[row]); rows[row] += 1
+                    t = page.add_freetext_annot(tag, label, fontsize=fs, text_color=(0.1, 0.1, 0.45), fill_color=col)
+                    t.set_info(title="brain-mesh", subject=c.id); t.update()  # a free-text annotation displays its content, so the tag keeps just the id
+                    page.insert_link({"kind": fitz.LINK_URI, "from": tag, "uri": f"obsidian://open?vault={vault}&file={urllib.parse.quote(os.path.relpath(c.path, m.root))}"})
+                    first = first or {"page": pno, "annot": (h or t).xref, "how": "highlight" if h else "page"}
+                cards[c.id] = first
+            if len(doc):
+                lg = doc[0].add_freetext_annot(fitz.Rect(30, 2, doc[0].rect.width - 30, 16), LEGEND, fontsize=5, text_color=(0.3, 0.3, 0.3)); lg.set_info(title="brain-mesh"); lg.update()
+            doc.save(out + ".tmp", deflate=True, garbage=3); doc.close(); os.replace(out + ".tmp", out)
+            for c in ev:  # point the card's own link to this PDF at its highlight
+                k = cards[c.id]; frag = f"#page={k['page']}&annotation={k['annot']}R"
+                raw = rd(c.path); head, sep, tail = raw.partition("\n## Codes")
+                new = re.sub(r"\[\[" + key + r"(?:_marked)?\.pdf(?:#[^\]|]*)?(\|[^\]]*)?\]\]", lambda mo: f"[[{key}_marked.pdf{frag}{mo.group(1) or '|open page'}]]", head, count=1) + sep + tail
+                if new != raw: wr(c.path, new); c.raw = new
+            marks[key] = {"sig": sig, "cards": cards}; done.append(key)
     if done: wr(mp, json.dumps(marks, indent=1) + "\n")
     return done
+
 
 def frontier(m):
     dois = {c.get("doi").lower() for c in m.cards.values() if c.fam == "source" and c.get("doi")}
@@ -756,6 +1186,8 @@ def cmd_gaps(m):
             full = len({c[0] for c in cells}) * len({c[1] for c in cells})
             if cells and len(cells) < 0.6 * full: sparse.append(f"matrix {top[x]} {top[y]}: {len(cells)} of {full} combinations tested")
     sec("Sparsely explored condition pairs", sparse)
+    sec("Evidence the sources do not give (missing::): candidates for method, untested-assumption or unmeasured gaps",
+        [f"{c.id} missing {one(v, 110)}" + (" [supplementary material unread: check there first]" if m.si_state(c.id[:4]) == "missing" else "") for c in m.evidence() for v in c.all("missing")], 40)
     sec("Source units not fully extracted (possible extraction gaps)", [f"{c.id} {v}" for c in m.cards.values() if c.fam == "source" for v in c.all("coverage") if [x.strip() for x in v.split("|")][1:2] != ["full"]])
     sec("Most-cited sources not in the brain (possible brain gaps)", [f"{k} (cited by {len(v)}: {' '.join(sorted(v))})" for k, v in frontier(m)], 15)
 
@@ -830,25 +1262,38 @@ def cmd_concept(m, name):
     for i in ids: x = m.cards[i]; print(f"[[{i}]]\t{x.get('kind')}\t{x.title}\taliases={x.fm.get('aliases', [])}\tunit={x.get('unit') or '-'}")
     if not ids: print(f"no existing concept resembles '{name}': create concepts/<slug>.md")
 
-def cmd_neighbours(m, target, floor=0.45):
-    """For one card, or each evidence card of a source: the existing cards most like it, and what each one calls for."""
+def cmd_neighbours(m, target, top=5, floor=0.2):
+    """For one card, or each evidence card of a source: likely duplicates in the same source, and the cards in other
+    sources most worth linking, ranked by the concepts they share with the rarest counting most."""
     targets = m.evidence(target) if re.fullmatch(r"P\d{3}", target) else [need(m, target)]
+    pool = [c for c in m.cards.values() if c.fam in ("evidence", "page") and not c.get("retired")]
+    df = Counter(t for c in pool for t in m.terms(c)); n_ = len(pool) + 1
+    w = lambda t: math.log(n_ / df[t]) if df[t] else 0.0  # a concept on every card weighs almost nothing
     by_term = defaultdict(set)
-    for c in m.cards.values():
-        if c.fam in ("evidence", "page") and not c.get("retired"):
-            for t in m.terms(c): by_term[t].add(c.id)
+    for c in pool:
+        for t in m.terms(c): by_term[t].add(c.id)
+    def rel(a, b):
+        sa, sb = m.terms(a), m.terms(b)
+        den = math.sqrt(sum(w(t) for t in sa) * sum(w(t) for t in sb)) or 1.0
+        words = lambda c: toks(c.title) - STOP
+        return round(0.75 * sum(w(t) for t in sa & sb) / den + 0.25 * jac(words(a), words(b)) + (0.1 if m.sig(a) and m.sig(a) == m.sig(b) else 0), 2)
     m.linked(targets[0], targets[0]) if targets else None
+    todo = 0
     for a in targets:
-        rows = sorted(((m.score(a, m.cards[i]), m.cards[i]) for i in {i for t in m.terms(a) for i in by_term[t]} - {a.id}), key=lambda r: (-r[0], r[1].id))
+        cand = {i for t in m.terms(a) for i in by_term[t]} - {a.id}
         out = []
-        for sc, b in rows:
-            same = b.id[:4] == a.id[:4] and b.fam == "evidence"
-            if sc < (0.8 if same else floor) or len(out) == 6: continue
-            if same: act = "SAME SOURCE: probably a duplicate; merge into one card"
-            elif b.fam == "page": act = "already linked" if b.id in m._adj[a.id] else "does this card support, oppose or change it? If so add it to that card"
+        for b in sorted((m.cards[i] for i in cand if m.cards[i].fam == "evidence" and m.cards[i].id[:4] == a.id[:4]), key=lambda b: (-m.score(a, b), b.id)):
+            if m.score(a, b) >= 0.8: out.append(f"   {m.score(a, b):.2f}  {b.id} [{b.type}] {one(b.title, 85)}\n         -> SAME SOURCE: probably a duplicate; merge into one card")
+        ranked_ = sorted(((rel(a, m.cards[i]), m.cards[i]) for i in cand if not (m.cards[i].fam == "evidence" and m.cards[i].id[:4] == a.id[:4])), key=lambda r: (-r[0], r[1].id))
+        for sc, b in [r for r in ranked_ if r[0] >= floor][:top]:
+            shared = sorted(m.terms(a) & m.terms(b), key=lambda t: (-w(t), t))
+            if b.fam == "page": act = "already linked" if b.id in m._adj[a.id] else "does this card support, oppose or change it? If so add it to that card"
             else: act = "already linked" if m.linked(a, b) else "OTHER SOURCE: link with a reason (replicates, contradicts, supports, extends, qualifies), or decide it is unrelated"
-            out.append(f"   {sc:.2f}  {b.id} [{b.type}] {one(b.title, 85)}\n         -> {act}")
+            todo += act != "already linked"
+            out.append(f"   {sc:.2f}  {b.id} [{b.type}] {one(b.title, 85)}\n         shared: {', '.join(shared[:5])}\n         -> {act}")
         if out: print(f"{a.id} [{a.type}] {one(a.title, 100)}\n" + "\n".join(out))
+    print(f"{todo} candidate links to judge. Rare shared concepts are the strongest signal; read both cards before linking.")
+
 
 def cmd_health(m):
     """Housekeeping report: queues to work through, not errors."""
@@ -946,6 +1391,36 @@ def cmd_unread(m, pid, floor=140):
     print(f"{pid}: {len(m.blocks(pid))} paragraphs, {len(used & set(m.blocks(pid)))} with a card anchored, {len(rows)} without ({sum(1 for r in rows if len(r[2]) >= int(floor))} of them at least {floor} characters, listed above)")
 
 
+def cmd_progress(m, pid):
+    """Where the extraction of one source stands, computed from the vault, so a stopped or new session can resume."""
+    if pid not in m.cards: print(f"{pid}: no source card yet (step 1 of brain-mesh-add-paper)"); return
+    src, ev = m.cards[pid], m.evidence(pid)
+    bl = m.blocks(pid); used = {a for c in ev for a in m.anchors(c)}
+    m.err, m.warn = [], []; m.check(pid)
+    print(f"{pid} [{src.status}] {one(src.title, 90)}")
+    print(f"  cards: {len(ev)} ({', '.join(f'{k} {v}' for k, v in ranked(Counter(c.type for c in ev)))}); last id {max([c.id for c in ev] or ['none'])}")
+    print(f"  paragraphs with a card: {len(used & set(bl))} of {len(bl)} (main {sum(1 for k in bl if k[0] == 'b')}, supplementary {sum(1 for k in bl if k[0] == 's')})")
+    print(f"  supplementary material: {m.si_state(pid)}")
+    for v in src.all("coverage"): print(f"  coverage: {v}")
+    for v in src.all("pass"): print(f"  pass: {v}")
+    print(f"  check: {len(m.err)} errors, {len(m.warn)} warnings; figure cards flagged: {sum(1 for c in ev if c.get('flag'))}; concepts staged: {len(m.staged(pid))}")
+    p = J(m.root, "sources", pid, pid + "_progress.md")
+    if os.path.exists(p): print("  progress note:\n" + "\n".join("    " + l for l in rd(p).strip().splitlines()[-12:]))
+
+
+def cmd_staged(m):
+    """Concepts proposed by extraction agents: which sources propose each, and the existing concepts they resemble."""
+    st = m.staged()
+    if not st: print("no staged concepts"); return
+    names = sorted(st)
+    for nm in names:
+        k = nm.replace("-", " "); words = {x.rstrip("s") for x in k.split() if len(x) > 3}
+        like = [a for a in m.alias if (len(a) > 3 and (k in a or a in k)) or words & {x.rstrip("s") for x in a.split() if len(x) > 3}] + difflib.get_close_matches(k, list(m.alias), n=4, cutoff=0.75)
+        twins = [o for o in names if o != nm and (difflib.SequenceMatcher(None, o, nm).ratio() > 0.8 or set(o.split("-")) & set(nm.split("-")) - {"of", "and", "the"} and len(set(o.split("-")) & set(nm.split("-"))) >= 2)]
+        print(f"{nm}  (from {', '.join(st[nm])})" + (f"\n   existing: {', '.join(dict.fromkeys(m.alias[a] for a in like))}" if like else "") + (f"\n   staged twins: {', '.join(twins)}" if twins else ""))
+    print(f"{len(names)} staged concepts. Merge each into an existing concept (add an alias) or create it once, then fix the links in the source's cards and delete the P###_concepts.md files.")
+
+
 def cmd_related(m, pid):
     mine = set().union(*[m.terms(c) for c in m.evidence(pid)] or [set()])
     for n, c in sorted(((len(mine & m.terms(c)), c) for c in m.pages("KXGHE")), key=lambda r: (-r[0], r[1].id)):
@@ -958,6 +1433,9 @@ def cmd_log(m, msg):
 
 HELP = """version | upgrade <vault>     tooling version; run `upgrade` from the repository copy to update a vault
 init <dir> <name> <topic>     create a vault                  anchor <P###> <file> [--force]  paragraph-anchored text
+anchor <P###> --si <files...> register supplementary material: PDFs anchored as P###_SI_text.md (s####), data files sealed as P###_SI-<name>.*
+figure <P###> <page> [--si]   page image with a coordinate grid, to choose a panel's box
+figure <P###> <page> <x0,y0,x1,y1> <name> [--logy] [--ycal v@pos,...] [--force]   read a panel's values from the PDF's vector drawing
 id <P|K|X|G|H|E|L|P###>       next free id                    concept <name>                  existing concepts like a name
 split <batch.md> [--update]   write many cards from one file (`=== <file name>` starts each card)
 build                         expand links to full names, check, rebuild index/, source lists and MAP.md
@@ -968,8 +1446,10 @@ link <id> [<id> ...]          the full [[file name]] link for each id
 matrix <var> [<var>] [--all]  cross-tab observations by condition (also: type, source)
 sample <P###> [n]             random cards beside their source text, for spot checks
 unread <P###> [min chars]     paragraphs of a source that no card is anchored to, for finding missed cards
+progress <P###>               where the extraction of a source stands, for resuming it
+staged                        concepts proposed by extraction agents, with the existing concepts they resemble
 related <P###>                synthesis and workbench cards, and sources, sharing concepts with a source
-neighbours <id|P###>          the most similar existing cards for one card or a whole source: duplicates to merge, links to make
+neighbours <id|P###>          per card: likely duplicates, and cards in other sources to link, ranked by rare shared concepts
 health                        housekeeping queues: stale hubs, findings to re-grade, old searches, unused evidence
 impact <id|P###>              everything that rests on a card or a source (for corrections and retractions)
 merge <keep> <drop>           redirect links from one card to another and retire the second as a pointer
@@ -991,7 +1471,10 @@ def main():
     root = find_root()
     if c == "build": return cmd_build(root)
     m = Mesh(root)
-    if c == "anchor": cmd_anchor(m, a[0], a[1], "--force" in a)
+    if c == "anchor": cmd_anchor(m, a[0], [x for x in a[1:] if not x.startswith("--")], "--force" in a, "--si" in a)
+    elif c == "figure": cmd_figure(m, a)
+    elif c == "progress": cmd_progress(m, a[0])
+    elif c == "staged": cmd_staged(m)
     elif c == "id": cmd_id(m, a[0])
     elif c == "split": cmd_split(m, a[0], "--update" in a)
     elif c == "check": notes = m.check(a[0] if a else None); report(m, notes); sys.exit(1 if m.err else 0)
@@ -1012,7 +1495,7 @@ def main():
         print("PyMuPDF is not installed (pip install pymupdf)" if r is None else f"marked: {' '.join(r) or 'nothing to do'}")
     elif c == "seal":
         for s_ in [x for x in m.cards.values() if x.fam == "source" and (not a or x.id == a[0])]:
-            for f in glob.glob(J(root, "sources", s_.id, s_.id + ".pdf")) + glob.glob(J(root, "sources", s_.id, s_.id + "_original.*")):
+            for f in source_files(root, s_.id):
                 if os.path.basename(f) not in m.sums(): seal(root, f); print("sealed", os.path.basename(f))
     elif c == "gaps": cmd_gaps(m)
     elif c == "gapsdoc": cmd_gapsdoc(m)

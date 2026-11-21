@@ -2,6 +2,17 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.1.0 (2026-11-21)
+
+From the user's review of the first test on real papers.
+
+- **Supplementary material first.** Add-paper has a new step 0: before reading, list the supplementary material and released data, fetch what can be reached and ask the user for the rest. `anchor P012 --si <files...>` seals it: supplementary PDFs are merged, anchored as `P012_SI_text.md` (paragraphs `^s0001`) and marked as `P012_SI_marked.pdf`; data files and code are sealed as `P012_SI-<name>.*` and can be cited (`anchor:: SI-<name>`), with values checked against them. `check` warns while a source lists its supplementary material as missing.
+- **Figure reading.** New command `figure`. `figure P012 <page>` gives a page image with a coordinate grid and an inventory of captions, panel letters and pictures. `figure P012 <page> x0,y0,x1,y1 F2c` reads one panel from the PDF's vector drawing: every bar, marker, error bar and line vertex, converted through the axis tick labels (tick marks where present), with a reading error per row that allows for the fit, the tick placement and drawings made on a coarse coordinate grid, plus plausibility checks (outside the axis range, one-sided or asymmetric error bars, series missing from the legend). For a bar chart that is a picture, `--yticks` measures bars and error bars from the pixels. Values with `via:: figure` must carry their reading error and are checked against the panel's data file.
+- **Coded numbers.** `value::` may appear several times on a card; new `stat::` for test statistics. `check` flags an observation whose prose states result numbers but has neither.
+- **Missing evidence, per card.** An observation without `obtained_by` and a claim without `based_on` are now warnings on the card, unless `missing:: method` or `missing:: basis` records that the source gives none (other kinds: data, statistics, sample-size, definition). `gaps` lists these lines as gap candidates, marking those recorded before the supplementary material was read.
+- **Links between papers.** `neighbours` ranks candidates in other sources by the concepts they share, rare concepts weighing most, and shows the shared concepts. On the test vault it ranked four of the six links found by reading within the top two.
+- **Batch ingest with agents.** New document `brain-mesh-batch`: prepare and seed the vocabulary in one session, extract with one agent per paper in parallel (each writing only its own folder, new concepts staged in `P012_concepts.md`), then merge. New commands `progress P012` (where a source's extraction stands, for resuming) and `staged` (proposed concepts with the existing ones they resemble). `check P012` treats links to its own staged concepts as warnings.
+
 ## 1.0.4 (2026-11-20)
 
 Found by rebuilding the test vault from a fresh clone.

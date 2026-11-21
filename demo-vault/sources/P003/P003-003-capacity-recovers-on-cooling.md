@@ -16,6 +16,7 @@ After heating to 45 °C and cooling back to 25 °C in [[water]], the [[binding-c
 - when:: [[solvent]] = [[water]]
 - concepts:: [[imprinted-polymer-film]], [[analyte-x]], [[swelling]]
 - extends:: [[P001-004-capacity-1-3-at-45c-water]] — follows the same heated state through a cooling step the paper did not run
+- obtained_by:: [[P003-005-own-batch-rebinding-uv-n4]]
 - anchor:: [[P003_text#^b0002]]
 - loc:: "capacity recovered to 3.8"
 

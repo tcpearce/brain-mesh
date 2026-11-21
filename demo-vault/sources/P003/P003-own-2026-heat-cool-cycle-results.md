@@ -15,6 +15,9 @@ updated: 2026-11-20
 
 ## Cards from this source
 <!--AUTO:START-->
+**Method (1)**
+- [[P003-005-own-batch-rebinding-uv-n4|Own films were measured by batch rebinding with UV detection, four films per condition]] · reported
+
 **Observation (4)**
 - [[P003-001-capacity-4-0-at-25c-water|Own films: binding capacity is 4.0 at 25 °C in water]] · measured
 - [[P003-002-capacity-1-4-at-45c-water|Own films: binding capacity falls to 1.4 at 45 °C in water]] · measured
@@ -30,4 +33,5 @@ updated: 2026-11-20
 - year:: 2026
 - experiment:: [[E001-heat-cool-cycle-two-solvents]]
 - coverage:: all | full | five capacity values and the method line
+- coverage:: Supplementary material | none | not applicable
 - pass:: 2026-11-20 | full | 5 cards | verified 5 of 5

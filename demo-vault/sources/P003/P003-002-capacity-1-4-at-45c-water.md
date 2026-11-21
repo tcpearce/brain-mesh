@@ -16,6 +16,7 @@ At 45 °C in [[water]] the [[binding-capacity|binding capacity]] was 1.4 ± 0.2 
 - when:: [[solvent]] = [[water]]
 - concepts:: [[imprinted-polymer-film]], [[analyte-x]], [[batch-rebinding-assay]]
 - replicates:: [[P001-004-capacity-1-3-at-45c-water]] — same conditions and assay; values agree within error
+- obtained_by:: [[P003-005-own-batch-rebinding-uv-n4]]
 - anchor:: [[P003_text#^b0002]]
 - loc:: "1.4 ± 0.2 at 45 °C"
 

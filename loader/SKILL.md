@@ -23,6 +23,7 @@ Always read `skills/brain-mesh/SKILL.md` first. It is the map: card formats, ids
 |---|---|
 | Start a vault, tooling, Obsidian setup, sharing | `skills/brain-mesh-setup/SKILL.md` |
 | Add a paper or an own result; re-read papers for a new question | `skills/brain-mesh-add-paper/SKILL.md` |
+| Add many papers at once, with agents in parallel | `skills/brain-mesh-batch/SKILL.md` |
 | Knowledge gaps, papers to read next, the research-gaps document | `skills/brain-mesh-gaps/SKILL.md` |
 | Hypotheses, experiment design, registered predictions, judging outcomes | `skills/brain-mesh-experiment/SKILL.md` |
 | Health checks, merges, corrections, retractions, audits | `skills/brain-mesh-housekeeping/SKILL.md` |

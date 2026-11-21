@@ -18,6 +18,7 @@ The [[film-thickness|thickness]] of the [[imprinted-polymer-film|imprinted polym
 - anchor:: [[P001_text#^b0004]]
 - loc:: "Film thickness increased by 18%"
 - flag:: no method or n given for the thickness measurement
+- missing:: method — the paper gives no method or number of films for the thickness measurement
 
 ## Linked from
 - basis_for:: [[P001-007-swelling-distorts-cavities|Swelling of the polymer network distorts the cavities and lowers binding capacity]]

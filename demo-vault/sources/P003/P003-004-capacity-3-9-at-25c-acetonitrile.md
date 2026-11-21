@@ -16,5 +16,6 @@ At 25 °C in [[acetonitrile]] the [[binding-capacity|binding capacity]] was 3.9 
 - when:: [[solvent]] = [[acetonitrile]]
 - concepts:: [[imprinted-polymer-film]], [[analyte-x]], [[batch-rebinding-assay]]
 - replicates:: [[P002-002-capacity-3-9-at-25c-acetonitrile]] — same solvent and temperature but a different assay (batch rebinding, not QCM); values agree
+- obtained_by:: [[P003-005-own-batch-rebinding-uv-n4]]
 - anchor:: [[P003_text#^b0003]]
 - loc:: "binding capacity was 3.9 ± 0.3 at 25 °C"

@@ -23,6 +23,7 @@ P003-001	evidence	observation	measured	analyte-x batch-rebinding-assay binding-c
 P003-002	evidence	observation	measured	analyte-x batch-rebinding-assay binding-capacity imprinted-polymer-film solvent temperature water	Own films: binding capacity falls to 1.4 at 45 °C in water	sources/P003/P003-002-capacity-1-4-at-45c-water.md
 P003-003	evidence	observation	measured	analyte-x binding-capacity imprinted-polymer-film solvent swelling temperature water	Own films: binding capacity recovers to 3.8 after cooling back to 25 °C in water	sources/P003/P003-003-capacity-recovers-on-cooling.md
 P003-004	evidence	observation	measured	acetonitrile analyte-x batch-rebinding-assay binding-capacity imprinted-polymer-film solvent temperature	Own films: binding capacity is 3.9 at 25 °C in acetonitrile by batch rebinding	sources/P003/P003-004-capacity-3-9-at-25c-acetonitrile.md
+P003-005	evidence	method	reported	batch-rebinding-assay binding-capacity imprinted-polymer-film	Own films were measured by batch rebinding with UV detection, four films per condition	sources/P003/P003-005-own-batch-rebinding-uv-n4.md
 P003	source	source	integrated		Own result (2026) Heat-then-cool cycle in water and acetonitrile, experiment E001	sources/P003/P003-own-2026-heat-cool-cycle-results.md
 acetonitrile	concept	concept			Acetonitrile	concepts/acetonitrile.md
 analyte-x	concept	concept			Analyte X	concepts/analyte-x.md

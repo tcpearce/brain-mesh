@@ -13,5 +13,6 @@ The authors suggest that the loss of [[binding-capacity|binding capacity]] repor
 - id:: P002-006
 - concepts:: [[swelling]], [[binding-capacity]], [[water]], [[temperature]]
 - supports:: [[P001-007-swelling-distorts-cavities]] — both attribute the loss to solvent uptake
+- missing:: basis — the authors present no measurement in water to support the suggestion
 - anchor:: [[P002_text#^b0004]]
 - loc:: "arises from water uptake by the film rather than from heating"

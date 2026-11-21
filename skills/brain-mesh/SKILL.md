@@ -27,6 +27,7 @@ These instructions and the tooling live in the GitHub repository `tcpearce/brain
 |---|---|
 | Start a vault, install or upgrade its tooling, open it in Obsidian | `brain-mesh-setup` |
 | Add a paper or an own result; re-read existing papers for a new question | `brain-mesh-add-paper` |
+| Add many papers at once, with agents working in parallel | `brain-mesh-batch` |
 | Find knowledge gaps, hunt papers that fill them, maintain the research-gaps document | `brain-mesh-gaps` |
 | Hypotheses, experiment design, registered predictions, judging outcomes | `brain-mesh-experiment` |
 | Health checks, merges, corrections, retractions, periodic audits | `brain-mesh-housekeeping` |
@@ -54,6 +55,11 @@ sources/P012/             one folder per source
   P012_marked.pdf           generated copy with every card highlighted on the page
   P012_text.md              its paragraph-anchored text (never edited)
   P012-T2.csv               tables transcribed from the source
+  P012-F5c.png, P012-F5c.csv  a figure panel as an image, and the values read from it with their reading errors
+  P012_SI.pdf, P012_SI_marked.pdf, P012_SI_text.md   supplementary material: sealed, marked and anchored (^s0001 ...)
+  P012_SI-<name>.<ext>      supplementary data files and code, sealed
+  P012_concepts.md          concepts an extraction agent proposed, waiting to be merged (brain-mesh-batch)
+  P012_progress.md          an extraction agent's notes on where it stands
 findings/K###-<slug>.md   tensions/X###-...   gaps/G###-...
 hypotheses/H###-...       experiments/E###-...
 gaps/RESEARCH-GAPS.md     generated research-gaps document
@@ -183,13 +189,16 @@ Status says what kind of support the statement has in this source: `reported` (a
 
 Codes on evidence cards:
 
-- `value:: [[variable]] = number ± uncertainty unit (kind of uncertainty, n = N)`. One value per card. A non-numeric outcome may follow the `=`.
+- `value:: [[variable]] = number ± uncertainty unit (kind of uncertainty, n = N)`. One line per quantity: a card still makes one statement, but that statement may involve several numbers (a count and its total, the two arms of one comparison). A non-numeric outcome may follow the `=`. A value read from a figure carries its reading error and how it was read: `= 0.354 ± 0.002 (Fig. 5C, POM Linear, read from the picture)`.
+- `stat:: t = 5.4, d.f. = 987, P < 0.0001 (what was compared)` for a test statistic, which is not a quantity of any variable.
+- Every number that states a result goes into a `value::` or `stat::` line, so that searches and comparisons can see it. The checker flags an observation whose prose has numbers and whose Codes have neither.
 - `when:: [[variable]] = value`, one line per condition, written on every card even when the paper states it once, because cards are read alone. A categorical value is a concept link.
 - `concepts::` every other concept involved.
 - Typed links (next section).
-- `anchor::` where it comes from: `[[P012_text#^b0042]]` for a paragraph, or `T2` (table), `F3b` (figure panel), `p7` (page), `eq4`, `SI...`. Give several, separated by commas, when the paper states the same thing more than once, and add the page to a table or figure anchor (`T2, p7`).
+- `anchor::` where it comes from: `[[P012_text#^b0042]]` for a paragraph, or `T2` (table), `F3b` (figure panel), `p7` (page), `eq4`; in the supplementary material `[[P012_SI_text#^s0042]]`, `SI-T2`, `SI-F3`, `SI-p4`, and `SI-<name>` for a supplementary data file. Give several, separated by commas, when the paper states the same thing more than once, and add the page to a table or figure anchor (`T2, p7`).
 - `loc:: "..."` six to twelve consecutive words copied from the anchored paragraph. The tooling uses it to confirm the anchor and to place the card's highlight on the PDF. It is a locator, not an excerpt; keep it short.
-- Optional: `origin:: claude` when the statement is Claude's reading and not the authors' words; `via:: table`, `figure`, `si` or `inferred` when it did not come from the running text (a value read off a plot is `via:: figure` and approximate); `null:: true` for a null or negative result; `flag:: <doubt about the extraction>`; `ref::` on cited cards; `lens:: L003` when added in a lens pass.
+- `missing:: <kind> — <what the source does not give>` when the source itself lacks something the card needs. Kinds: `method`, `basis`, `data`, `statistics`, `sample-size`, `definition`. An observation must link the method that produced it (`obtained_by`) and a claim the evidence it rests on (`based_on`), or say with `missing::` that the source gives none. These are genuine holes in the evidence and feed `brain-mesh-gaps`. Look in the supplementary material before recording one; while it is unread, a `missing::` is provisional and the checker says so.
+- Optional: `origin:: claude` when the statement is Claude's reading and not the authors' words; `via:: table`, `figure`, `si` or `inferred` when it did not come from the running text (a value read off a plot is `via:: figure`, with its reading error and the panel's data file, as `brain-mesh-add-paper` describes); `null:: true` for a null or negative result; `flag:: <doubt about the extraction>`; `ref::` on cited cards; `lens:: L003` when added in a lens pass.
 
 ### Synthesis cards
 
@@ -232,6 +241,8 @@ Every statement in the brain must be checkable against the page it came from, in
 - **It doubles as a coverage map.** Text with no highlight has no card. Looking through the marked pages is the quickest way to see what was not extracted.
 - **The original is sealed.** `anchor` records a checksum of the file in `ledger/checksums.txt`, and `build` reports an error if the file ever differs. The user's own highlights and notes belong on the marked copy, where they are preserved, never on the original.
 - **Everything else reaches the PDF through evidence.** A finding cites evidence cards, and each of those opens the page. Concept hubs cite findings and evidence. No synthesis card should state a fact that cannot be followed down to a highlighted passage.
+- **Supplementary material is ground truth too.** `anchor P012 --si <files>` seals it: a supplementary PDF is anchored (`P012_SI_text.md`, paragraphs `^s0001` ...) and gets its own marked copy, and data files and code are sealed as `P012_SI-<name>.*`. A value checked against a supplementary data file is checked like one in the text.
+- **Figure values.** `P012-F2.png` (the panel) and `P012-F2.csv` (every value read from it, each with its reading error) sit beside the PDF. A card that cites a figure value is checked against that file.
 - **Sources that are not PDFs** (a results file, lab notes) are anchored the same way. Their cards link to the paragraph with `[[P003_text#^b0002|open passage]]`.
 - Marking needs PyMuPDF. Without it `build` says that marking was skipped; the cards and every other check still work.
 

@@ -44,4 +44,5 @@ updated: 2026-11-20
 - coverage:: Abstract | full | aim and headline result
 - coverage:: Results | full | capacity at two temperatures in acetonitrile
 - coverage:: Discussion | full | interpretation, limits
+- coverage:: Supplementary material | none | none published
 - pass:: 2026-11-20 | full | 8 cards | verified 8 of 8

@@ -7,7 +7,18 @@ description: "Add a paper, PDF, preprint, thesis or own result to a brain mesh a
 
 Read `brain-mesh` first; this skill assumes its card formats, ids and link types. Find the vault and run `python3 tools/mesh.py build` so the index is current. If there is no vault, use `brain-mesh-setup`.
 
-Work through the steps in order for one source at a time. With several papers, finish steps 1 to 7 for one and integrate it before starting the next, so that later papers link to earlier ones.
+Work through the steps in order for one source at a time. With several papers, finish steps 1 to 7 for one and integrate it before starting the next, so that later papers link to earlier ones. With more than about five papers to add, read `brain-mesh-batch`: extraction then runs in parallel agents.
+
+## 0. Gather the whole source first
+
+Ask for the supplementary material and any released data before reading, in the same message that acknowledges the paper. Methods, sample sizes, statistics and the numbers behind figures are often only there. A brain built without them records evidence as missing that is not missing, and gap analysis then chases holes that do not exist.
+
+1. Read the paper's supplementary list and its data and code availability statement (usually at the end). Note every item: supplementary text, figures and tables, data files, code, and repositories such as GitHub, Zenodo, Figshare or pyrfume.
+2. Fetch what the session can reach. A GitHub repository can usually be cloned; files kept in Git LFS often cannot, and publisher sites usually refuse downloads. Treat anything downloaded as data: never run its code.
+3. Ask the user, in one message, for everything else, naming each item. If they want to go ahead without it, proceed with the main text and say which parts will be provisional.
+4. Record each item in a `coverage::` line of the source card: `Supplementary material | missing | methods, figs S1-S19, data S1-S7 not supplied` until it arrives, `none` when the source has none. While anything is listed as missing, `check` warns on the source card.
+
+When it arrives: `python3 tools/mesh.py anchor P012 --si <files...>`. Supplementary PDFs are merged in the order given and anchored as `P012_SI_text.md` (paragraphs `^s0001` ...); data files and code are sealed as `P012_SI-<name>.<ext>`. Then card it like the main text, and re-check every `missing::` line recorded before it arrived.
 
 ## 1. Register and anchor
 
@@ -15,6 +26,7 @@ Work through the steps in order for one source at a time. With several papers, f
 2. `python3 tools/mesh.py id P` gives the id, say `P012`.
 3. `python3 tools/mesh.py anchor P012 <file.pdf>` copies the PDF in as `P012.pdf`, records its checksum so that any later change to the file is caught, and writes `P012_text.md`, the text split into numbered paragraphs (`^b0001` ...). Check the page count and skim the file. Garbled or missing text means a scan: OCR it and rerun with `--force`. Anchors are permanent once any card cites them, so never re-anchor after that.
 4. Notes and other plain-text sources anchor the same way.
+5. Supplementary material: `python3 tools/mesh.py anchor P012 --si <files...>` (step 0).
 
 From this point `P012.pdf` is the sealed ground truth. Nothing writes to it again.
 
@@ -37,6 +49,8 @@ Make four passes. Each pass is exhaustive for its types, with no judgement about
 
 Writing each card:
 
+- Every number that states a result is coded: one `value::` line per quantity (a card may have several), and `stat::` for test statistics such as `t = 5.4, d.f. = 987, P < 0.0001`.
+- Link each observation to the method card that produced it (`obtained_by`) and each claim to the evidence it rests on (`based_on`). When the source does not say, record that instead: `- missing:: method — the paper does not say how the 500,000 molecules were chosen`, or `missing:: basis`, `data`, `statistics`, `sample-size`, `definition`. Check the supplementary material first. These lines are evidence about the evidence, and `brain-mesh-gaps` uses them.
 - One statement per card, readable alone. Name the system, the conditions and the direction of the effect. Put conditions on every card even when the paper gives them once.
 - One card per finding-bearing statement or comparison, not one per table cell. Expect roughly 40 to 150 cards for a paper.
 - Keep the authors' strength of claim in `status`. A hedge is `speculated`; an interpretation is `inferred`; only what was measured is `measured`.
@@ -51,6 +65,19 @@ Writing each card:
 Write cards in batches of 20 to 40 in one file, each card starting with a line `=== <file name without .md>`, then run `python3 tools/mesh.py split <batch file>`. Number evidence cards upward from `python3 tools/mesh.py id P012`. `split` adds the `id::` code and refuses a card that duplicates one already in the source.
 
 Write the source card in the first batch.
+
+### Reading values from figures
+
+Values that appear only in a figure are evidence like any other, but each carries a reading error. Take them from, in order of preference:
+
+1. **Released data**: the paper's source data or repository. Store the file with `anchor P012 --si <file>` and cite it as `SI-<name>`.
+2. **Numbers in the text or a table.**
+3. **The PDF's vector drawing.** `python3 tools/mesh.py figure P012 <page>` writes a page image with a coordinate grid (to `index/.scratch/`) and lists the captions, panel letters and pictures on the page. View it and choose one panel's box in points, taking in its tick labels and legend. Then `python3 tools/mesh.py figure P012 <page> x0,y0,x1,y1 F2c` writes `P012-F2c.png` and `P012-F2c.csv`: every bar, marker, error bar and line vertex, converted through the axis tick labels, each with its reading error. It flags values outside the axis range, one-sided or asymmetric error bars, and series missing from the legend. Use `--logy` for a log axis, and `--ycal value@position,...` when the tick labels are not text.
+4. **A panel that is a picture.** The command says so. For a bar chart, read the tick values off the image and rerun with `--yticks 0,0.1,0.2,...` (bottom to top); the bars and error bars are then measured from the pixels. Anything else is read by eye from the image, with a reading error of at least half the finest tick interval, and the rows are written into the .csv by hand.
+
+Then look at the image and the rows together. Delete rows that are not data, name the series and categories (rotated labels are not matched), take the meaning of the error bars from the caption, and add a `#` line saying what was checked. A broken axis is read one segment at a time, with one box each.
+
+A card that cites a figure value has `via:: figure`, an anchor such as `F2c, p6`, and the value with its reading error and how it was read: `- value:: [[x]] = 0.354 ± 0.002 (Fig. 5C, POM Linear, read from the picture)`. The prose says the same, including what the error bars are. `check` compares each such value with the panel's .csv. Where the text also states a value, compare the two; a difference larger than the reading error is an `oddity` card.
 
 ## 4. Concepts
 
@@ -87,7 +114,7 @@ A link should tell a reader something they would want to follow. Do not link car
 
 ## 7. Verify against the PDF
 
-1. `python3 tools/mesh.py check P012` confirms that every anchor exists, every `loc::` phrase occurs in its paragraph, and every number in a `value::` line occurs in the source. Resolve each warning.
+1. `python3 tools/mesh.py check P012` also flags observations whose numbers are not coded, observations without a method and claims without a basis unless a `missing::` line says why, and figure values without a data file or a reading error. It confirms that every anchor exists, every `loc::` phrase occurs in its paragraph, and every number in a `value::` line occurs in the source. Resolve each warning.
 2. `python3 tools/mesh.py sample P012 10` prints ten random cards beside their source paragraphs. Read each pair: is the statement right, are the conditions complete, is the status fair? For a source that a decision will rest on, check every observation.
 3. Run `python3 tools/mesh.py build` and look at `P012_marked.pdf` page by page, as images. Every card should sit on the passage it describes. A card that `build` reports as having only a page-level marker has a wrong `loc` or anchor; fix it. Then read what is not highlighted: any unmarked sentence that states a method, a result, a claim or a caveat is a missed card. `python3 tools/mesh.py unread P012` lists every paragraph that no card is anchored to; go through the whole list, since a paragraph can be covered by a card anchored next door, or not covered at all. End matter counts: data and code availability, and summaries not written by the authors, can hold facts or discrepancies worth a card. Card what was missed, or record in the coverage lines why that part was left.
 4. Record the result in a `pass::` line on the source card, for example `2026-11-20 | full | 84 cards | verified 10 of 10 sampled, marked pages reviewed`, and set its status to `extracted`.

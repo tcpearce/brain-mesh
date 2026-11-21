@@ -58,6 +58,7 @@ sources/P012/             one folder per source
   P012-F5c.png, P012-F5c.csv  a figure panel as an image, and the values read from it with their reading errors
   P012_SI.pdf, P012_SI_marked.pdf, P012_SI_text.md   supplementary material: sealed, marked and anchored (^s0001 ...)
   P012_SI-<name>.<ext>      supplementary data files and code, sealed
+  P012_correction.pdf, P012_correction_marked.pdf, P012_correction_text.md   published corrections, appended in order (^c0001 ...)
   P012_concepts.md          concepts an extraction agent proposed, waiting to be merged (brain-mesh-batch)
   P012_progress.md          an extraction agent's notes on where it stands
 findings/K###-<slug>.md   tensions/X###-...   gaps/G###-...
@@ -153,7 +154,7 @@ updated: 2026-11-20
 - measured_by:: [[batch-rebinding-assay]], [[quartz-crystal-microbalance]]
 ```
 
-- `kind` is `entity`, `variable`, `technique` or `concept`. A variable needs `unit`: a unit, `1` for dimensionless, or `categorical` when its values are themselves concept cards (solvent = water).
+- `kind` is `entity`, `variable`, `count`, `technique` or `concept`. A `count` is a variable that only says how many items a result rests on (`sample-size`). A variable needs `unit`: a unit, `1` for dimensionless, or `categorical` when its values are themselves concept cards (solvent = water).
 - Concept-to-concept relations in Codes: `broader` (is a kind of), `part_of`, `measured_by`, `affects`, `related`. Write the relation on the card of the concept that does the affecting or belonging, for example on the temperature card: `- affects:: [[binding-capacity]] — in water only, [[K001]]`. An `affects` line must cite the finding or evidence card it rests on, because it is a scientific claim and not vocabulary.
 - The block under **Where it appears** is generated: every finding, tension, gap, hypothesis and experiment that uses the concept, its evidence cards, relations pointing at it from other concepts, and the concepts it most often appears with. Keep the two AUTO marker lines in the card.
 - Before creating a concept run `python3 tools/mesh.py concept "<name>"`. If an existing concept covers it, add the new name to that card's `aliases` instead.
@@ -191,6 +192,7 @@ Codes on evidence cards:
 
 - `value:: [[variable]] = number ± uncertainty unit (kind of uncertainty, n = N)`. One line per quantity: a card still makes one statement, but that statement may involve several numbers (a count and its total, the two arms of one comparison). A non-numeric outcome may follow the `=`. A value read from a figure carries its reading error and how it was read: `= 0.354 ± 0.002 (Fig. 5C, POM Linear, read from the picture)`.
 - `stat:: t = 5.4, d.f. = 987, P < 0.0001 (what was compared)` for a test statistic, which is not a quantity of any variable.
+- For a count that only says how many items a result rests on (molecules, stimuli, neurons), use the `sample-size` concept, whose Codes say `kind:: count`. Counts of different things are never compared, so the duplicate and parallel-result checks skip them.
 - Every number that states a result goes into a `value::` or `stat::` line, so that searches and comparisons can see it. The checker flags an observation whose prose has numbers and whose Codes have neither.
 - `when:: [[variable]] = value`, one line per condition, written on every card even when the paper states it once, because cards are read alone. A categorical value is a concept link.
 - `concepts::` every other concept involved.
@@ -198,6 +200,7 @@ Codes on evidence cards:
 - `anchor::` where it comes from: `[[P012_text#^b0042]]` for a paragraph, or `T2` (table), `F3b` (figure panel), `p7` (page), `eq4`; in the supplementary material `[[P012_SI_text#^s0042]]`, `SI-T2`, `SI-F3`, `SI-p4`, and `SI-<name>` for a supplementary data file. Give several, separated by commas, when the paper states the same thing more than once, and add the page to a table or figure anchor (`T2, p7`).
 - `loc:: "..."` six to twelve consecutive words copied from the anchored paragraph. The tooling uses it to confirm the anchor and to place the card's highlight on the PDF. It is a locator, not an excerpt; keep it short.
 - `missing:: <kind> — <what the source does not give>` when the source itself lacks something the card needs. Kinds: `method`, `basis`, `data`, `statistics`, `sample-size`, `definition`. An observation must link the method that produced it (`obtained_by`) and a claim the evidence it rests on (`based_on`), or say with `missing::` that the source gives none. These are genuine holes in the evidence and feed `brain-mesh-gaps`. Look in the supplementary material before recording one; while it is unread, a `missing::` is provisional and the checker says so.
+- Housekeeping codes: `retracted:: <date and reason>` on a retracted source (or a single retracted card); `retraction_checked:: P012 — <what changed>` on a card reviewed after a retraction it rests on; `corrected:: <date> — <what changed>` on a card fixed after a published correction, together with an anchor into `P012_correction_text`. See `brain-mesh-housekeeping`.
 - Optional: `origin:: claude` when the statement is Claude's reading and not the authors' words; `via:: table`, `figure`, `si` or `inferred` when it did not come from the running text (a value read off a plot is `via:: figure`, with its reading error and the panel's data file, as `brain-mesh-add-paper` describes); `null:: true` for a null or negative result; `flag:: <doubt about the extraction>`; `ref::` on cited cards; `lens:: L003` when added in a lens pass.
 
 ### Synthesis cards

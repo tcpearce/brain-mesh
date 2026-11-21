@@ -276,4 +276,35 @@ sed -i.bak 's/= 0.55 ± 0.01/= 0.70 ± 0.01/; s/is 0.55 ± 0.01/is 0.70 ± 0.01/
 (python3 tools/mesh.py check P001 || true) | grep -q "P001-002: value 0.70 matches no row of P001-F1.csv" && pass "a figure value that is not in the figure is caught" || fail "wrong figure value not caught"
 python3 tools/mesh.py neighbours P001 | tail -1 | grep -q "candidate links to judge" && pass "neighbours runs" || fail "neighbours"
 else echo "skip feature tests: PyMuPDF not installed"; fi
+# 6. housekeeping: health, impact, merge, retraction, correction, renamed cards (1.2.0)
+cp -r "$ROOT/demo-vault" "$T/h"; cd "$T/h"; cp "$MESH" tools/mesh.py
+python3 tools/mesh.py health > health.txt; grep -q "^## Findings whose status no longer matches their evidence" health.txt && pass "health report" || fail "health"
+python3 tools/mesh.py impact P001-003 > impact.txt; grep -q "K001" impact.txt && pass "impact finds the finding that rests on a card" || fail "impact"
+sed 's/^- id:: P001-003$/- id:: P001-012/' sources/P001/P001-003-*.md > sources/P001/P001-012-capacity-again.md
+python3 tools/mesh.py merge P001-003 P001-012 > /dev/null && grep -q "^- retired:: merged into \[\[P001-003" sources/P001/P001-012-capacity-again.md && pass "merge retires the dropped card as a pointer" || fail "merge"
+python3 tools/mesh.py build > build.txt; grep -q "check: 0 errors" build.txt && pass "vault builds clean after a merge" || fail "build after merge"
+sed -i.bak 's/^- kind:: paper$/- kind:: paper\n- retracted:: 2026-11-21 test retraction/' sources/P002/P002-garcia-*.md
+out="$(python3 tools/mesh.py check || true)"
+echo "$out" | grep -q "X001: rests on P002, which is retracted" && pass "a card resting on a retracted source is flagged" || fail "retraction dependant"
+echo "$out" | grep -q "P002: retracted, but the prose does not say so" && pass "an unannounced retraction is flagged" || fail "retraction prose"
+python3 tools/mesh.py health > health.txt; grep -q "^  P002 .*dependants to review" health.txt && pass "health lists the retraction" || fail "health retraction"
+for c in $(echo "$out" | sed -n 's/^warn  \([A-Za-z0-9-]*\): rests on P002.*/\1/p'); do f=$(find . \( -name "$c-*.md" -o -name "$c.md" \) -not -path "./.brain-mesh/*" | head -1); sed -i.bak 's/^## Codes$/## Codes\n- retraction_checked:: P002 — reviewed in the test/' "$f"; done
+sed -i.bak '0,/^# /s/^# .*$/&\n\n**Retracted** in this test./' sources/P002/P002-garcia-*.md
+(python3 tools/mesh.py check || true) | grep -q "retract" && fail "retraction warnings remain after review" || pass "retraction_checked clears the warnings"
+python3 - <<'PY'
+try: import pymupdf as fitz
+except ImportError: import fitz
+for k, txt in ((1, "Correction: the binding capacity at 45 degrees in water was 1.4, not 1.3 as printed."), (2, "Second correction: the film thickness rose by 17 percent, not 18 percent.")):
+    d = fitz.open(); d.new_page().insert_text((72, 72), txt, fontsize=10); d.save(f"corr{k}.pdf")
+PY
+python3 tools/mesh.py anchor P001 --correction corr1.pdf > /dev/null && grep -q "1.4, not 1.3 as printed. ^c0001" sources/P001/P001_correction_text.md && grep -q "^P001_correction.pdf " ledger/checksums.txt && pass "a correction is registered, sealed and anchored" || fail "correction"
+python3 tools/mesh.py anchor P001 --correction corr2.pdf > /dev/null && grep -q "1.4, not 1.3 as printed. ^c0001" sources/P001/P001_correction_text.md && grep -q "17 percent, not 18 percent. ^c0002" sources/P001/P001_correction_text.md && pass "a second correction is appended without moving earlier anchors" || fail "second correction"
+f=$(ls sources/P001/P001-004-*.md); sed -i.bak 's/^## Codes$/## Codes\n- corrected:: 2026-11-21 — the value was misprinted in the paper/' "$f"
+(python3 tools/mesh.py check || true) | grep -q "P001-004: corrected, but no anchor points into" && pass "a corrected card must cite the correction" || fail "corrected without anchor"
+sed -i.bak 's/^- anchor:: \(.*\)$/- anchor:: \1, [[P001_correction_text#^c0001]]/' "$f"
+python3 tools/mesh.py build > build.txt; grep -q "check: 0 errors" build.txt && [ -f sources/P001/P001_correction_marked.pdf ] && pass "the correction is marked and the vault builds clean" || fail "correction build"
+old=$(basename sources/P001/P001-005-*.md .md); mv sources/P001/$old.md sources/P001/thickness-note.md
+grep -rl "\[\[$old" --include=*.md . | grep -v "_text.md" | xargs sed -i.bak "s/\[\[$old/[[thickness-note/g"
+mv concepts/water.md "concepts/Water solvent.md"; grep -rl "\[\[water[]|#]" --include=*.md . | grep -v "_text.md" | xargs sed -i.bak 's/\[\[water\([]|#]\)/[[Water solvent\1/g'
+python3 tools/mesh.py build > build.txt; grep -q "check: 0 errors" build.txt && [ -f sources/P001/P001-005-thickness-note.md ] && [ -f concepts/water.md ] && grep -qi '"water solvent"' concepts/water.md && ! grep -rq "\[\[thickness-note\|\[\[Water solvent" --include=*.md concepts sources gaps findings && pass "renamed cards get their ids back and links follow" || fail "rename repair"
 echo "ALL TESTS PASSED"

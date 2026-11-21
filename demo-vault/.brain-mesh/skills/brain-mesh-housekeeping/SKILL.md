@@ -50,8 +50,11 @@ Two cards from different sources that say the same thing are not duplicates. The
 `python3 tools/mesh.py impact <card id or P###>` lists everything that rests, directly or through other cards, on a card or on a whole source: the claims built on an observation, the findings that cite it, the hypotheses those findings prompted, the experiments testing them, and the concept relations that cite it.
 
 - **An extraction error found later.** Check the passage on the PDF page, then fix the card, prose and Codes together. Run `impact` on it and review each dependant. Log it.
-- **A published correction.** Add the corrected version as its own registered file and note it on the source card; fix the affected cards, keep their ids, note the correction in each card's prose, and re-verify them against the corrected text.
-- **A retraction.** Do not remove the source or its cards; the history matters. State the retraction at the top of the source card's prose, add `- retracted:: <date and reason>` to its Codes and a `flag::` to each of its evidence cards. Then go through the `impact` list and re-grade every finding as though those cards were absent, reopen gaps they had closed, and correct the hubs.
+- **A published correction** (erratum, corrigendum, notice). Register it with `python3 tools/mesh.py anchor P012 --correction notice.pdf`. Each correction is appended to `P012_correction.pdf`, sealed, and its paragraphs added to `P012_correction_text.md` as `^c0001`, `^c0002` …, numbered on so that anchors already cited never move. Add a `coverage::` line for it on the source card. Then fix each affected card, keeping its id: correct prose and Codes together, say in the prose what the correction changed, add `- corrected:: <date> — <what changed>`, and add an anchor into the correction (`[[P012_correction_text#^c0003]]`). `check` warns about a corrected card with no such anchor; `build` marks the correction notice like any other PDF; `health` lists the sources that have corrections. Run `impact` on each corrected card and review its dependants.
+- **A retraction.** Do not remove the source or its cards; the history matters. Add `- retracted:: <date and reason>` to the source card's Codes and state the retraction at the top of its prose (`check` warns until the prose says so). One retracted statement within a source gets `retracted::` on its own card instead. From then on:
+  - every card that rests on the retracted evidence, directly or through other cards, including concept hubs whose relations cite it, is a warning until it has been reviewed. Re-grade each finding as though that evidence were absent, re-open gaps it had closed, correct hubs and hypotheses, then record the review on the card: `- retraction_checked:: P012 — <what changed>`;
+  - the source's marked PDF carries a RETRACTED banner on its first page, and concept hubs label its cards **retracted**;
+  - `health` lists retracted sources with the number of dependants still to review.
 
 Tell the user what changed in the brain's conclusions, not only which cards were edited.
 
@@ -61,7 +64,7 @@ The user is free to edit prose. After they have, `build` shows what moved: a val
 
 - Treat the user's prose as their intent. Where an edit corrects content, change the Codes to match, then check the PDF page to see who is right, and say so if the source disagrees with the edit.
 - Where the intent is unclear, ask. Never silently revert a user's edit.
-- A renamed file gets its id back at the start of the name; the rest of the user's wording can stay as the slug.
+- A renamed file gets its id back automatically. If a card was renamed but kept its id at the start, `build` re-points the links. If the id was dropped, `build` restores it from the card's `- id::` line, keeps the user's wording as the slug, and rewrites the links Obsidian had pointed at the new name. A renamed concept keeps its old file name, which is its id, and gains the user's new name as an alias.
 - Edits inside `## Linked from` or an AUTO block are overwritten by the next `build`. Move anything of value into the card's own prose first.
 - The user's own highlights and notes on a marked PDF are kept when it is regenerated. Annotations on an original PDF change its checksum: move them to the marked copy and restore the original.
 
@@ -80,7 +83,7 @@ Log the result, for example `audit: 30 cards across P004, P011, P019; 1 correcte
 
 ## Running it on a schedule
 
-Where scheduled tasks are available and the vault is somewhere a scheduled run can reach, offer a weekly or monthly check that runs `build`, `health` and `gaps` and reports the queues. A scheduled run reports; it does not change the content of cards unattended.
+Where scheduled tasks are available and the vault is somewhere a scheduled run can reach (a git repository, say), offer a weekly or monthly check. The run clones the vault, runs `build`, `health` and `gaps` in its own copy, and reports the queues and any errors. It never commits, pushes or edits cards: a scheduled run reports, and the next working session acts on the report.
 
 ## Report
 

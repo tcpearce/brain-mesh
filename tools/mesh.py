@@ -7,12 +7,13 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.1.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.2.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
 ORIGIN = ["authors", "claude"]
 VIA = ["text", "table", "figure", "si", "inferred"]
+PARTS = {"": "b", "_SI": "s", "_correction": "c"}  # parts of a source: main text, supplementary material, published corrections; paragraph ids b0001, s0001, c0001
 MISSING = ["method", "basis", "data", "statistics", "sample-size", "definition"]  # what a source can fail to give: `- missing:: method — ...`
 EVIDENCE_RELS = ["obtained_by", "based_on", "qualifies", "underlies", "supports", "contradicts", "replicates", "extends"]
 PAGES = {  # id prefix: (folder, type, allowed status, link keys in Codes)
@@ -79,7 +80,7 @@ def seal(root, path):
 def source_files(root, pid):
     """The registered, sealed files of a source: its PDF or original, and any supplementary files."""
     d = J(root, "sources", pid)
-    return sorted(glob.glob(J(d, pid + ".pdf")) + glob.glob(J(d, pid + "_original.*")) + glob.glob(J(d, pid + "_SI.pdf")) + glob.glob(J(d, pid + "_SI-*")))
+    return sorted(glob.glob(J(d, pid + ".pdf")) + glob.glob(J(d, pid + "_original.*")) + glob.glob(J(d, pid + "_SI.pdf")) + glob.glob(J(d, pid + "_SI-*")) + glob.glob(J(d, pid + "_correction.pdf")))
 
 
 NUMWORD = re.compile(r"(?<![\w.\-−])[-−]?\d+(?:[.,]\d+)*(?![\w\-])")
@@ -92,6 +93,60 @@ def result_numbers(text):
     t = re.sub(r"\b(?:Supplementary\s+)?(?:Fig(?:ure)?s?|Tables?|refs?|Eqs?|pp?)\.?\s*S?\d+[A-Za-z]?(?:\s*(?:,|and|to|–|-)\s*S?\d*[A-Za-z]?)*", " ", t, flags=re.I)
     t = re.sub(r"\b(?:19|20)\d{2}\b|\b[PKXGHEL]\d{3}(?:-\d{3})?\b", " ", t)
     return NUMWORD.findall(t)
+
+
+def part_of(a):
+    """Which part of a source an anchor points into: '' (main), '_SI' or '_correction'."""
+    if a.startswith("SI") or re.fullmatch(r"s\d{4}", a): return "_SI"
+    if a.startswith("CR") or re.fullmatch(r"c\d{4}", a): return "_correction"
+    return ""
+
+
+def fixnames(root):
+    """Give a card back its id when its file was renamed without it (in Obsidian, say). The id comes from the card's
+    own '- id::' line, the user's wording stays as the slug, a renamed concept keeps its new name as an alias, and every
+    link to the new name (Obsidian rewrites them on rename) is pointed at the restored file. Returns the moves made."""
+    idline = lambda f: (re.search(r"^- id:: *(\S+)\s*$", rd(f), re.M) or [None, None])[1]
+    slug = lambda t: re.sub(r"[^a-z0-9]+", "-", t.lower()).strip("-")
+    moves = []
+    for d in sorted(glob.glob(J(root, "sources", "P[0-9][0-9][0-9]"))):
+        pid = os.path.basename(d)
+        for f in sorted(glob.glob(J(d, "*.md"))):
+            b = os.path.basename(f)[:-3]
+            if b.startswith(pid + "_"): continue
+            i = idline(f)
+            if not i or not re.fullmatch(pid + r"(-\d{3})?", i): continue
+            if re.fullmatch(re.escape(i) + r"(-[a-z0-9-]+)?", b): continue
+            rest = slug(re.sub(r"^P\d{3}(-\d{3})?", "", b)) or "card"
+            if i == pid and not rest[0].isalpha(): rest = "s-" + rest
+            moves.append((f, J(d, f"{i}-{rest}.md"), b, False))
+    for pre, (folder, *_r) in PAGES.items():
+        for f in sorted(glob.glob(J(root, folder, "*.md"))):
+            b, i = os.path.basename(f)[:-3], idline(f)
+            if not i or not re.fullmatch(pre + r"\d{3}", i) or re.fullmatch(re.escape(i) + r"(-[a-z0-9-]+)?", b): continue
+            moves.append((f, J(root, folder, f"{i}-{slug(re.sub(r'^[A-Z]{1}[0-9]{3}', '', b)) or 'card'}.md"), b, False))
+    for f in sorted(glob.glob(J(root, "concepts", "*.md"))):
+        b, i = os.path.basename(f)[:-3], idline(f)
+        if i and i != b and re.fullmatch(r"[a-z0-9][a-z0-9-]*", i): moves.append((f, J(root, "concepts", i + ".md"), b, True))
+    if not moves: return []
+    files = [x for x in glob.glob(J(root, "**", "*.md"), recursive=True) if not re.search(r"P\d{3}_(text|SI_text|correction_text|original)", x) and "/.brain-mesh/" not in x]
+    where = {}  # files already moved in this pass
+    for src, dst, old, concept in moves:
+        if os.path.exists(dst): continue  # never overwrite; the loader will report the clash
+        os.replace(src, dst); where[src] = dst; new = os.path.basename(dst)[:-3]
+        if concept:  # keep the user's new name as an alias of the concept
+            t = rd(dst); title = old.replace("-", " ")
+            m_ = re.search(r"^aliases: *\[(.*?)\]", t, re.M)
+            if m_ and title.lower() not in m_.group(1).lower(): t = t[:m_.end(1)] + (", " if m_.group(1).strip() else "") + json.dumps(title) + t[m_.end(1):]
+            wr(dst, t)
+        pat = re.compile(r"\[\[" + re.escape(old) + r"(#[^\]|]*)?(\|[^\]]*)?\]\]")
+        for x in files:
+            x = where.get(x, x)
+            if not os.path.exists(x): continue
+            t = rd(x); t2 = pat.sub(lambda mo: f"[[{new}{mo.group(1) or ''}{mo.group(2) or ('|' + old if concept else '')}]]", t)
+            if t2 != t: wr(x, t2)
+        print(f"restored id: {old}.md -> {new}.md (links to it updated)")
+    return moves
 
 
 def find_root():
@@ -147,7 +202,7 @@ class Mesh:
                 m1, m2 = re.fullmatch(r"(P\d{3}-\d{3})(-[a-z0-9-]+)?", b), re.fullmatch(r"(P\d{3})(-[a-z][a-z0-9-]*)?", b)
                 if m1 and b.startswith(pid): add(f, "evidence", m1.group(1))
                 elif m2 and m2.group(1) == pid: add(f, "source", pid)
-                else: s.err.append(f"{os.path.relpath(f, root)}: name must be {pid}-<slug>.md (source card) or {pid}-NNN-<slug>.md (evidence card)")
+                else: s.err.append(f"{os.path.relpath(f, root)}: name must be {pid}-<slug>.md (source card) or {pid}-NNN-<slug>.md (evidence card); if it was renamed, `build` puts the id back from its '- id::' line")
             if pid not in s.cards: s.err.append(f"{pid}: folder has no source card")
         for f in sorted(glob.glob(J(root, "concepts", "*.md"))):
             b = os.path.basename(f)[:-3]
@@ -174,13 +229,13 @@ class Mesh:
             r = s.resolve(t); (good if r else bad).append(r or t.strip())
         return good, bad
     def aux(s, t):  # link targets that are files or notes, not cards
-        mo = re.fullmatch(r"(P\d{3})(\.pdf|_marked\.pdf|_text|_original(\.\w+)?|_SI\.pdf|_SI_marked\.pdf|_SI_text|_SI-[\w.-]+\.\w+|-S?[TF]\d+[a-z]*(?:-[a-z0-9]+)?\.\w+)", t.strip())
+        mo = re.fullmatch(r"(P\d{3})(\.pdf|_marked\.pdf|_text|_original(\.\w+)?|_SI\.pdf|_SI_marked\.pdf|_SI_text|_SI-[\w.-]+\.\w+|_correction\.pdf|_correction_marked\.pdf|_correction_text|-S?[TF]\d+[a-z]*(?:-[a-z0-9]+)?\.\w+)", t.strip())
         return bool(mo and mo.group(1) in s.cards) or t.strip() in NOTES
     def blocks(s, pid):
         """Anchored paragraphs of a source: b#### in P###_text.md, s#### in the supplementary P###_SI_text.md."""
         if pid not in s._blocks:
             d = {}
-            for part, letter in (("", "b"), ("_SI", "s")):
+            for part, letter in PARTS.items():
                 p, page = J(s.root, "sources", pid, pid + part + "_text.md"), 0
                 for line in (rd(p).splitlines() if os.path.exists(p) else []):
                     pg, bl = re.fullmatch(r"## Page (\d+)", line), re.fullmatch(r"(.*) \^(" + letter + r"\d{4})", line)
@@ -208,9 +263,9 @@ class Mesh:
     def anchors(s, c):
         out = []
         for tok in [t.strip() for v in c.all("anchor") for t in re.split(r"[,;]\s*", v)]:
-            b, pg = re.search(r"\^?([bs]\d{4})\b", tok), re.search(r"(_SI)?\.pdf#page=(\d+)", tok)
+            b, pg = re.search(r"\^?([bsc]\d{4})\b", tok), re.search(r"(_SI|_correction)?\.pdf#page=(\d+)", tok)
             if b: out.append(b.group(1))
-            elif pg: out.append(("SI-p" if pg.group(1) else "p") + pg.group(2))
+            elif pg: out.append({"_SI": "SI-p", "_correction": "CR-p"}.get(pg.group(1), "p") + pg.group(2))
             else: out.append(tok)
         return [a for a in out if a]
     def pair(s, v):  # "[[var]] = rest" -> (var id, rest)
@@ -283,10 +338,10 @@ class Mesh:
                 bl, src, has_block, an = s.blocks(pid), "", False, s.anchors(c)
                 if not an: E.append(f"{i}: no '- anchor::' code")
                 for a in an:
-                    if re.fullmatch(r"[bs]\d{4}", a):
+                    if re.fullmatch(r"[bsc]\d{4}", a):
                         has_block = True
                         if a in bl: src += " " + bl[a][1]
-                        else: E.append(f"{i}: anchor {a} not in {pid}{'_SI' if a[0] == 's' else ''}_text.md")
+                        else: E.append(f"{i}: anchor {a} not in {pid}{part_of(a)}_text.md")
                     elif re.fullmatch(r"(SI-)?T\d+", a):
                         p = J(s.root, "sources", pid, f"{pid}-{'S' if a.startswith('SI') else ''}{a.split('-')[-1]}.csv")
                         if os.path.exists(p): src += " " + rd(p)
@@ -294,7 +349,7 @@ class Mesh:
                     elif re.fullmatch(r"SI-[\w.-]+", a) and glob.glob(J(s.root, "sources", pid, f"{pid}_{a}.*")):
                         for f in glob.glob(J(s.root, "sources", pid, f"{pid}_{a}.*")):
                             if f.lower().endswith((".csv", ".tsv", ".txt", ".md")): src += " " + rd(f)
-                    elif not re.fullmatch(r"(F\d+[a-z]*|p\d+|eq\d+|SI\S*)", a): E.append(f"{i}: bad anchor '{a}'")
+                    elif not re.fullmatch(r"(F\d+[a-z]*|p\d+|eq\d+|SI\S*|CR-p\d+)", a): E.append(f"{i}: bad anchor '{a}'")
                 vals = [s.pair(v) for v in c.all("value")]
                 for var, _r in vals:
                     if not var or s.cards[var].fam != "concept": E.append(f"{i}: 'value::' must start with a [[variable]] concept link then ' = '")
@@ -325,11 +380,15 @@ class Mesh:
                     mo = re.search(r"[-+−]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?", plain(rest))
                     if mo and mo.group(0) not in digits: W.append(f"{i}: the value {mo.group(0)} in Codes does not appear in the prose above it; make the two agree")
                 if os.path.exists(J(s.root, "sources", pid, pid + ".pdf")):
-                    if not re.search(r"\[\[" + pid + r"(_SI)?(_marked)?\.pdf", c.human): W.append(f"{i}: the prose has no link to the PDF; add '[[{pid}.pdf#page=N|open page]]' to its Source line")
-                    k = s.marks().get(pid, {}).get("cards", {}).get(i) or s.marks().get(pid + "_SI", {}).get("cards", {}).get(i)
+                    if not re.search(r"\[\[" + pid + r"(_SI|_correction)?(_marked)?\.pdf", c.human): W.append(f"{i}: the prose has no link to the PDF; add '[[{pid}.pdf#page=N|open page]]' to its Source line")
+                    k = next((s.marks().get(pid + pt, {}).get("cards", {}).get(i) for pt in PARTS if s.marks().get(pid + pt, {}).get("cards", {}).get(i)), None)
                     if k and k["how"] != "highlight" and has_block: W.append(f"{i}: its loc phrase could not be found on the PDF page, so it has only a page-level marker; correct the loc or the anchor")
                 rels = {k for k, _v in c.codes}
                 if c.type == "cited" and not c.get("ref"): W.append(f"{i}: cited card has no '- ref::'")
+                for v in c.all("corrected"):
+                    if len(reason(v).split()) < 3: W.append(f"{i}: 'corrected::' needs a date, then ' — ' and what changed")
+                    if os.path.exists(J(s.root, "sources", pid, pid + "_correction_text.md")) and not any(part_of(a) == "_correction" for a in an):
+                        W.append(f"{i}: corrected, but no anchor points into {pid}_correction_text.md; add the paragraph of the correction notice")
                 miss = set()
                 for v in c.all("missing"):
                     k_ = re.split(r"[\s—:]+", v.strip(), maxsplit=1)[0]; miss.add(k_)
@@ -356,6 +415,7 @@ class Mesh:
                 si, gaps_ = s.si_state(i), sum(1 for c_ in s.evidence(i) if c_.get("missing"))
                 if si == "missing": W.append(f"{i}: supplementary material is listed as missing. Ask the user for it, or find it on the publisher's page, and anchor it with `mesh.py anchor {i} --si <files>`; until then methods and results may be incomplete" + (f", and the {gaps_} cards recording evidence as missing:: may be answered there" if gaps_ else ""))
                 elif si == "unstated": notes["sources not saying whether they have supplementary material"] += 1
+                if c.get("retracted") and not re.search(r"retract", c.prose(), re.I): W.append(f"{i}: retracted, but the prose does not say so; state the retraction at the top of the card")
                 if si == "anchored" and any(re.search(r"supplement|\bSI\b", r[0], re.I) and r[1:2] == ["missing"] for r in cov): W.append(f"{i}: the supplementary material is anchored but a coverage line still says missing; update it")
                 for f in files:
                     rec = s.sums().get(os.path.basename(f))
@@ -389,7 +449,7 @@ class Mesh:
                     if c.status in ("fillable", "confirmed", "planned") and not c.get("searched"): W.append(f"{i}: status {c.status} needs '- searched:: <date>'")
                 if i[0] == "E" and c.status in ("registered", "running", "done") and not c.get("registered"): E.append(f"{i}: status {c.status} needs '- registered:: <date>'")
                 if i[0] == "E" and c.status == "done" and not n("results"): W.append(f"{i}: done but no '- results::' source")
-        if not only: s.dupes(E, W)
+        if not only: s.dupes(E, W); s.retraction_warnings(W)
         return notes
 
     def figure_values(s, c, pid, an, vals, W):
@@ -414,6 +474,44 @@ class Mesh:
             if mo and rows:
                 v = float(mo.group(0).replace("−", "-")); dec = len(mo.group(0).split(".")[1]) if "." in mo.group(0) else 0
                 if not any(abs(v - x) <= max(1.5 * e, 0.5 * 10 ** -dec) + 1e-9 for x, e in rows): W.append(f"{i}: value {mo.group(0)} matches no row of {', '.join(os.path.basename(f) for f in files)} within its reading error")
+
+    def dependants(s, seeds):
+        """Every card that rests, directly or through other cards, on the seeds: {card id: steps away}."""
+        rev = defaultdict(set)  # rev[y] = cards that rest on y
+        for a, r, b in s.edges():
+            if r in ("obtained_by", "based_on", "extends", "support", "against", "sides", "from", "closed_by", "explains", "tests", "addresses", "uses", "results") or r.endswith(":basis"): rev[b].add(a)
+            elif r in ("underlies", "supports"): rev[a].add(b)
+        seen, front, depth = dict.fromkeys(seeds, 0), list(seeds), 0
+        while front:
+            depth += 1; nxt = []
+            for x in front:
+                for a in rev[x]:
+                    if a not in seen: seen[a] = depth; nxt.append(a)
+            front = nxt
+        return {x: d for x, d in seen.items() if x not in seeds}
+
+    def retracted(s):
+        """{card id: source or card whose retraction it falls under} for every retracted source, its evidence cards,
+        and any card retracted on its own."""
+        out = {}
+        for c in s.cards.values():
+            if c.fam == "source" and c.get("retracted"):
+                out[c.id] = c.id
+                for e in s.evidence(c.id): out[e.id] = c.id
+            elif c.fam == "evidence" and c.get("retracted"): out.setdefault(c.id, c.id)
+        return out
+
+    def retraction_warnings(s, W):
+        """A card resting on retracted evidence is a warning until '- retraction_checked:: P012 — <what changed>' (or
+        the retracted card's id) records that it was reviewed."""
+        r = s.retracted()
+        for root in sorted(set(r.values())):
+            seeds = {x for x, v in r.items() if v == root}
+            for d, _n in sorted(s.dependants(seeds).items()):
+                if d in r: continue
+                done = {t for v in s.cards[d].all("retraction_checked") for t in re.findall(r"\b(P\d{3}(?:-\d{3})?)\b", v)}
+                if root not in done and not (seeds & done):
+                    W.append(f"{d}: rests on {root}, which is retracted. Re-grade, re-open or correct it as though that evidence were absent, then add '- retraction_checked:: {root} — <what changed>'")
 
     def dupes(s, E, W):
         """Duplicate rules. Same source + same statement is a duplicate; other source + same statement must be linked, never merged."""
@@ -561,9 +659,38 @@ def pdf_pages(pdf):
         return [paras(pg.extract_text()) for pg in PdfReader(pdf).pages], "pypdf"
     except ImportError: sys.exit("No PDF text extractor: pip install pymupdf (or pdfplumber), or install poppler.")
 
-def cmd_anchor(m, pid, srcs, force=False, si=False):
+def anchor_correction(m, pid, srcs):
+    """Register a published correction (erratum, corrigendum, notice). Each new one is appended to P###_correction.pdf
+    and its paragraphs to P###_correction_text.md, numbered on from the last, so anchors already cited never move."""
+    try: import pymupdf as fitz
+    except ImportError: import fitz
+    d = J(m.root, "sources", pid); pdf, out = J(d, pid + "_correction.pdf"), J(d, pid + "_correction_text.md")
+    if pid not in m.cards: sys.exit(f"anchor --correction: {pid} has no source card yet")
+    pdfs = [f for f in srcs if f.lower().endswith(".pdf")]
+    if not pdfs: sys.exit("anchor --correction: give the correction notice as a PDF")
+    doc = fitz.open(pdf) if os.path.exists(pdf) else fitz.open(); n0 = len(doc)
+    for f in pdfs: doc.insert_pdf(fitz.open(f))
+    doc.save(pdf + ".tmp"); doc.close(); os.replace(pdf + ".tmp", pdf); seal(m.root, pdf)
+    old = rd(out) if os.path.exists(out) else f"# {pid} published corrections, anchored text\n\nAn index of paragraphs for anchors and checks. Each correction is appended; earlier paragraph numbers never change.\n"
+    last = max([int(x) for x in re.findall(r"\^c(\d{4})\s*$", old, re.M)] or [0])
+    tmp = fitz.open(); [tmp.insert_pdf(fitz.open(f)) for f in pdfs]; tmp.save(out + ".pdf"); tmp.close()
+    pages, how = pdf_pages(out + ".pdf"); os.remove(out + ".pdf")
+    lines, n = [old.rstrip("\n"), "", f"<!-- added {TODAY}: {', '.join(os.path.basename(f) for f in pdfs)} -->", ""], last
+    for k, blks in enumerate(pages, n0 + 1):
+        lines += [f"## Page {k}", ""]
+        for b in blks:
+            b = " ".join(re.sub(r"(\w)-\n(\w)", r"\1\2", unicodedata.normalize("NFKC", b)).split())
+            if b and not re.fullmatch(r"[\d\s|.-]+", b): n += 1; lines += [f"{b} ^c{n:04d}", ""]
+    wr(out, "\n".join(lines))
+    print(f"{pid}_correction: pages {n0 + 1}-{n0 + sum(1 for _ in pages)} added, paragraphs c{last + 1:04d}-c{n:04d} -> {os.path.relpath(out, m.root)}\n"
+          f"Now note the correction on the source card (a coverage line), fix each affected card keeping its id, and add to it\n"
+          f"'- corrected:: {TODAY} — <what changed>' and an anchor into the correction ([[{pid}_correction_text#^c{last + 1:04d}]]).")
+
+
+def cmd_anchor(m, pid, srcs, force=False, si=False, correction=False):
     """Register a source file (or, with --si, its supplementary files) and write the paragraph-anchored text."""
     if not re.fullmatch(r"P\d{3}", pid): sys.exit("anchor: first argument is a source id such as P012")
+    if correction: return anchor_correction(m, pid, srcs)
     d = J(m.root, "sources", pid); os.makedirs(d, exist_ok=True)
     part, letter = ("_SI", "s") if si else ("", "b")
     out = J(d, pid + part + "_text.md")
@@ -1001,19 +1128,19 @@ def mark(m, only=None, force=False):
     except ImportError: return None
     mp = J(m.root, "index", "marks.json"); marks = m.marks()
     vault, done = urllib.parse.quote(m.cfg.get("obsidian_vault") or os.path.basename(os.path.abspath(m.root))), []
-    is_si = lambda a: a.startswith("SI") or bool(re.fullmatch(r"s\d{4}", a))
+    strip = lambda a: a[3:] if a.startswith(("SI-", "CR-")) else a
     for src in [c for c in m.cards.values() if c.fam == "source" and (not only or c.id == only)]:
-        pid = src.id; has_si = os.path.exists(J(m.root, "sources", pid, pid + "_SI.pdf"))
-        for part in ("", "_SI"):
+        pid = src.id; have = {pt for pt in PARTS if os.path.exists(J(m.root, "sources", pid, pid + pt + ".pdf"))}
+        where_ = lambda c: ({part_of(a) for a in m.anchors(c)} & have) or {""}  # a card goes on each part it is anchored in, else on the main PDF
+        for part in PARTS:
             key = pid + part; pdf, out = J(m.root, "sources", pid, key + ".pdf"), J(m.root, "sources", pid, key + "_marked.pdf")
             if not os.path.exists(pdf): continue
-            if part: ev = [c for c in m.evidence(pid) if any(is_si(a) for a in m.anchors(c))]
-            else: ev = [c for c in m.evidence(pid) if not has_si or not m.anchors(c) or any(not is_si(a) for a in m.anchors(c))]
+            ev = [c for c in m.evidence(pid) if part in where_(c)]
             ev.sort(key=lambda c: c.id)
-            sig = hashlib.sha1(json.dumps([vault, os.path.getsize(pdf)] + [[c.id, c.name, c.type, c.status, c.title, c.get("loc"), c.all("anchor")] for c in ev]).encode()).hexdigest()
+            sig = hashlib.sha1(json.dumps([vault, os.path.getsize(pdf), src.get("retracted")] + [[c.id, c.name, c.type, c.status, c.title, c.get("loc"), c.all("anchor")] for c in ev]).encode()).hexdigest()
             if not force and marks.get(key, {}).get("sig") == sig and os.path.exists(out): continue
             doc, cards, rows, edge = fitz.open(out if os.path.exists(out) else pdf), {}, Counter(), {}
-            bl = {k: v for k, v in m.blocks(pid).items() if (k[0] == "s") == bool(part)}
+            bl = {k: v for k, v in m.blocks(pid).items() if k[0] == PARTS[part]}
             for page in doc:  # remove only brain-mesh's own marks; anything the user added to the marked copy stays
                 for a_ in [a_ for a_ in page.annots() or [] if a_.info.get("title") == "brain-mesh"]: page.delete_annot(a_)
                 for l_ in [l_ for l_ in page.get_links() if str(l_.get("uri", "")).startswith("obsidian://open")]: page.delete_link(l_)
@@ -1023,13 +1150,13 @@ def mark(m, only=None, force=False):
             for c in ev:
                 col, loc, spots = MARK_COLOURS.get(c.type, (1, 1, 0)), c.get("loc").strip("\"'“”"), []
                 words = loc.split()
-                an = [a[3:] if a.startswith("SI-") else a for a in m.anchors(c) if is_si(a) == bool(part)]
+                an = [strip(a) for a in m.anchors(c) if part_of(a) == part]
                 stated = [int(a[1:]) for a in an if re.fullmatch(r"p\d+", a)]
                 for a in an:
                     lab = re.fullmatch(r"([TF])(\d+)[a-z]*", a)
                     if a in bl: spots.append(find([loc, " ".join(words[:6]), " ".join(words[-6:])], [bl[a][0]] + every) or (min(max(bl[a][0], 1), len(doc)), None))
                     elif lab:
-                        n_ = ("S" if part else "") + lab.group(2)
+                        n_ = ("S" if part == "_SI" else "") + lab.group(2)
                         hit = find([f"Table {n_}"] if lab.group(1) == "T" else [f"Figure {n_}", f"Fig. {n_}", f"Fig {n_}"], stated + every)
                         spots.append((hit[0], hit[1][:1]) if hit else ((stated or [1])[0], None))
                 spots = spots or [(p, None) for p in stated if 1 <= p <= len(doc)] or [(1, None)]
@@ -1051,6 +1178,9 @@ def mark(m, only=None, force=False):
                     page.insert_link({"kind": fitz.LINK_URI, "from": tag, "uri": f"obsidian://open?vault={vault}&file={urllib.parse.quote(os.path.relpath(c.path, m.root))}"})
                     first = first or {"page": pno, "annot": (h or t).xref, "how": "highlight" if h else "page"}
                 cards[c.id] = first
+            if len(doc) and src.get("retracted") and not part:  # a retracted source says so on its first page
+                rb = doc[0].add_freetext_annot(fitz.Rect(30, 17, doc[0].rect.width - 30, 33), f"RETRACTED: {src.get('retracted')}", fontsize=9, text_color=(0.75, 0, 0), fill_color=(1, 0.92, 0.92))
+                rb.set_info(title="brain-mesh"); rb.update()
             if len(doc):
                 lg = doc[0].add_freetext_annot(fitz.Rect(30, 2, doc[0].rect.width - 30, 16), LEGEND, fontsize=5, text_color=(0.3, 0.3, 0.3)); lg.set_info(title="brain-mesh"); lg.update()
             doc.save(out + ".tmp", deflate=True, garbage=3); doc.close(); os.replace(out + ".tmp", out)
@@ -1075,6 +1205,7 @@ def frontier(m):
 def lk(c, label=None): return f"[[{c.name}|{label or c.id + ' ' + one(c.title, 110)}]]"
 
 def cmd_build(root):
+    fixnames(root)
     n = fixlinks(Mesh(root))
     m = Mesh(root)
     def fill(card, L):  # replace the AUTO block of a hub card
@@ -1114,7 +1245,8 @@ def cmd_build(root):
         if ev:
             L.append(f"**Evidence: {len(ev)} cards from {len({c.id[:4] for c in ev})} sources** ({', '.join(f'{k} {v}' for k, v in ranked(Counter(c.type for c in ev)))})")
             ev.sort(key=lambda c: (rank.index(c.type) if c.type in rank else 99, c.id))
-            L += [f"- {lk(c, one(c.title, 110))} · {c.type}" for c in ev[:30]]
+            rx = m.retracted()
+            L += [f"- {lk(c, one(c.title, 110))} · {c.type}" + (" · **retracted**" if c.id in rx else "") for c in ev[:30]]
             if len(ev) > 30: L.append(f"- … {len(ev) - 30} more: see this note's backlinks, or run `mesh.py show {con.id}`")
             L.append("")
         if inbound.get(con.id): L += ["**Linked from other concepts**"] + mirror(inbound[con.id]) + [""]
@@ -1330,24 +1462,16 @@ def cmd_health(m):
     sec("Experiments registered or running for over 90 days", [f"{row(e)} [{e.status} since {e.get('registered')}]" for e in m.pages("E") if e.status in ("registered", "running") and days(e.get("registered")) > 90])
     sec("Claims, observations and models not yet cited by any finding, tension, gap, hypothesis or experiment", [row(c) for c in m.evidence() if c.type in ("claim", "observation", "model") and c.id not in cited], 15)
     sec("Cards flagged as doubtful at extraction", [f"{row(c)} [{c.get('flag')}]" for c in m.evidence() if c.get("flag")])
+    rx = m.retracted(); W_ = []; m.retraction_warnings(W_)
+    sec("Retracted sources and cards, with dependants not yet reviewed", [f"{x} {one(m.cards[x].title, 90)} [{m.cards[x].get('retracted')}; {sum(1 for w in W_ if f'rests on {x},' in w)} dependants to review]" for x in sorted(set(rx.values()))])
+    sec("Published corrections registered", [f"{c.id} {one(c.title, 80)} [{sum(1 for e in m.evidence(c.id) if e.get('corrected'))} cards marked corrected]" for c in m.cards.values() if c.fam == "source" and os.path.exists(J(m.root, "sources", c.id, c.id + "_correction.pdf"))])
     sec("Sources not yet integrated", [f"{row(c)} [{c.status}]" for c in m.cards.values() if c.fam == "source" and c.status != "integrated"])
     print(f"\nRetired cards kept as pointers: {sum(1 for c in m.cards.values() if c.get('retired'))}. Run `check` for errors and duplicate warnings, `gaps` for research signals.")
 
 def cmd_impact(m, i):
     """Everything that rests, directly or through other cards, on a card or a whole source."""
     start = need(m, i); seeds = {c.id for c in m.evidence(start.id)} | {start.id} if start.fam == "source" else {start.id}
-    rev = defaultdict(set)  # rev[y] = cards that rest on y
-    for a, r, b in m.edges():
-        if r in ("obtained_by", "based_on", "extends", "support", "against", "sides", "from", "closed_by", "explains", "tests", "addresses", "uses", "results") or r.endswith(":basis"): rev[b].add((a, r))
-        elif r in ("underlies", "supports"): rev[a].add((b, r))
-    seen, frontier_, depth = dict.fromkeys(seeds, 0), list(seeds), 0
-    while frontier_:
-        depth += 1; nxt = []
-        for x in frontier_:
-            for a, _r in rev[x]:
-                if a not in seen: seen[a] = depth; nxt.append(a)
-        frontier_ = nxt
-    hit = sorted((d, m.cards[x].fam != "page", x) for x, d in seen.items() if x not in seeds)
+    hit = sorted((d, m.cards[x].fam != "page", x) for x, d in m.dependants(seeds).items())
     print(f"{len(hit)} cards rest on {start.id} ({one(start.title, 80)}):")
     for d, _p, x in hit: print(f"  step {d}  {x}\t{m.cards[x].type}/{m.cards[x].status or '-'}\t{one(m.cards[x].title, 100)}")
     print("Review each one: re-grade findings, re-open gaps, and note the change on the concept hubs involved.")
@@ -1441,6 +1565,7 @@ def cmd_log(m, msg):
 
 HELP = """version | upgrade <vault>     tooling version; run `upgrade` from the repository copy to update a vault
 init <dir> <name> <topic>     create a vault                  anchor <P###> <file> [--force]  paragraph-anchored text
+anchor <P###> --correction <pdf> register a published correction: appended to P###_correction.pdf, paragraphs c####
 anchor <P###> --si <files...> register supplementary material: PDFs anchored as P###_SI_text.md (s####), data files sealed as P###_SI-<name>.*
 figure <P###> <page> [--si]   page image with a coordinate grid, to choose a panel's box
 figure <P###> <page> <x0,y0,x1,y1> <name> [--logy] [--ycal v@pos,...] [--force]   read a panel's values from the PDF's vector drawing
@@ -1479,7 +1604,7 @@ def main():
     root = find_root()
     if c == "build": return cmd_build(root)
     m = Mesh(root)
-    if c == "anchor": cmd_anchor(m, a[0], [x for x in a[1:] if not x.startswith("--")], "--force" in a, "--si" in a)
+    if c == "anchor": cmd_anchor(m, a[0], [x for x in a[1:] if not x.startswith("--")], "--force" in a, "--si" in a, "--correction" in a)
     elif c == "figure": cmd_figure(m, a)
     elif c == "progress": cmd_progress(m, a[0])
     elif c == "staged": cmd_staged(m)

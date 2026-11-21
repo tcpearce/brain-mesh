@@ -58,6 +58,7 @@ sources/P012/             one folder per source
   P012-F5c.png, P012-F5c.csv  a figure panel as an image, and the values read from it with their reading errors
   P012_SI.pdf, P012_SI_marked.pdf, P012_SI_text.md   supplementary material: sealed, marked and anchored (^s0001 ...)
   P012_SI-<name>.<ext>      supplementary data files and code, sealed
+  P012_correction.pdf, P012_correction_marked.pdf, P012_correction_text.md   published corrections, appended in order (^c0001 ...)
   P012_concepts.md          concepts an extraction agent proposed, waiting to be merged (brain-mesh-batch)
   P012_progress.md          an extraction agent's notes on where it stands
 findings/K###-<slug>.md   tensions/X###-...   gaps/G###-...
@@ -199,6 +200,7 @@ Codes on evidence cards:
 - `anchor::` where it comes from: `[[P012_text#^b0042]]` for a paragraph, or `T2` (table), `F3b` (figure panel), `p7` (page), `eq4`; in the supplementary material `[[P012_SI_text#^s0042]]`, `SI-T2`, `SI-F3`, `SI-p4`, and `SI-<name>` for a supplementary data file. Give several, separated by commas, when the paper states the same thing more than once, and add the page to a table or figure anchor (`T2, p7`).
 - `loc:: "..."` six to twelve consecutive words copied from the anchored paragraph. The tooling uses it to confirm the anchor and to place the card's highlight on the PDF. It is a locator, not an excerpt; keep it short.
 - `missing:: <kind> — <what the source does not give>` when the source itself lacks something the card needs. Kinds: `method`, `basis`, `data`, `statistics`, `sample-size`, `definition`. An observation must link the method that produced it (`obtained_by`) and a claim the evidence it rests on (`based_on`), or say with `missing::` that the source gives none. These are genuine holes in the evidence and feed `brain-mesh-gaps`. Look in the supplementary material before recording one; while it is unread, a `missing::` is provisional and the checker says so.
+- Housekeeping codes: `retracted:: <date and reason>` on a retracted source (or a single retracted card); `retraction_checked:: P012 — <what changed>` on a card reviewed after a retraction it rests on; `corrected:: <date> — <what changed>` on a card fixed after a published correction, together with an anchor into `P012_correction_text`. See `brain-mesh-housekeeping`.
 - Optional: `origin:: claude` when the statement is Claude's reading and not the authors' words; `via:: table`, `figure`, `si` or `inferred` when it did not come from the running text (a value read off a plot is `via:: figure`, with its reading error and the panel's data file, as `brain-mesh-add-paper` describes); `null:: true` for a null or negative result; `flag:: <doubt about the extraction>`; `ref::` on cited cards; `lens:: L003` when added in a lens pass.
 
 ### Synthesis cards

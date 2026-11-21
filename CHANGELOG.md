@@ -2,6 +2,15 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.2.0 (2026-11-21)
+
+Housekeeping gaps closed.
+
+- **Retractions.** `retracted::` on a source card (or a single card) now has effect: every card resting on the retracted evidence, directly or through other cards and including concept hubs, is a warning until `- retraction_checked:: P012 — <what changed>` records its review; `check` warns until the source card's prose states the retraction; the marked PDF gets a RETRACTED banner; hubs label retracted cards; `health` lists retracted sources with dependants still to review. `impact` and these warnings share one dependency walk.
+- **Published corrections.** `anchor P012 --correction notice.pdf` appends each correction to `P012_correction.pdf` (sealed, marked) and its paragraphs to `P012_correction_text.md` as `^c####`, numbered on so earlier anchors never move. A card with `corrected::` must anchor into the correction. `health` lists corrected sources.
+- **Renamed cards.** `build` restores a card's id when its file was renamed without it, from the card's `- id::` line, keeps the user's wording as the slug, adds a renamed concept's new name as an alias, and rewrites the links Obsidian had pointed at the new name.
+- **Tests** for `health`, `impact`, `merge`, retractions, corrections and rename repair.
+
 ## 1.1.0 (2026-11-21)
 
 From the user's review of the first test on real papers.

@@ -69,15 +69,17 @@ The [[response]] was 4.2 units at 25 degrees.
 CARDS
 python3 tools/mesh.py split batch.md | grep -q "3 cards written" && pass "split wrote 3 cards" || fail "split"
 python3 tools/mesh.py build | grep -q "check: 0 errors, 0 warnings" && pass "smoke vault builds clean" || fail "smoke vault build"
+[ -d sources/P001-smoke-test-note ] && [ ! -d sources/P001 ] && pass "a source folder is named after its source card" || fail "source folder name"
 [ -f .brain-mesh/skills/brain-mesh/SKILL.md ] && pass "init copied the instructions into the vault" || fail "instructions not copied"
 [ -f .gitignore ] && pass "init wrote a .gitignore" || fail "no .gitignore"
 cp MAP.md /tmp/map1 && python3 tools/mesh.py build > /dev/null && cmp -s MAP.md /tmp/map1 && pass "a second build leaves MAP.md unchanged" || fail "MAP.md changes between builds"
 
 # 3. checks must catch planted faults
-sed -i.bak 's/= 4.2/= 4.7/' sources/P001/P001-001-response-is-4-2.md
+S1=$(ls -d sources/P001*)
+sed -i.bak 's/= 4.2/= 4.7/' $S1/P001-001-response-is-4-2.md
 python3 tools/mesh.py check | grep -q "value 4.7 not found" && pass "a mistyped value is caught" || fail "mistyped value not caught"
-mv sources/P001/P001-001-response-is-4-2.md.bak sources/P001/P001-001-response-is-4-2.md
-echo "tampered" >> sources/P001/P001_original.txt
+mv $S1/P001-001-response-is-4-2.md.bak $S1/P001-001-response-is-4-2.md
+echo "tampered" >> $S1/P001_original.txt
 out="$(python3 tools/mesh.py check || true)"   # check exits non-zero when it finds errors, which is what we want here
 echo "$out" | grep -q "has changed since it was registered" && pass "a changed source file is caught" || fail "changed source not caught"
 
@@ -92,7 +94,7 @@ PYTHONHASHSEED=2 python3 tools/mesh.py build > /dev/null; sums > "$T/s2"
 cmp -s "$T/s1" "$T/s2" && pass "builds are identical whatever the hash seed" || fail "build output depends on the run"
 python3 tools/mesh.py unread P001 1 | tail -1 | grep -q "^P001: [0-9]* paragraphs, [0-9]* with a card anchored" && pass "unread reports paragraphs without a card" || fail "unread"
 if python3 -c "import pymupdf" 2>/dev/null || python3 -c "import fitz" 2>/dev/null; then
-  [ -f sources/P001/P001_marked.pdf ] && pass "marked PDFs present" || fail "marked PDF missing"
+  [ -f sources/P001*/P001_marked.pdf ] && pass "marked PDFs present" || fail "marked PDF missing"
 else echo "skip marked-PDF check: PyMuPDF not installed"; fi
 # 5. supplementary material, figure reading, uncoded numbers, missing evidence, staged concepts (1.1.0)
 if python3 -c "import pymupdf" 2>/dev/null || python3 -c "import fitz" 2>/dev/null; then
@@ -280,16 +282,17 @@ else echo "skip feature tests: PyMuPDF not installed"; fi
 cp -r "$ROOT/demo-vault" "$T/h"; cd "$T/h"; cp "$MESH" tools/mesh.py
 python3 tools/mesh.py health > health.txt; grep -q "^## Findings whose status no longer matches their evidence" health.txt && pass "health report" || fail "health"
 python3 tools/mesh.py impact P001-003 > impact.txt; grep -q "K001" impact.txt && pass "impact finds the finding that rests on a card" || fail "impact"
-sed 's/^- id:: P001-003$/- id:: P001-012/' sources/P001/P001-003-*.md > sources/P001/P001-012-capacity-again.md
-python3 tools/mesh.py merge P001-003 P001-012 > /dev/null && grep -q "^- retired:: merged into \[\[P001-003" sources/P001/P001-012-capacity-again.md && pass "merge retires the dropped card as a pointer" || fail "merge"
+S1=$(ls -d sources/P001*); S2=$(ls -d sources/P002*)
+sed 's/^- id:: P001-003$/- id:: P001-012/' $S1/P001-003-*.md > $S1/P001-012-capacity-again.md
+python3 tools/mesh.py merge P001-003 P001-012 > /dev/null && grep -q "^- retired:: merged into \[\[P001-003" $S1/P001-012-capacity-again.md && pass "merge retires the dropped card as a pointer" || fail "merge"
 python3 tools/mesh.py build > build.txt; grep -q "check: 0 errors" build.txt && pass "vault builds clean after a merge" || fail "build after merge"
-sed -i.bak 's/^- kind:: paper$/- kind:: paper\n- retracted:: 2026-11-21 test retraction/' sources/P002/P002-garcia-*.md
+sed -i.bak 's/^- kind:: paper$/- kind:: paper\n- retracted:: 2026-11-21 test retraction/' $S2/P002-garcia-*.md
 out="$(python3 tools/mesh.py check || true)"
 echo "$out" | grep -q "X001: rests on P002, which is retracted" && pass "a card resting on a retracted source is flagged" || fail "retraction dependant"
 echo "$out" | grep -q "P002: retracted, but the prose does not say so" && pass "an unannounced retraction is flagged" || fail "retraction prose"
 python3 tools/mesh.py health > health.txt; grep -q "^  P002 .*dependants to review" health.txt && pass "health lists the retraction" || fail "health retraction"
 for c in $(echo "$out" | sed -n 's/^warn  \([A-Za-z0-9-]*\): rests on P002.*/\1/p'); do f=$(find . \( -name "$c-*.md" -o -name "$c.md" \) -not -path "./.brain-mesh/*" | head -1); sed -i.bak 's/^## Codes$/## Codes\n- retraction_checked:: P002 — reviewed in the test/' "$f"; done
-sed -i.bak '0,/^# /s/^# .*$/&\n\n**Retracted** in this test./' sources/P002/P002-garcia-*.md
+sed -i.bak '0,/^# /s/^# .*$/&\n\n**Retracted** in this test./' $S2/P002-garcia-*.md
 (python3 tools/mesh.py check || true) | grep -q "retract" && fail "retraction warnings remain after review" || pass "retraction_checked clears the warnings"
 python3 - <<'PY'
 try: import pymupdf as fitz
@@ -297,14 +300,100 @@ except ImportError: import fitz
 for k, txt in ((1, "Correction: the binding capacity at 45 degrees in water was 1.4, not 1.3 as printed."), (2, "Second correction: the film thickness rose by 17 percent, not 18 percent.")):
     d = fitz.open(); d.new_page().insert_text((72, 72), txt, fontsize=10); d.save(f"corr{k}.pdf")
 PY
-python3 tools/mesh.py anchor P001 --correction corr1.pdf > /dev/null && grep -q "1.4, not 1.3 as printed. ^c0001" sources/P001/P001_correction_text.md && grep -q "^P001_correction.pdf " ledger/checksums.txt && pass "a correction is registered, sealed and anchored" || fail "correction"
-python3 tools/mesh.py anchor P001 --correction corr2.pdf > /dev/null && grep -q "1.4, not 1.3 as printed. ^c0001" sources/P001/P001_correction_text.md && grep -q "17 percent, not 18 percent. ^c0002" sources/P001/P001_correction_text.md && pass "a second correction is appended without moving earlier anchors" || fail "second correction"
-f=$(ls sources/P001/P001-004-*.md); sed -i.bak 's/^## Codes$/## Codes\n- corrected:: 2026-11-21 — the value was misprinted in the paper/' "$f"
+python3 tools/mesh.py anchor P001 --correction corr1.pdf > /dev/null && grep -q "1.4, not 1.3 as printed. ^c0001" $S1/P001_correction_text.md && grep -q "^P001_correction.pdf " ledger/checksums.txt && pass "a correction is registered, sealed and anchored" || fail "correction"
+python3 tools/mesh.py anchor P001 --correction corr2.pdf > /dev/null && grep -q "1.4, not 1.3 as printed. ^c0001" $S1/P001_correction_text.md && grep -q "17 percent, not 18 percent. ^c0002" $S1/P001_correction_text.md && pass "a second correction is appended without moving earlier anchors" || fail "second correction"
+f=$(ls $S1/P001-004-*.md); sed -i.bak 's/^## Codes$/## Codes\n- corrected:: 2026-11-21 — the value was misprinted in the paper/' "$f"
 (python3 tools/mesh.py check || true) | grep -q "P001-004: corrected, but no anchor points into" && pass "a corrected card must cite the correction" || fail "corrected without anchor"
 sed -i.bak 's/^- anchor:: \(.*\)$/- anchor:: \1, [[P001_correction_text#^c0001]]/' "$f"
-python3 tools/mesh.py build > build.txt; grep -q "check: 0 errors" build.txt && [ -f sources/P001/P001_correction_marked.pdf ] && pass "the correction is marked and the vault builds clean" || fail "correction build"
-old=$(basename sources/P001/P001-005-*.md .md); mv sources/P001/$old.md sources/P001/thickness-note.md
+python3 tools/mesh.py build > build.txt; grep -q "check: 0 errors" build.txt && [ -f $S1/P001_correction_marked.pdf ] && pass "the correction is marked and the vault builds clean" || fail "correction build"
+old=$(basename $S1/P001-005-*.md .md); mv $S1/$old.md $S1/thickness-note.md
 grep -rl "\[\[$old" --include=*.md . | grep -v "_text.md" | xargs sed -i.bak "s/\[\[$old/[[thickness-note/g"
 mv concepts/water.md "concepts/Water solvent.md"; grep -rl "\[\[water[]|#]" --include=*.md . | grep -v "_text.md" | xargs sed -i.bak 's/\[\[water\([]|#]\)/[[Water solvent\1/g'
-python3 tools/mesh.py build > build.txt; grep -q "check: 0 errors" build.txt && [ -f sources/P001/P001-005-thickness-note.md ] && [ -f concepts/water.md ] && grep -qi '"water solvent"' concepts/water.md && ! grep -rq "\[\[thickness-note\|\[\[Water solvent" --include=*.md concepts sources gaps findings && pass "renamed cards get their ids back and links follow" || fail "rename repair"
+python3 tools/mesh.py build > build.txt; grep -q "check: 0 errors" build.txt && [ -f $S1/P001-005-thickness-note.md ] && [ -f concepts/water.md ] && grep -qi '"water solvent"' concepts/water.md && ! grep -rq "\[\[thickness-note\|\[\[Water solvent" --include=*.md concepts sources gaps findings && pass "renamed cards get their ids back and links follow" || fail "rename repair"
+# 7. equations in LaTeX (1.3.0)
+if python3 -c "import pymupdf" 2>/dev/null || python3 -c "import fitz" 2>/dev/null; then
+python3 "$MESH" init "$T/e" "Equations" "equation tests" > /dev/null; cd "$T/e"
+python3 - <<'PY'
+try: import pymupdf as fitz
+except ImportError: import fitz
+d = fitz.open(); p = d.new_page(width=400, height=300)
+p.insert_text((40, 50), "The distance between two odorants is the Euclidean distance in descriptor space.", fontsize=9)
+p.insert_text((120, 90), "d = sqrt( sum (x_i - y_i)^2 )", fontsize=11)
+p.insert_text((330, 90), "(1)", fontsize=11)
+p.insert_text((40, 130), "Here x and y are the descriptor vectors of the two odorants.", fontsize=9)
+d.save("eq.pdf")
+PY
+python3 tools/mesh.py anchor P001 eq.pdf > /dev/null
+python3 tools/mesh.py equations P001 > eqs.txt; grep -q "numbered (1)" eqs.txt && pass "equations finds a numbered equation" || fail "equations"
+python3 tools/mesh.py figure P001 1 110,74,360,98 eq1 > /dev/null; [ -f sources/P001/P001-eq1.png ] && pass "an equation is cropped as an image" || fail "equation crop"
+cat > batch.md <<'CARDS'
+=== odorant-distance
+---
+type: concept
+aliases: ["Odorant distance"]
+updated: 2026-01-01
+---
+# Odorant distance
+
+**Definition.** Distance between two odorants in a descriptor space.
+
+## Where it appears
+<!--AUTO:START-->
+<!--AUTO:END-->
+
+## Codes
+- kind:: variable
+- unit:: 1
+
+=== P001-equation-test
+---
+type: source
+status: extracted
+updated: 2026-01-01
+---
+# Equation test
+
+**What it is.** A one-page note with one equation.
+
+## Cards from this source
+<!--AUTO:START-->
+<!--AUTO:END-->
+
+## Codes
+- kind:: other
+- authors:: none
+- year:: 2026
+- coverage:: all | full | one equation
+- coverage:: Supplementary material | none | none
+
+=== P001-001-euclidean-distance
+---
+type: model
+status: reported
+updated: 2026-01-01
+---
+# The distance between two odorants is Euclidean distance in descriptor space
+
+The [[odorant-distance]] between odorants with descriptor vectors $x$ and $y$ is
+
+$$d = \sqrt{\sum_i (x_i - y_i)^2}$$
+
+![[P001-eq1.png]]
+
+**Source:** test, p. 1 · [[P001.pdf#page=1|open page]]
+
+## Codes
+- equation:: d = \sqrt{\sum_i (x_i - y_i)^2} (eq. 1)
+- concepts:: [[odorant-distance]]
+- anchor:: eq1, p1
+- loc:: "the Euclidean distance in descriptor space"
+CARDS
+python3 tools/mesh.py split batch.md > /dev/null
+python3 tools/mesh.py build > build.txt; grep -q "check: 0 errors, 0 warnings" build.txt && pass "a card with an equation builds clean" || { cat build.txt; fail "equation card"; }
+f=$(ls sources/P001*/P001-001-*.md); sed -i.bak 's/^\$\$d = .*\$\$$/$$d = \\sqrt{\\sum_i (x_i + y_i)^2}$$/' "$f"
+(python3 tools/mesh.py check || true) | grep -q "P001-001: the equation in Codes is not displayed in the prose" && pass "prose and Codes disagreeing on an equation is caught" || fail "equation mismatch"
+if python3 -c "import matplotlib" 2>/dev/null; then
+  mv "$f.bak" "$f"; python3 tools/mesh.py latex P001-001 | grep -q "compare the transcription" && pass "latex renders an equation beside the original" || fail "latex render"
+fi
+else echo "skip equation tests: PyMuPDF not installed"; fi
 echo "ALL TESTS PASSED"

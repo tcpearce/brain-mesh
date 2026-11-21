@@ -48,7 +48,7 @@ One writer at a time. If the user may have edited cards in Obsidian since the la
 MAP.md                    home note: overview, then the concept hubs
 MESH.json  SCHEMA.md      marker file and a one-page cheat sheet
 concepts/<slug>.md        concept cards (the hubs)
-sources/P012/             one folder per source
+sources/P012-<slug>/      one folder per source, named after its source card (P012-smith-2021-binding-in-water), so it can be recognised in Obsidian
   P012-<slug>.md            source card
   P012-007-<slug>.md        evidence cards
   P012.pdf                  the source as received: the ground truth, never changed
@@ -161,7 +161,7 @@ updated: 2026-11-20
 
 ### Source cards
 
-One per paper, preprint, thesis, report, dataset or own result.
+One per paper, preprint, thesis, report, dataset or own result. Name it `P012-<first author>-<year>-<two to four title words>` (`P001-lee-2023-principal-odor-map`): `build` names the source's folder after it, so papers can be told apart in Obsidian's file list. Links are unaffected, because Obsidian resolves them by file name.
 
 Human part: `# Authors (year) Title`, then **Citation.** (with links `[[P012.pdf|original PDF]]`, `[[P012_marked.pdf|marked PDF]]` and `[[P012_text|anchored text]]`), **What they did.**, **What they found.**, **Weaknesses.**, **Extraction.** (one sentence on what has and has not been extracted), then a `## Cards from this source` heading followed by the two AUTO marker lines.
 
@@ -177,7 +177,7 @@ One statement from one source. Human part as in the example above: the statement
 |---|---|---|
 | `method` | what was done, to what, with which parameters and instruments; enough to repeat or compare | reported |
 | `observation` | what was measured, the value with uncertainty and n, the conditions, the comparison | measured, derived |
-| `model` | the relation in words and symbols, fitted parameters, range of validity | derived |
+| `model` | the relation in words and in LaTeX (see Equations below), fitted parameters, range of validity | derived |
 | `claim` | what the authors conclude, how strongly they put it, what it rests on | inferred, speculated |
 | `assumption` | what is assumed, where it enters, whether anything tests it | asserted |
 | `limitation` | what limits the result and which statements it affects | reported |
@@ -200,6 +200,7 @@ Codes on evidence cards:
 - `anchor::` where it comes from: `[[P012_text#^b0042]]` for a paragraph, or `T2` (table), `F3b` (figure panel), `p7` (page), `eq4`; in the supplementary material `[[P012_SI_text#^s0042]]`, `SI-T2`, `SI-F3`, `SI-p4`, and `SI-<name>` for a supplementary data file. Give several, separated by commas, when the paper states the same thing more than once, and add the page to a table or figure anchor (`T2, p7`).
 - `loc:: "..."` six to twelve consecutive words copied from the anchored paragraph. The tooling uses it to confirm the anchor and to place the card's highlight on the PDF. It is a locator, not an excerpt; keep it short.
 - `missing:: <kind> — <what the source does not give>` when the source itself lacks something the card needs. Kinds: `method`, `basis`, `data`, `statistics`, `sample-size`, `definition`. An observation must link the method that produced it (`obtained_by`) and a claim the evidence it rests on (`based_on`), or say with `missing::` that the source gives none. These are genuine holes in the evidence and feed `brain-mesh-gaps`. Look in the supplementary material before recording one; while it is unread, a `missing::` is provisional and the checker says so.
+- `equation:: <LaTeX> (eq. 4)` for an equation the source prints or defines in words. The same LaTeX is displayed in the prose as a `$$ ... $$` block, which Obsidian renders, with the symbols explained in words and linked to their concepts; inline symbols use `$x$`. Under a printed equation, embed the cropped image of the original (`![[P012-eq4.png]]`) so the transcription can be checked at a glance. Anchor it with `eq4, p3` for a printed equation, or with the paragraph that defines it in words (then say so in the prose). `check` warns when the Codes and the displayed equation differ, when braces or `$` signs are unbalanced, and when an equation has no anchor.
 - Housekeeping codes: `retracted:: <date and reason>` on a retracted source (or a single retracted card); `retraction_checked:: P012 — <what changed>` on a card reviewed after a retraction it rests on; `corrected:: <date> — <what changed>` on a card fixed after a published correction, together with an anchor into `P012_correction_text`. See `brain-mesh-housekeeping`.
 - Optional: `origin:: claude` when the statement is Claude's reading and not the authors' words; `via:: table`, `figure`, `si` or `inferred` when it did not come from the running text (a value read off a plot is `via:: figure`, with its reading error and the panel's data file, as `brain-mesh-add-paper` describes); `null:: true` for a null or negative result; `flag:: <doubt about the extraction>`; `ref::` on cited cards; `lens:: L003` when added in a lens pass.
 

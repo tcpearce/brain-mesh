@@ -2,6 +2,13 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.3.0 (2026-11-21)
+
+From the user's first look at the test vault in Obsidian.
+
+- **Source folders named after their papers.** `build` names each source folder after its source card (`sources/P001-lee-2023-principal-odor-map/`), so papers can be told apart in Obsidian's file list. A new source starts as `sources/P012/` and is renamed once its source card exists. Links are unaffected; the PDF tags are regenerated with the new paths.
+- **Equations in LaTeX.** New command `equations P012` lists displayed equations with their boxes; `figure P012 <page> <box> eq4` crops one (`eqf5b` for an equation inside Fig. 5B); new code `equation::` holds the LaTeX, displayed in the prose as a `$$` block that Obsidian renders, with the cropped original embedded beneath; new command `latex <card>` draws the transcription beside the original for checking. `check` flags Codes and prose that disagree on an equation, unbalanced braces or `$` signs, and equations without an anchor. Numbers inside equations no longer count as uncoded result numbers.
+
 ## 1.2.0 (2026-11-21)
 
 Housekeeping gaps closed.

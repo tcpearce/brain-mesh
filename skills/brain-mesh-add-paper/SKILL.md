@@ -36,7 +36,7 @@ Read the paper from the PDF itself, viewing pages as images wherever figures, ta
 
 List every unit of the source: each section, table, figure and supplementary item, with a few words on what it holds. These become the `coverage::` lines of the source card. Record supplementary material that was not supplied as `missing`.
 
-Transcribe each data table to `sources/P012/P012-T2.csv` exactly as printed. Cards then cite `T2` and describe the dataset; the numbers stay in the table.
+Transcribe each data table to `P012-T2.csv`, in the source's folder, exactly as printed. Cards then cite `T2` and describe the dataset; the numbers stay in the table.
 
 ## 3. Extract
 
@@ -78,6 +78,16 @@ Values that appear only in a figure are evidence like any other, but each carrie
 Then look at the image and the rows together. Delete rows that are not data, name the series and categories (rotated labels are not matched), take the meaning of the error bars from the caption, and add a `#` line saying what was checked. A broken axis is read one segment at a time, with one box each.
 
 A card that cites a figure value has `via:: figure`, an anchor such as `F2c, p6`, and the value with its reading error and how it was read: `- value:: [[x]] = 0.354 ± 0.002 (Fig. 5C, POM Linear, read from the picture)`. The prose says the same, including what the error bars are. `check` compares each such value with the panel's .csv. Where the text also states a value, compare the two; a difference larger than the reading error is an `oddity` card.
+
+### Equations
+
+Extract every equation the source states, printed or defined in words, as LaTeX. Text extraction garbles mathematics, so equations are transcribed from the page image, never from the anchored text.
+
+1. `python3 tools/mesh.py equations P012` lists displayed equations (lines set in mathematical fonts, or carrying an equation number) with their boxes. It cannot see equations drawn inside figures or defined only in words: look at the pages, the figures and the methods too.
+2. Crop each printed equation: `python3 tools/mesh.py figure P012 <page> x0,y0,x1,y1 eq4`, using the equation's own number, or the figure it sits in (`eqf5b` for one inside Fig. 5B). This writes `P012-eq4.png`.
+3. Read the image and write the LaTeX. Put it on the card that states the relation (usually a `model`, `definition` or `method` card): in the prose as a `$$ ... $$` block followed by `![[P012-eq4.png]]`, with each symbol explained and linked to its concept; in Codes as `- equation:: <the same LaTeX> (eq. 4)`; and `eq4, p3` in the anchors.
+4. An equation defined only in words ("the square root of the sum of squared differences") is written out too, anchored to its paragraph, and the prose says that the paper prints none. Add nothing the source does not state: where it leaves a choice open (a sign convention, a normalisation), say so instead of filling it in.
+5. Check each transcription: `python3 tools/mesh.py latex P012-007` draws the LaTeX beside the cropped original. Compare symbol by symbol: subscripts, signs, limits of sums, and what is in a numerator.
 
 ## 4. Concepts
 

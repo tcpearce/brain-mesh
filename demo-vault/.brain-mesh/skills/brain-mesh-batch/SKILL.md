@@ -11,7 +11,7 @@ With up to about five papers, add them one at a time with `brain-mesh-add-paper`
 
 ## Why three phases
 
-Each paper's own folder (`sources/P012/`) can be written by one agent without touching anyone else's. Everything shared cannot be: concept hubs, findings, tensions, gaps, `index/`, `MAP.md`, the ledger and the marked PDFs. So:
+Each paper's own folder (`sources/P012-<slug>/`) can be written by one agent without touching anyone else's. Everything shared cannot be: concept hubs, findings, tensions, gaps, `index/`, `MAP.md`, the ledger and the marked PDFs. So:
 
 1. **Prepare** (one session, in order): register every paper and seed the shared vocabulary.
 2. **Extract** (one agent per paper, in parallel): each writes only its own folder.
@@ -41,7 +41,7 @@ Give each agent, in its prompt:
 
 - The vault's path, its paper's id and title, and where the clone of `tcpearce/brain-mesh` is (or how to get it).
 - "Read `skills/brain-mesh/SKILL.md`, then `skills/brain-mesh-add-paper/SKILL.md`. Carry out steps 2 to 7 for P012 only. Step 8 (integration) is done later by the session that launched you."
-- **May write only** inside `sources/P012/`: its evidence cards, figure files (`P012-F2.png`, `P012-F2.csv`), `P012_concepts.md` and `P012_progress.md`.
+- **May write only** inside its own source folder (`sources/P012-<slug>/`, or `sources/P012/` before its source card exists): its evidence cards, figure files (`P012-F2.png`, `P012-F2.csv`), `P012_concepts.md` and `P012_progress.md`.
 - **Must not write** `concepts/`, `findings/`, `tensions/`, `gaps/`, `hypotheses/`, `experiments/`, `index/`, `MAP.md`, `ledger/`, or another source's folder. Must not run `build`, `mark`, `log`, `anchor`, `seal` or `upgrade`, which write shared files.
 - **May run** `check P012`, `unread P012`, `sample P012`, `progress P012`, `figure P012 ...`, `id P012`, `find`, `show`, `concept`, `neighbours P012`, and `split` for batches that hold only its own evidence cards.
 - **New concepts.** Look for an existing concept first (`python3 tools/mesh.py concept "<name>"`). Only if none fits, write a full concept card block, in the usual `=== <name>` batch format, into `sources/P012/P012_concepts.md`, and link it from the cards as usual. `check P012` reports those links as warnings, not errors. Never put concept blocks in a batch for `split`.

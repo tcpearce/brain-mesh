@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.2.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.3.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -77,9 +77,30 @@ def seal(root, path):
     keep = [l for l in (rd(p).splitlines() if os.path.exists(p) else ["# Checksums of the source files as registered. The sources are the ground truth; they must never change."]) if l.split()[:1] != [name]]
     wr(p, "\n".join(keep + [f"{name} {sha(path)} {TODAY}"]) + "\n")
 
+def SRC(root, pid):
+    """A source's folder. It is named after its source card (sources/P012-smith-2021-binding-in-water/), so sources
+    can be recognised in Obsidian's file list; it is plain sources/P012/ until that card exists."""
+    hits = [d for d in sorted(glob.glob(J(root, "sources", pid))) + sorted(glob.glob(J(root, "sources", pid + "-*"))) if os.path.isdir(d)]
+    return hits[0] if hits else J(root, "sources", pid)
+
+
+def source_dirs(root):
+    """Every source folder, with its source id: [(P012, path)]."""
+    return [(os.path.basename(d)[:4], d) for d in sorted(glob.glob(J(root, "sources", "P[0-9][0-9][0-9]*"))) if os.path.isdir(d) and re.fullmatch(r"P\d{3}(-[a-z0-9-]+)?", os.path.basename(d))]
+
+
+def fixfolders(root):
+    """Name each source folder after its source card. Links are unaffected: Obsidian resolves them by file name."""
+    for pid, d in source_dirs(root):
+        cards = [os.path.basename(f)[:-3] for f in glob.glob(J(d, pid + "-*.md")) if re.fullmatch(pid + r"-[a-z][a-z0-9-]*", os.path.basename(f)[:-3])]
+        want = J(root, "sources", cards[0]) if len(cards) == 1 else None
+        if want and os.path.abspath(d) != os.path.abspath(want) and not os.path.exists(want):
+            os.replace(d, want); print(f"source folder renamed: sources/{os.path.basename(d)} -> sources/{cards[0]}")
+
+
 def source_files(root, pid):
     """The registered, sealed files of a source: its PDF or original, and any supplementary files."""
-    d = J(root, "sources", pid)
+    d = SRC(root, pid)
     return sorted(glob.glob(J(d, pid + ".pdf")) + glob.glob(J(d, pid + "_original.*")) + glob.glob(J(d, pid + "_SI.pdf")) + glob.glob(J(d, pid + "_SI-*")) + glob.glob(J(d, pid + "_correction.pdf")))
 
 
@@ -90,6 +111,7 @@ def result_numbers(text):
     """Numbers in a card's prose that state a result: figure, table, page and reference numbers, years and card ids
     are left out, and so are digits inside names (C8, Ca2+, 2-deoxyglucose)."""
     t = re.sub(r"\*\*(Source|Basis|Data|Citation):\*\*.*", " ", plain(text))
+    t = re.sub(r"\$\$.*?\$\$|\$[^$\n]+\$|!\[\[[^\]]*\]\]", " ", t, flags=re.S)  # equations and embedded images
     t = re.sub(r"\b(?:Supplementary\s+)?(?:Fig(?:ure)?s?|Tables?|refs?|Eqs?|pp?)\.?\s*S?\d+[A-Za-z]?(?:\s*(?:,|and|to|–|-)\s*S?\d*[A-Za-z]?)*", " ", t, flags=re.I)
     t = re.sub(r"\b(?:19|20)\d{2}\b|\b[PKXGHEL]\d{3}(?:-\d{3})?\b", " ", t)
     return NUMWORD.findall(t)
@@ -109,8 +131,7 @@ def fixnames(root):
     idline = lambda f: (re.search(r"^- id:: *(\S+)\s*$", rd(f), re.M) or [None, None])[1]
     slug = lambda t: re.sub(r"[^a-z0-9]+", "-", t.lower()).strip("-")
     moves = []
-    for d in sorted(glob.glob(J(root, "sources", "P[0-9][0-9][0-9]"))):
-        pid = os.path.basename(d)
+    for pid, d in source_dirs(root):
         for f in sorted(glob.glob(J(d, "*.md"))):
             b = os.path.basename(f)[:-3]
             if b.startswith(pid + "_"): continue
@@ -194,8 +215,10 @@ class Mesh:
         def add(f, fam, cid):
             if cid in s.cards: s.err.append(f"{cid}: two files claim this id ({s.cards[cid].name}, {os.path.basename(f)})"); return
             s.cards[cid] = c = Card(f, fam, cid); s.byname[c.name] = cid
-        for d in sorted(glob.glob(J(root, "sources", "P[0-9][0-9][0-9]"))):
-            pid = os.path.basename(d)
+        seen_ = {}
+        for pid, d in source_dirs(root):
+            if pid in seen_: s.err.append(f"{pid}: two folders, sources/{seen_[pid]} and sources/{os.path.basename(d)}; merge them into one"); continue
+            seen_[pid] = os.path.basename(d)
             for f in sorted(glob.glob(J(d, "*.md"))):
                 b = os.path.basename(f)[:-3]
                 if b.startswith(pid + "_"): continue  # P###_text.md, P###_original.md: source material, not cards
@@ -229,14 +252,14 @@ class Mesh:
             r = s.resolve(t); (good if r else bad).append(r or t.strip())
         return good, bad
     def aux(s, t):  # link targets that are files or notes, not cards
-        mo = re.fullmatch(r"(P\d{3})(\.pdf|_marked\.pdf|_text|_original(\.\w+)?|_SI\.pdf|_SI_marked\.pdf|_SI_text|_SI-[\w.-]+\.\w+|_correction\.pdf|_correction_marked\.pdf|_correction_text|-S?[TF]\d+[a-z]*(?:-[a-z0-9]+)?\.\w+)", t.strip())
+        mo = re.fullmatch(r"(P\d{3})(\.pdf|_marked\.pdf|_text|_original(\.\w+)?|_SI\.pdf|_SI_marked\.pdf|_SI_text|_SI-[\w.-]+\.\w+|_correction\.pdf|_correction_marked\.pdf|_correction_text|-(?:S?[TF]\d+[a-z]*|eq[0-9a-z]+)(?:-[a-z0-9]+)?\.\w+)", t.strip())
         return bool(mo and mo.group(1) in s.cards) or t.strip() in NOTES
     def blocks(s, pid):
         """Anchored paragraphs of a source: b#### in P###_text.md, s#### in the supplementary P###_SI_text.md."""
         if pid not in s._blocks:
             d = {}
             for part, letter in PARTS.items():
-                p, page = J(s.root, "sources", pid, pid + part + "_text.md"), 0
+                p, page = J(SRC(s.root, pid), pid + part + "_text.md"), 0
                 for line in (rd(p).splitlines() if os.path.exists(p) else []):
                     pg, bl = re.fullmatch(r"## Page (\d+)", line), re.fullmatch(r"(.*) \^(" + letter + r"\d{4})", line)
                     if pg: page = int(pg.group(1))
@@ -246,7 +269,7 @@ class Mesh:
     def si_state(s, pid):
         """'anchored' (supplementary files are in the vault), 'missing' (exists but was not supplied), 'none' (the
         source has none), 'read' (read but not stored) or 'unstated' (no coverage line says)."""
-        if os.path.exists(J(s.root, "sources", pid, pid + "_SI_text.md")) or glob.glob(J(s.root, "sources", pid, pid + "_SI-*")): return "anchored"
+        if os.path.exists(J(SRC(s.root, pid), pid + "_SI_text.md")) or glob.glob(J(SRC(s.root, pid), pid + "_SI-*")): return "anchored"
         for v in (s.cards[pid].all("coverage") if pid in s.cards else []):
             r = [x.strip() for x in v.split("|")]
             if len(r) > 1 and re.search(r"supplement|\bSI\b", r[0], re.I): return {"missing": "missing", "none": "none"}.get(r[1], "read")
@@ -254,7 +277,7 @@ class Mesh:
     def staged(s, pid=None):
         """Concepts proposed by extraction agents in sources/P###/P###_concepts.md, not yet merged into concepts/."""
         out = {}
-        for f in sorted(glob.glob(J(s.root, "sources", pid or "P[0-9][0-9][0-9]", (pid or "P[0-9][0-9][0-9]") + "_concepts.md"))):
+        for f in sorted(glob.glob(J(SRC(s.root, pid), pid + "_concepts.md")) if pid else glob.glob(J(s.root, "sources", "P[0-9][0-9][0-9]*", "P[0-9][0-9][0-9]_concepts.md"))):
             for name in re.findall(r"^=== *(\S+?)(?:\.md)? *$", rd(f), re.M): out.setdefault(name, []).append(os.path.basename(f)[:4])
         return out
     def terms(s, c):
@@ -343,13 +366,13 @@ class Mesh:
                         if a in bl: src += " " + bl[a][1]
                         else: E.append(f"{i}: anchor {a} not in {pid}{part_of(a)}_text.md")
                     elif re.fullmatch(r"(SI-)?T\d+", a):
-                        p = J(s.root, "sources", pid, f"{pid}-{'S' if a.startswith('SI') else ''}{a.split('-')[-1]}.csv")
+                        p = J(SRC(s.root, pid), f"{pid}-{'S' if a.startswith('SI') else ''}{a.split('-')[-1]}.csv")
                         if os.path.exists(p): src += " " + rd(p)
                         else: W.append(f"{i}: table {a} has no sources/{pid}/{os.path.basename(p)}")
-                    elif re.fullmatch(r"SI-[\w.-]+", a) and glob.glob(J(s.root, "sources", pid, f"{pid}_{a}.*")):
-                        for f in glob.glob(J(s.root, "sources", pid, f"{pid}_{a}.*")):
+                    elif re.fullmatch(r"SI-[\w.-]+", a) and glob.glob(J(SRC(s.root, pid), f"{pid}_{a}.*")):
+                        for f in glob.glob(J(SRC(s.root, pid), f"{pid}_{a}.*")):
                             if f.lower().endswith((".csv", ".tsv", ".txt", ".md")): src += " " + rd(f)
-                    elif not re.fullmatch(r"(F\d+[a-z]*|p\d+|eq\d+|SI\S*|CR-p\d+)", a): E.append(f"{i}: bad anchor '{a}'")
+                    elif not re.fullmatch(r"(F\d+[a-z]*|p\d+|eq[0-9a-z]+|SI\S*|CR-p\d+)", a): E.append(f"{i}: bad anchor '{a}'")
                 vals = [s.pair(v) for v in c.all("value")]
                 for var, _r in vals:
                     if not var or s.cards[var].fam != "concept": E.append(f"{i}: 'value::' must start with a [[variable]] concept link then ' = '")
@@ -379,15 +402,22 @@ class Mesh:
                 for _var, rest in vals:
                     mo = re.search(r"[-+−]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?", plain(rest))
                     if mo and mo.group(0) not in digits: W.append(f"{i}: the value {mo.group(0)} in Codes does not appear in the prose above it; make the two agree")
-                if os.path.exists(J(s.root, "sources", pid, pid + ".pdf")):
+                if os.path.exists(J(SRC(s.root, pid), pid + ".pdf")):
                     if not re.search(r"\[\[" + pid + r"(_SI|_correction)?(_marked)?\.pdf", c.human): W.append(f"{i}: the prose has no link to the PDF; add '[[{pid}.pdf#page=N|open page]]' to its Source line")
                     k = next((s.marks().get(pid + pt, {}).get("cards", {}).get(i) for pt in PARTS if s.marks().get(pid + pt, {}).get("cards", {}).get(i)), None)
                     if k and k["how"] != "highlight" and has_block: W.append(f"{i}: its loc phrase could not be found on the PDF page, so it has only a page-level marker; correct the loc or the anchor")
                 rels = {k for k, _v in c.codes}
                 if c.type == "cited" and not c.get("ref"): W.append(f"{i}: cited card has no '- ref::'")
+                eqs = c.all("equation")
+                if c.human.count("$$") % 2 or (re.sub(r"\$\$.*?\$\$", "", c.human, flags=re.S).count("$") % 2): W.append(f"{i}: unbalanced $ signs in the prose, so Obsidian will not render its mathematics")
+                for v in eqs:
+                    tex = re.sub(r"\s*\((?:eq\.?|equation)\s*[0-9A-Za-z]+\)\s*$", "", v.strip())
+                    if tex.count("{") != tex.count("}"): W.append(f"{i}: unbalanced braces in 'equation:: {one(tex, 50)}'")
+                    if re.sub(r"\s", "", tex) not in [re.sub(r"\s", "", x) for x in re.findall(r"\$\$(.*?)\$\$", c.human, re.S)]: W.append(f"{i}: the equation in Codes is not displayed in the prose as a $$ block, or the two differ")
+                if eqs and not any(re.fullmatch(r"(SI-)?eq[0-9a-z]+|[bsc]\d{4}", a) for a in an): W.append(f"{i}: an equation needs an anchor: 'eq4, p3' for a printed equation, or the paragraph that defines it in words")
                 for v in c.all("corrected"):
                     if len(reason(v).split()) < 3: W.append(f"{i}: 'corrected::' needs a date, then ' — ' and what changed")
-                    if os.path.exists(J(s.root, "sources", pid, pid + "_correction_text.md")) and not any(part_of(a) == "_correction" for a in an):
+                    if os.path.exists(J(SRC(s.root, pid), pid + "_correction_text.md")) and not any(part_of(a) == "_correction" for a in an):
                         W.append(f"{i}: corrected, but no anchor points into {pid}_correction_text.md; add the paragraph of the correction notice")
                 miss = set()
                 for v in c.all("missing"):
@@ -458,7 +488,7 @@ class Mesh:
         i = c.id
         if any("±" not in r for _v, r in vals): W.append(f"{i}: a value read from a figure needs its reading error, e.g. '= 0.52 ± 0.01 (Fig. 2, vector read)'")
         figs = [a for a in an if re.fullmatch(r"(SI-)?F\d+[a-z]*", a)]
-        files = [f for a in figs for f in glob.glob(J(s.root, "sources", pid, f"{pid}-{'S' if a.startswith('SI') else ''}{a.split('-')[-1]}*.csv"))]
+        files = [f for a in figs for f in glob.glob(J(SRC(s.root, pid), f"{pid}-{'S' if a.startswith('SI') else ''}{a.split('-')[-1]}*.csv"))]
         if figs and not files: W.append(f"{i}: values read from {', '.join(figs)} but there is no figure data file; read the panel with `mesh.py figure {pid} <page>`"); return
         rows = []
         for f in files:
@@ -664,7 +694,7 @@ def anchor_correction(m, pid, srcs):
     and its paragraphs to P###_correction_text.md, numbered on from the last, so anchors already cited never move."""
     try: import pymupdf as fitz
     except ImportError: import fitz
-    d = J(m.root, "sources", pid); pdf, out = J(d, pid + "_correction.pdf"), J(d, pid + "_correction_text.md")
+    d = SRC(m.root, pid); pdf, out = J(d, pid + "_correction.pdf"), J(d, pid + "_correction_text.md")
     if pid not in m.cards: sys.exit(f"anchor --correction: {pid} has no source card yet")
     pdfs = [f for f in srcs if f.lower().endswith(".pdf")]
     if not pdfs: sys.exit("anchor --correction: give the correction notice as a PDF")
@@ -691,7 +721,7 @@ def cmd_anchor(m, pid, srcs, force=False, si=False, correction=False):
     """Register a source file (or, with --si, its supplementary files) and write the paragraph-anchored text."""
     if not re.fullmatch(r"P\d{3}", pid): sys.exit("anchor: first argument is a source id such as P012")
     if correction: return anchor_correction(m, pid, srcs)
-    d = J(m.root, "sources", pid); os.makedirs(d, exist_ok=True)
+    d = SRC(m.root, pid); os.makedirs(d, exist_ok=True)
     part, letter = ("_SI", "s") if si else ("", "b")
     out = J(d, pid + part + "_text.md")
     if os.path.exists(out) and not force: sys.exit(f"{os.path.basename(out)} exists and anchors are permanent. --force only if no card cites it yet.")
@@ -873,13 +903,20 @@ def cmd_figure(m, args):
         if k in opt and opt[k] is True and k in args and args.index(k) + 1 < len(args): opt[k] = args[args.index(k) + 1]; a.remove(opt[k])
     if len(a) < 2: sys.exit("figure <P###> <page> [x0,y0,x1,y1 <name>] [--si]")
     pid, pno, part = a[0], int(a[1]), "_SI" if "--si" in opt else ""
-    pdf = J(m.root, "sources", pid, pid + part + ".pdf")
+    pdf = J(SRC(m.root, pid), pid + part + ".pdf")
     if not os.path.exists(pdf): sys.exit(f"figure: no {os.path.relpath(pdf, m.root)}")
     doc = fitz.open(pdf); page = doc[pno - 1]
     if len(a) < 4: return figure_grid(m, fitz, page, pid + part, pno)
     clip, name = fitz.Rect(*[float(x) for x in a[2].split(",")]), a[3]
-    if not re.fullmatch(r"S?[TF]\d+[a-z]*(-[a-z0-9]+)?", name): sys.exit("figure: name the panel F2, F5c, SF3 (supplementary figure 3) or F2-left")
-    d = J(m.root, "sources", pid); png, csv = J(d, f"{pid}-{name}.png"), J(d, f"{pid}-{name}.csv")
+    if re.fullmatch(r"eq[0-9a-z]+", name):  # an equation (eq4 for a numbered one, eqf5b for one inside Fig. 5B): the image only, for transcribing into LaTeX
+        out = J(SRC(m.root, pid), f"{pid}-{name}.png"); pad = fitz.Rect(clip.x0 - 2, clip.y0 - 2, clip.x1 + 2, clip.y1 + 2)
+        page.get_pixmap(dpi=300, clip=pad).save(out)
+        print(f"{os.path.relpath(out, m.root)}: transcribe it into LaTeX by reading the image. Put the LaTeX in the card's prose as a $$ block,\n"
+              f"embed the image under it with ![[{pid}-{name}.png]], add '- equation:: <the same LaTeX> ({name.replace('eq', 'eq. ')})' and an anchor '{name}, p{pno}',\n"
+              f"then check the transcription with: python3 tools/mesh.py latex <card id>")
+        return
+    if not re.fullmatch(r"S?[TF]\d+[a-z]*(-[a-z0-9]+)?", name): sys.exit("figure: name the panel F2, F5c, SF3 (supplementary figure 3) or F2-left, or an equation eq4")
+    d = SRC(m.root, pid); png, csv = J(d, f"{pid}-{name}.png"), J(d, f"{pid}-{name}.csv")
     if os.path.exists(csv) and "--force" not in opt:  # never overwrite a data file that may have been checked by hand
         sc = J(m.root, "index", ".scratch"); os.makedirs(sc, exist_ok=True); csv = J(sc, os.path.basename(csv))
         print(f"note: {pid}-{name}.csv exists, so this reading goes to {os.path.relpath(csv, m.root)} for comparison (--force replaces it)")
@@ -1057,6 +1094,80 @@ def cmd_figure(m, args):
           "  and keep the read_error in each card's value line: '= 0.52 ± 0.01 (Fig. 2, read from the vector drawing)'.")
 
 
+MATHFONT = re.compile(r"math|symbol|cmmi|cmsy|cmex|cmr\d|msam|msbm|mtmi|mtsy|mtex|stix|euclid|txsy|txmi|txex|pxsy|pxmi|rmtmi|lucida.*math|cambria math|universal", re.I)
+MATHCHAR = re.compile(r"[=∑∏√∫∂±×÷≤≥≈≠∈∝∞αβγδεζηθλμνξπρσςτφχψωΔΣΩΘΛΦΨ⋅·‖ˆ^_]")
+
+
+def cmd_equations(m, pid, part=""):
+    """Displayed equations of a source: lines set mostly in mathematical fonts, or carrying an equation number such
+    as (3) together with an operator. Each block is listed with its box, ready to crop and transcribe into LaTeX."""
+    try:
+        try: import pymupdf as fitz
+        except ImportError: import fitz
+    except ImportError: sys.exit("equations needs PyMuPDF (pip install pymupdf)")
+    pdf = J(SRC(m.root, pid), pid + part + ".pdf")
+    if not os.path.exists(pdf): sys.exit(f"equations: no {os.path.relpath(pdf, m.root)}")
+    found = 0
+    for pno, page in enumerate(fitz.open(pdf), 1):
+        lines_ = []
+        for bk in page.get_text("dict")["blocks"]:
+            if bk.get("type") != 0: continue
+            for ln in bk["lines"]:
+                spans = [sp for sp in ln["spans"] if sp["text"].strip()]
+                text = "".join(sp["text"] for sp in spans).strip()
+                if text: lines_.append([fitz.Rect(ln["bbox"]), text, spans])
+        for ln in [l for l in lines_ if re.fullmatch(r"\(\s*S?\d{1,3}[a-z]?\s*\)", l[1])]:  # an equation number set apart on the same baseline
+            mid = (ln[0].y0 + ln[0].y1) / 2
+            left = [l for l in lines_ if l is not ln and l[0].x1 <= ln[0].x0 + 1 and abs((l[0].y0 + l[0].y1) / 2 - mid) < 3]
+            if left:
+                o = max(left, key=lambda l: l[0].x1); o[0] = o[0] | ln[0]; o[1] = o[1] + " " + ln[1]; ln[1] = ""
+        cand = []
+        for r, text, spans in lines_:
+            if not text or len(text) > 220: continue
+            mathc = sum(len(sp["text"].strip()) for sp in spans if MATHFONT.search(sp["font"]))
+            share = mathc / max(1, sum(len(sp["text"].strip()) for sp in spans))
+            numbered = re.search(r"\(\s*(S?\d{1,3}[a-z]?)\s*\)\s*$", text) and len(MATHCHAR.findall(text)) >= 1 and len(text.split()) <= 25
+            if share >= 0.4 or numbered: cand.append((r, text, numbered))
+        cand.sort(key=lambda c: (c[0].y0, c[0].x0)); groups = []
+        for r, t, num in cand:  # lines of one displayed equation sit close together in the same column
+            if groups and r.y0 - groups[-1][0].y1 < 6 and abs(r.x0 - groups[-1][0].x0) < 120: groups[-1] = (groups[-1][0] | r, groups[-1][1] + " " + t, groups[-1][2] or num)
+            else: groups.append((fitz.Rect(r), t, num))
+        for r, t, num in groups:
+            if r.width < 25: continue
+            found += 1; tag = re.search(r"\(\s*(S?\d{1,3}[a-z]?)\s*\)\s*$", t)
+            name = f"eq{tag.group(1).lower()}" if tag else f"eq{found}"
+            print(f"p{pno}  {r.x0:.0f},{r.y0:.0f},{r.x1:.0f},{r.y1:.0f}  {'numbered ' + tag.group(0).strip() if tag else 'unnumbered'}  {one(t, 90)}\n"
+                  f"     python3 tools/mesh.py figure {pid} {pno} {r.x0 - 4:.0f},{r.y0 - 4:.0f},{r.x1 + 4:.0f},{r.y1 + 4:.0f} {name}" + (" --si" if part else ""))
+    print(f"{found} candidate equations in {os.path.basename(pdf)}. Equations drawn inside figures, and inline symbols, are not listed: look at the pages too.")
+
+
+def cmd_latex(m, cid):
+    """Render each '- equation::' of a card next to the cropped image of the original, to check the transcription.
+    Uses matplotlib's mathtext, which covers most but not all LaTeX; Obsidian renders the full set."""
+    c = need(m, cid); eqs = [re.sub(r"\s*\((?:eq\.?|equation)\s*[0-9A-Za-z]+\)\s*$", "", v.strip()) for v in c.all("equation")]
+    if not eqs: sys.exit(f"{c.id} has no '- equation::' line")
+    try:
+        import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt; import matplotlib.image as mpimg
+    except ImportError: sys.exit("latex needs matplotlib (pip install matplotlib); otherwise check the equation in Obsidian against the cropped image")
+    crops = [f for a in m.anchors(c) if re.fullmatch(r"eq[0-9a-z]+", a) for f in glob.glob(J(SRC(m.root, c.id[:4]), f"{c.id[:4]}-{a}.png"))]
+    d = J(m.root, "index", ".scratch"); os.makedirs(d, exist_ok=True)
+    for k, e in enumerate(eqs, 1):
+        fig = plt.figure(figsize=(8, 3.2 if crops else 1.6))
+        if crops:
+            ax = fig.add_axes([0.02, 0.5, 0.96, 0.46]); ax.imshow(mpimg.imread(crops[min(k, len(crops)) - 1])); ax.axis("off"); ax.set_title("original", fontsize=8, loc="left")
+        fig.text(0.02, 0.3 if crops else 0.6, "transcribed:", fontsize=8)
+        mt = e  # matplotlib's mathtext lacks some common LaTeX names that Obsidian (MathJax) accepts
+        for a_, b_ in (("le", "leq"), ("ge", "geq"), ("ne", "neq"), ("to", "rightarrow"), ("dfrac", "frac"), ("tfrac", "frac"), ("operatorname", "mathrm"), ("text", "mathrm"), ("textrm", "mathrm")):
+            mt = re.sub(r"\\" + a_ + r"(?![A-Za-z])", lambda _m, b_=b_: "\\" + b_, mt)
+        mt = re.sub(r"\\[lr]vert(?![A-Za-z])", "|", mt)
+        try:
+            fig.text(0.5, 0.18 if crops else 0.35, f"${mt}$", fontsize=16, ha="center"); out = J(d, f"{c.id}-eq{k}.png"); fig.savefig(out, dpi=150)
+            print(f"{os.path.relpath(out, m.root)}: compare the transcription with the original")
+        except Exception as ex:
+            print(f"equation {k}: matplotlib cannot render it ({([l for l in str(ex).splitlines() if l.strip()] or [type(ex).__name__])[-1][:110]}); check it in Obsidian instead")
+        plt.close(fig)
+
+
 def cmd_id(m, kind):
     nxt = lambda xs: max([int(x) for x in xs] + [0]) + 1
     if re.fullmatch(r"P\d{3}", kind): print(f"{kind}-{nxt(c.id[5:] for c in m.cards.values() if c.fam == 'evidence' and c.id.startswith(kind + '-')):03d}")
@@ -1070,7 +1181,7 @@ def cmd_split(m, batch, update=False):
     parts, made, skipped, fresh = re.split(r"^=== *(\S+?)(?:\.md)? *$", rd(batch), flags=re.M), 0, [], []
     for name, content in zip(parts[1::2], parts[2::2]):
         ev, pg = re.fullmatch(r"(P\d{3})(-\d{3})?-[a-z0-9-]+", name), re.fullmatch(r"([KXGHE])\d{3}-[a-z0-9-]+", name)
-        if ev: folder, cid = J("sources", ev.group(1)), ev.group(1) + (ev.group(2) or "")
+        if ev: folder, cid = os.path.relpath(SRC(m.root, ev.group(1)), m.root), ev.group(1) + (ev.group(2) or "")
         elif pg: folder, cid = PAGES[pg.group(1)][0], name[:4]
         elif re.fullmatch(r"[a-z0-9][a-z0-9-]*", name) and not re.match(r"[pkxghel]\d{3}", name): folder, cid = "concepts", name
         else: skipped.append(f"{name}: not a valid card file name"); continue
@@ -1130,14 +1241,14 @@ def mark(m, only=None, force=False):
     vault, done = urllib.parse.quote(m.cfg.get("obsidian_vault") or os.path.basename(os.path.abspath(m.root))), []
     strip = lambda a: a[3:] if a.startswith(("SI-", "CR-")) else a
     for src in [c for c in m.cards.values() if c.fam == "source" and (not only or c.id == only)]:
-        pid = src.id; have = {pt for pt in PARTS if os.path.exists(J(m.root, "sources", pid, pid + pt + ".pdf"))}
+        pid = src.id; have = {pt for pt in PARTS if os.path.exists(J(SRC(m.root, pid), pid + pt + ".pdf"))}
         where_ = lambda c: ({part_of(a) for a in m.anchors(c)} & have) or {""}  # a card goes on each part it is anchored in, else on the main PDF
         for part in PARTS:
-            key = pid + part; pdf, out = J(m.root, "sources", pid, key + ".pdf"), J(m.root, "sources", pid, key + "_marked.pdf")
+            key = pid + part; pdf, out = J(SRC(m.root, pid), key + ".pdf"), J(SRC(m.root, pid), key + "_marked.pdf")
             if not os.path.exists(pdf): continue
             ev = [c for c in m.evidence(pid) if part in where_(c)]
             ev.sort(key=lambda c: c.id)
-            sig = hashlib.sha1(json.dumps([vault, os.path.getsize(pdf), src.get("retracted")] + [[c.id, c.name, c.type, c.status, c.title, c.get("loc"), c.all("anchor")] for c in ev]).encode()).hexdigest()
+            sig = hashlib.sha1(json.dumps([vault, os.path.getsize(pdf), src.get("retracted"), os.path.relpath(SRC(m.root, pid), m.root)] + [[c.id, c.name, c.type, c.status, c.title, c.get("loc"), c.all("anchor")] for c in ev]).encode()).hexdigest()
             if not force and marks.get(key, {}).get("sig") == sig and os.path.exists(out): continue
             doc, cards, rows, edge = fitz.open(out if os.path.exists(out) else pdf), {}, Counter(), {}
             bl = {k: v for k, v in m.blocks(pid).items() if k[0] == PARTS[part]}
@@ -1205,7 +1316,7 @@ def frontier(m):
 def lk(c, label=None): return f"[[{c.name}|{label or c.id + ' ' + one(c.title, 110)}]]"
 
 def cmd_build(root):
-    fixnames(root)
+    fixnames(root); fixfolders(root)
     n = fixlinks(Mesh(root))
     m = Mesh(root)
     def fill(card, L):  # replace the AUTO block of a hub card
@@ -1536,7 +1647,7 @@ def cmd_progress(m, pid):
     for v in src.all("coverage"): print(f"  coverage: {v}")
     for v in src.all("pass"): print(f"  pass: {v}")
     print(f"  check: {len(m.err)} errors, {len(m.warn)} warnings; figure cards flagged: {sum(1 for c in ev if c.get('flag'))}; concepts staged: {len(m.staged(pid))}")
-    p = J(m.root, "sources", pid, pid + "_progress.md")
+    p = J(SRC(m.root, pid), pid + "_progress.md")
     if os.path.exists(p): print("  progress note:\n" + "\n".join("    " + l for l in rd(p).strip().splitlines()[-12:]))
 
 
@@ -1580,6 +1691,8 @@ matrix <var> [<var>] [--all]  cross-tab observations by condition (also: type, s
 sample <P###> [n]             random cards beside their source text, for spot checks
 unread <P###> [min chars]     paragraphs of a source that no card is anchored to, for finding missed cards
 progress <P###>               where the extraction of a source stands, for resuming it
+equations <P###> [--si]       displayed equations of a source, with boxes to crop (figure ... eq4) and transcribe into LaTeX
+latex <card id>               render a card's equation:: lines beside the cropped original, to check the transcription
 staged                        concepts proposed by extraction agents, with the existing concepts they resemble
 related <P###>                synthesis and workbench cards, and sources, sharing concepts with a source
 neighbours <id|P###>          per card: likely duplicates, and cards in other sources to link, ranked by rare shared concepts
@@ -1607,6 +1720,8 @@ def main():
     if c == "anchor": cmd_anchor(m, a[0], [x for x in a[1:] if not x.startswith("--")], "--force" in a, "--si" in a, "--correction" in a)
     elif c == "figure": cmd_figure(m, a)
     elif c == "progress": cmd_progress(m, a[0])
+    elif c == "equations": cmd_equations(m, a[0], "_SI" if "--si" in a else "")
+    elif c == "latex": cmd_latex(m, a[0])
     elif c == "staged": cmd_staged(m)
     elif c == "id": cmd_id(m, a[0])
     elif c == "split": cmd_split(m, a[0], "--update" in a)

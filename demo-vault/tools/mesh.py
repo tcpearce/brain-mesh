@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.14.7"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.14.8"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -3208,7 +3208,7 @@ updated: {TODAY}
 
 ## Codes
 - id:: {vid}
-""" + "\n".join(f"- sides:: [[{i}]] — {one(m.cards[i].title, 100)}" for i in A + B) + f"""
+""" + "\n".join(f"- sides:: [[{m.cards[i].name}]] — {one(m.cards[i].title, 100)}" for i in A + B) + f"""
 - concepts:: {', '.join(f'[[{c}]]' for c in cs)}
 - kind:: {kind}
 - logged_by:: {by}

@@ -2,6 +2,10 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.14.8 (2026-11-21)
+
+- `contradictions add` writes the `sides::` lines of a new V card with the sides' card names, as every other typed link in Codes is written. Before, it wrote the bare ids (`[[P002-033]]`), which Obsidian cannot open (issue #19).
+
 ## 1.14.7 (2026-11-21)
 
 - A card with no loc phrase, such as a table card, is no longer told its loc phrase could not be found when it is marked at its anchored paragraph (a regression in 1.14.6; issue #18).

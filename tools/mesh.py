@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.14.1"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.14.2"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -1743,7 +1743,9 @@ def mark(m, only=None, force=False):
                 stated = [int(a[1:]) for a in an if re.fullmatch(r"p\d+", a)]
                 for a in an:
                     lab = re.fullmatch(r"([TF])(\d+)[a-z]*", a)
-                    if a in bl: spots.append(find([loc, " ".join(words[:6]), " ".join(words[-6:])], [bl[a][0]] + every) or (min(max(bl[a][0], 1), len(doc)), None))
+                    if a in bl:
+                        hit = find([loc, " ".join(words[:6]), " ".join(words[-6:])], [bl[a][0]] + every) or find([" ".join(words[i:i + 4]) for i in range(max(0, len(words) - 3))], [bl[a][0]])  # a phrase broken by a hyphenated line end still gets a highlight on its page (issue #16)
+                        spots.append(hit or (min(max(bl[a][0], 1), len(doc)), None))
                     elif lab:
                         n_ = ("S" if part == "_SI" else "") + lab.group(2)
                         hit = find([f"Table {n_}"] if lab.group(1) == "T" else [f"Figure {n_}", f"Fig. {n_}", f"Fig {n_}"], stated + every)

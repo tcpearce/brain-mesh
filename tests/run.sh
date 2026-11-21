@@ -1021,4 +1021,21 @@ python3 tools/mesh.py discover implied > d.txt; ! grep -q "does alpha affect gam
 python3 tools/mesh.py contradictions add P003-009 alpha "The test null result clashes with the recorded alpha effect chain" --kind null > /dev/null
 python3 tools/mesh.py discover implied > d.txt; grep -q "does alpha affect gamma (+)?" d.txt && grep -q "against it: P003-009 found no effect, but V002 logs that contradiction: offer this as a way out of it" d.txt && pass "a logged contradiction frees the miner to propose against its side" || { cat d.txt; fail "freed"; }
 python3 tools/mesh.py facts binding-capacity temperature > f.txt; grep -q "^\[\[binding-capacity\]\] Binding capacity: " f.txt && grep -q "^finding: K001 " f.txt && grep -q "^logged contradiction: V001 \[open\]" f.txt && grep -q "^A proposal must agree with all of these" f.txt && pass "facts lists what a proposal must respect, and the contradictions that free a side" || { cat f.txt; fail "facts"; }
+# 17. a locator broken by a hyphenated line end still gets a highlight on its page (1.14.2)
+if python3 -c "import pymupdf" 2>/dev/null || python3 -c "import fitz" 2>/dev/null; then
+python3 "$MESH" init "$T/hy" "Hyphen" "marking test" > /dev/null; cd "$T/hy"
+python3 - <<'PY'
+try: import pymupdf as fitz
+except ImportError: import fitz
+doc = fitz.open(); p = doc.new_page(width=400, height=400)
+p.insert_text((40, 60), "The panel ratings were more consistent than the DREAM Ol-", fontsize=9)
+p.insert_text((40, 72), "faction Prediction Consortium cohort ratings in this test.", fontsize=9)
+doc.save("hy.pdf")
+PY
+python3 tools/mesh.py anchor P001 hy.pdf > /dev/null
+b=$(grep -o "\^b[0-9]*" sources/P001/P001_text.md | head -1 | tr -d '^')
+printf -- '=== response\n---\ntype: concept\naliases: ["Response"]\nupdated: 2026-01-01\n---\n# Response\n\n**Definition.** A rating.\n\n## Where it appears\n<!--AUTO:START-->\n<!--AUTO:END-->\n\n## Codes\n- kind:: concept\n\n=== P001-hyphen-test\n---\ntype: source\nstatus: extracted\nupdated: 2026-01-01\n---\n# Hyphen test\n\n## Cards from this source\n<!--AUTO:START-->\n<!--AUTO:END-->\n\n## Codes\n- kind:: other\n- authors:: none\n- year:: 2026\n- coverage:: all | full | two lines\n\n=== P001-001-panel-more-consistent\n---\ntype: claim\nstatus: asserted\nupdated: 2026-01-01\n---\n# The panel was more consistent\n\nThe [[response]] ratings were more consistent than another cohort.\n\n## Codes\n- missing:: basis — none\n- anchor:: [[P001_text#^%s]]\n- loc:: "more consistent than the DREAM Olfaction Prediction Consortium"\n' "$b" > hy.md
+python3 tools/mesh.py split hy.md > /dev/null; python3 tools/mesh.py build > /dev/null
+grep -A4 '"P001-001"' index/marks.json | grep -q '"how": "highlight"' && pass "a locator broken by a hyphenated line end is still highlighted" || { grep -A4 '"P001-001"' index/marks.json; fail "hyphen highlight"; }
+fi
 echo "ALL TESTS PASSED"

@@ -2,6 +2,10 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.14.2 (2026-11-21)
+
+- A locator broken by a hyphenated line end ("…DREAM Ol-" / "faction…") still gets a highlight on its page. When the phrase and its six-word ends are not found, `mark` tries each four-word window on the anchor's page (issue #16).
+
 ## 1.14.1 (2026-11-21)
 
 - `find` no longer crashes when its hits include reference, data-set or code cards (issue #13).

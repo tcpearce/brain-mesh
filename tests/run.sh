@@ -1041,4 +1041,11 @@ python3 tools/mesh.py split hy.md > /dev/null; python3 tools/mesh.py build > /de
 grep -A4 '"P001-001"' index/marks.json | grep -q '"how": "highlight"' && pass "a locator broken by a hyphenated line end is still highlighted" || { grep -A4 '"P001-001"' index/marks.json; fail "hyphen highlight"; }
 grep -A4 '"P001-002"' index/marks.json | grep -q '"how": "highlight"' && pass "a locator whose own word is hyphenated across lines is highlighted word by word" || { grep -A4 '"P001-002"' index/marks.json; fail "hyphenated word highlight"; }
 fi
+# 18. a name inside another concept's longer name is not a mention of it (1.14.4)
+python3 "$MESH" init "$T/ov" "Overlap" "matching test" > /dev/null; cd "$T/ov"
+echo 'The olfactory receptor neuron fired. Each olfactory receptor binds odorants.' > note.txt
+python3 tools/mesh.py anchor P001 note.txt > /dev/null
+printf -- '=== olfactory-receptor\n---\ntype: concept\naliases: ["Olfactory receptor"]\nupdated: 2026-01-01\n---\n# Olfactory receptor\n\n**Definition.** The odorant-binding protein.\n\n## Where it appears\n<!--AUTO:START-->\n<!--AUTO:END-->\n\n## Codes\n- kind:: entity\n\n=== olfactory-sensory-neuron\n---\ntype: concept\naliases: ["Olfactory sensory neuron", "olfactory receptor neuron"]\nupdated: 2026-01-01\n---\n# Olfactory sensory neuron\n\n**Definition.** The cell.\n\n## Where it appears\n<!--AUTO:START-->\n<!--AUTO:END-->\n\n## Codes\n- kind:: entity\n\n=== P001-overlap-note\n---\ntype: source\nstatus: extracted\nupdated: 2026-01-01\n---\n# Overlap note\n\n## Cards from this source\n<!--AUTO:START-->\n<!--AUTO:END-->\n\n## Codes\n- kind:: other\n- authors:: none\n- year:: 2026\n- coverage:: all | full | two sentences\n' > ov.md
+python3 tools/mesh.py split ov.md > /dev/null; python3 tools/mesh.py build > /dev/null
+python3 tools/mesh.py scan P001 > s.txt; [ "$(grep -c '«olfactory receptor»' s.txt)" = 1 ] && ! grep -q '«olfactory receptor» neuron' s.txt && grep -q '«olfactory receptor neuron»' s.txt && pass "a name inside another concept's longer name is not counted as a mention" || { cat s.txt; fail "overlapping names"; }
 echo "ALL TESTS PASSED"

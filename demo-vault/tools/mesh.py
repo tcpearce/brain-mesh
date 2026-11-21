@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.14.3"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.14.4"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -2554,7 +2554,10 @@ def ref_paras(blocks):
 def concept_hits(m, pid, only=None):
     """{concept id: {paragraph: [(start, end)]}}: where each live concept is named in a source's text, main and
     supplementary, leaving out reference lists."""
-    if only is None and pid in m._hits: return m._hits[pid]
+    if only is not None:  # overlaps with other concepts' names are settled across all of them (issue #17)
+        full = concept_hits(m, pid)
+        return {only: full[only]} if only in full else {}
+    if pid in m._hits: return m._hits[pid]
     blocks = m.blocks(pid)
     skip = {b for part in "bsc" for b in ref_paras({k: v for k, v in blocks.items() if k[0] == part})}
     low = {b: t.lower() for b, (_pg, t) in blocks.items() if b not in skip}
@@ -2571,7 +2574,17 @@ def concept_hits(m, pid, only=None):
             sp = [mo.span() for mo in rx.finditer(blocks[b][1])]
             if sp: h[b] = sp
         if h: out[con.id] = h
-    if only is None: m._hits[pid] = out
+    # a name inside a longer name of another concept is not a mention of it: "olfactory receptor" in "olfactory receptor neuron" (issue #17)
+    para = defaultdict(list)
+    for cid, h in out.items():
+        for b, sp in h.items(): para[b] += [(s, e, cid) for s, e in sp]
+    for cid in list(out):
+        for b in list(out[cid]):
+            keep = [(s, e) for s, e in out[cid][b] if not any(c2 != cid and s2 <= s and e <= e2 and e2 - s2 > e - s for s2, e2, c2 in para[b])]
+            if keep: out[cid][b] = keep
+            else: del out[cid][b]
+        if not out[cid]: del out[cid]
+    m._hits[pid] = out
     return out
 
 

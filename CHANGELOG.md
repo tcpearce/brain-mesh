@@ -2,6 +2,10 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.14.4 (2026-11-21)
+
+- Concept matching lets the longer of two overlapping names win. "Olfactory receptor" (the GPCR) is no longer counted inside "olfactory receptor neuron" (the cell), so `scan` and `check` stop asking for cards on false mentions (issue #17).
+
 ## 1.14.3 (2026-11-21)
 
 - When a locator still cannot be found, `mark` matches it word by word against the page, joining a word hyphenated at a line end ("pre-" + "dicted"), and highlights those words (issue #16).

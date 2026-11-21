@@ -7,13 +7,15 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.4.1"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.5.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
 ORIGIN = ["authors", "claude"]
 VIA = ["text", "table", "figure", "si", "inferred"]
 PARTS = {"": "b", "_SI": "s", "_correction": "c"}  # parts of a source: main text, supplementary material, published corrections; paragraph ids b0001, s0001, c0001
+REF_FIELDS = ("authors", "year", "title", "journal", "booktitle", "series", "volume", "pages", "publisher", "doi", "pmid", "arxiv", "url", "kind")
+REF_STATUS = ["not-held", "queued", "held", "skip"]  # a cited work: not in the brain, asked for, in the brain, decided against
 MISSING = ["method", "basis", "data", "statistics", "sample-size", "definition"]  # what a source can fail to give: `- missing:: method — ...`
 EVIDENCE_RELS = ["obtained_by", "based_on", "qualifies", "underlies", "supports", "contradicts", "replicates", "extends"]
 PAGES = {  # id prefix: (folder, type, allowed status, link keys in Codes)
@@ -41,7 +43,7 @@ MARK_COLOURS = {"method": (0.55, 0.75, 1.0), "observation": (1.0, 0.9, 0.2), "mo
 LEGEND = "brain mesh marks: method blue · observation yellow · claim green · model teal · limitation and assumption orange · question purple · oddity pink · cited and definition grey. Each tag opens its card; a three-digit tag beside a column is the card number within this paper."
 NOTES = ("MAP", "SCHEMA", "RESEARCH-GAPS", "CHANGELOG", "lenses", "reading-queue")
 WIKI = re.compile(r"\[\[([^\]|#]+)(#[^\]|]*)?(\|[^\]]*)?\]\]")
-IDLINK = re.compile(r"\[\[(P\d{3}-\d{3}|P\d{3}|[KXGHE]\d{3})(-[a-z0-9-]*)?(?=[\]|#\\])")
+IDLINK = re.compile(r"\[\[(P\d{3}-\d{3}|P\d{3}|[KXGHE]\d{3}|R\d{4})(-[a-z0-9-]*)?(?=[\]|#\\])")
 J = os.path.join
 TODAY = datetime.date.today().isoformat()
 
@@ -174,6 +176,172 @@ def fixnames(root):
     return moves
 
 
+def ref_region(blocks):
+    """The paragraphs holding a source's reference list: after a REFERENCES heading, or from the last paragraph that
+    starts '1. ' followed by a name, up to acknowledgements, author contributions or the end."""
+    ids = list(blocks)
+    start = next((k + 1 for k, b in enumerate(ids) if re.match(r"\s*(REFERENCES|References)(\s+AND\s+NOTES|\s+and\s+Notes)?\s*$", blocks[b][1])), None)
+    if start is None:
+        firsts = [k for k, b in enumerate(ids) if re.match(r"\s*1\.\s+[A-ZÀ-ɏ]", blocks[b][1]) and k > len(ids) * 0.4]
+        start = firsts[0] if firsts else None
+    if start is None: return []
+    out = []
+    for b in ids[start:]:
+        t = blocks[b][1]
+        if re.match(r"\s*(ACKNOWLEDG|Acknowledg|AUTHOR CONTRIBUTIONS|Author contributions|COMPETING|Competing interests|SUPPLEMENTARY MATERIALS|Supplementary Materials|Correspondence|METHODS\s*$|ONLINE METHODS)", t): break
+        if re.match(r"\s*(NATURE |©|ARTICLES\s*$|RESEARCH\s*\||Published online|\d{1,4}\s*$)", t): continue  # page furniture
+        out.append((b, t))
+    return out
+
+
+def split_refs(text, limit=600):
+    """Split a numbered reference list into [(n, text)], looking for 1., 2., 3. ... strictly in order, so that numbers
+    inside a reference (volumes, pages, 'vol. 968') are not taken for the start of the next one."""
+    starts, pos = [], 0
+    for n in range(1, limit + 1):
+        mo = re.compile(r"(?:^|(?<=\s))%d\.\s+(?=[A-ZÀ-ɏ\"“(]|(?:de|van|von|da|di|del|der|du|le|la|den|ten|ter|dos|das)\s)" % n).search(text, pos)
+        if not mo: break
+        starts.append((n, mo.start(), mo.end())); pos = mo.end()
+    return [(n, " ".join(text[e:(starts[k + 1][1] if k + 1 < len(starts) else len(text))].split()).rstrip()) for k, (n, s_, e) in enumerate(starts)]
+
+
+JABBR = set("""j z a b c d e r proc natl nat acad sci biol chem phys neurosci neurol neurophysiol neurobiol physiol comp comput opt soc trans int
+ed angew mol des res rev lett am eur exp behav sens appl med acta ann annu curr opin theor front cogn psychol psychophys environ eng mater inf inform
+mach learn intell artif syst stat math anal assoc commun struct adv biochem biophys bioinform genet genom immunol microbiol pharmacol toxicol clin
+instrum meas agric technol conf symp netw mech electron org inorg phytochem flavour fragr perfum cosmet ind analyt spectrosc ecol evol zool
+entomol insect anim hum gen dev endocrinol metab nutr pathol philos jpn jap brit br can aust ger fr chim rep commun sel top quant prog
+ieee acm proc lond ser sect bull mag hebd seances seanc rend akad wiss bioeng biomed biomater pharm toxicol food tech sensors actuators
+polym macromol colloid interface surf electrochem catal synth crystallogr spectrom chromatogr sep membr nanotechnol photon astron astrophys geophys
+atmos oceanogr hydrol biotechnol psychiatr surg radiol oncol cardiol dermatol pediatr gastroenterol hepatol nephrol urol rheumatol ophthalmol
+otolaryngol anesth anaesth epidemiol infect dis vet dent nurs rehabil educ econ manag polit sociol anthropol linguist lang hist geogr archaeol
+theol softw robot autom recognit univ inst sustain renew combust therm aerosp civ constr transp mar freshw aquat pollut saf occup biosens
+bioelectron chim cryst crit microsc nanosci photochem photobiol radiat nucl biomol pept protein proteomics proteome metabol immun""".split())
+JFUNC = {"of", "and", "the", "in", "for", "on", "de", "der", "und", "&", "für", "fur", "et"}
+PARTICLE = r"(?:(?:de|van|von|da|di|del|der|du|le|la|den|ten|ter|dos|das) ){0,2}"
+
+
+def journal_start(prefix):
+    """Where the journal name begins in 'authors, title. Journal' (the text before the volume): the longest run of
+    journal words at the end, in which every word with a full stop but the last is a known abbreviation. Title words
+    ('scents.', 'Drosophila.') and the comma that ends a list of authors stop it."""
+    toks, start = list(re.finditer(r"\S+", prefix)), None
+    for k in range(len(toks) - 1, -1, -1):
+        t = toks[k].group(0)
+        if t.endswith((",", ";", ":")): break
+        if re.fullmatch(r"\([A-Z][\w.]*\)", t) or t.lower() in JFUNC: start = k; continue
+        if not re.fullmatch(r"(?:[A-Z]|[a-z][A-Z])[\w\-’'.]*", t): break  # eNeuro, eLife, iScience
+        if t.endswith(".") and k < len(toks) - 1 and t[:-1].lower().replace(".", "") not in JABBR: break
+        start = k
+    while start is not None and start < len(toks) and toks[start].group(0).lower() in JFUNC: start += 1
+    return toks[start].start() if start is not None and start < len(toks) else None
+
+
+def parse_ref(raw):
+    """Best-effort fields of one reference, in either the 'Surname, I.' (Nature, Cell) or the 'I. Surname' (Science,
+    PNAS) style. Check them against the paper."""
+    r = {"raw": raw}
+    t = re.sub(r"(https?://\S*?[./])\s+(?=[a-z])", r"\1", re.sub(r"(10\.\d{4,9}/)\s+", r"\1", raw))  # rejoin links broken across lines
+    d = re.search(r"\b(10\.\d{4,9}/[^\s,;]+[^\s,;.])", t); r["doi"] = d.group(1) if d else ""
+    a = re.search(r"arXiv:\s?(\d{4}\.\d{4,5})", t); r["arxiv"] = a.group(1) if a else ""
+    u = re.search(r"https?://\S+", t); r["url"] = re.sub(r"[.;,)]+$", "", u.group(0)) if u else ""
+    yr = re.findall(r"\((?:[^()]*,\s*)?((?:1[5-9]|20)\d{2})[a-z]?\)", t) or re.findall(r"\b((?:1[5-9]|20)\d{2})\b", t)
+    r["year"] = yr[-1] if yr else ""
+    tails = list(re.finditer(r"\s(\d{1,4}[A-Z]?),\s+([A-Za-z.]*\d[\w.\-–]*)\s*\((?:[^()]*?)?(?:1[5-9]|20)\d{2}[a-z]?\)", t))
+    tail = tails[-1] if tails else None
+    js = journal_start(t[:tail.start()]) if tail else None
+    head = t[:js] if js is not None else t
+    if re.match(PARTICLE + r"[A-ZÀ-ɏ][\w'’\-À-ɏ]+(?: [A-Z][\w'’\-]+)*, (?:[A-Z]\.)", t):  # Surname, I.I., Surname, I. & Surname, I. Title.
+        am = re.match(r"((?:" + PARTICLE + r"[^,&]+?, (?:[A-Z]\.(?:\s?-?[A-Z]\.)*)(?:,\s|\s&\s|\s(?=et al)|\s)?)+)(et al\.\s?)?", head)
+        names = [x.strip() for x in re.findall(r"(" + PARTICLE + r"[^,&]+?, (?:[A-Z]\.(?:\s?-?[A-Z]\.)*))", am.group(1))] if am else []
+        r["authors"] = "; ".join(n.replace(" ", "") if re.fullmatch(r"[A-Z]\.(?:\s?[A-Z]\.)*", n) else re.sub(r"(?<=\.)\s(?=[A-Z]\.)", "", n) for n in names) + ("; others" if am and am.group(2) else "")
+        rest = head[am.end():] if am else head
+    else:  # I. I. Surname, I. Surname, Journal ...  or  I. Surname et al., Title. ...
+        toks, names = [x.strip() for x in head.split(", ")], []
+        for x in toks:
+            m_ = re.fullmatch(r"((?:[A-Z]\.\s?-?)+)\s?(" + PARTICLE + r"[A-ZÀ-ɏ][\w'’\-À-ɏ]+(?:\s[A-ZÀ-ɏ][\w'’\-]+)*?)( et al\.)?", x)
+            if not m_: break
+            names.append(f"{m_.group(2)}, {m_.group(1).replace(' ', '')}")
+            if m_.group(3): names.append("others"); break
+        r["authors"] = "; ".join(names)
+        rest = ", ".join(toks[len([n for n in names if n != "others"]):]) if names else head
+        if not names:  # an organisation, or a work with no personal author
+            r["authors"] = toks[0] if toks and len(toks[0]) < 80 else ""; rest = ", ".join(toks[1:])
+    rest = rest.strip(" .,")
+    r["title"] = ""
+    if tail and js is not None:
+        r.update(journal=t[js:tail.start()].strip(" ,"), volume=tail.group(1), pages=bib_pages(tail.group(2)), kind="article")
+        if rest and not re.fullmatch(r"et al\.?", rest): r["title"] = rest.strip(" .")
+    else:
+        bm = re.search(r"(?:^|[.,]\s)[Ii]n:? (.+?)\s*\(([^()]*?),?\s*((?:1[5-9]|20)\d{2})\)(?:,?\s*(?:pp\.\s*)?([\d–-]+))?", rest)
+        if r["arxiv"] or r["url"]:
+            r.update(kind="misc", title=re.sub(r"\s*\((?:1[5-9]|20)\d{2}\)$", "", re.split(r"[.;]\s*(?:arXiv|https?:)", rest)[0].strip(" .")))
+        elif bm:
+            bt = bm.group(1); vm = re.search(r"vol\.\s*(\d+)\s+of\s+(.+)$", bt)
+            bt = re.sub(r"\s*\(eds?\..*$", "", re.split(r",\s+(?:[A-Z]\.\s?)+\S+(?: et al\.)?(?:,\s+(?:[A-Z]\.\s?)+\S+)*,\s+Eds?\.", bt)[0])
+            r.update(kind="incollection", title=rest[:bm.start()].strip(" ,."), booktitle=bt.strip(" ,"), publisher=bm.group(2).strip(), pages=bib_pages(bm.group(4)))
+            if vm: r.update(volume=vm.group(1), series=vm.group(2).strip(" ,."))
+        else:
+            pm = re.search(r"\(([^()]+?),\s*(?:1[5-9]|20)\d{2}\)", rest)
+            r.update(kind="book", title=(rest[:pm.start()] if pm else rest).strip(" ,."), publisher=pm.group(1).strip() if pm else "")
+    return r
+
+
+def ascii_fold(t):
+    return unicodedata.normalize("NFKD", t).encode("ascii", "ignore").decode()
+
+
+def bib_pages(p):
+    """'211–218' or '211-218' -> '211--218'; article numbers such as 'ENEURO.0070-17.2017' are left alone."""
+    p = (p or "").strip().rstrip(".")
+    return re.sub(r"\s*[–-]+\s*", "--", p) if re.fullmatch(r"[A-Za-z]?\d+\s*[–-]+\s*[A-Za-z]?\d+", p) else p
+
+
+def first_surname(authors):
+    """Surname of the first author, from 'Surname, I.' (reference cards) or 'Surname IN' (source cards)."""
+    a = (authors or "").split(";")[0].strip()
+    mo = re.fullmatch(r"(.+?) ([A-Z]{1,4})", a)
+    return (a.split(",")[0] if "," in a else (mo.group(1) if mo else a)).strip()
+
+
+def bib_name(n):
+    """'Lee BK' -> 'Lee, B. K.'; 'Smith, T.' and organisations unchanged."""
+    mo = re.fullmatch(r"(.+?) ([A-Z]{1,4})", n.strip())
+    return f"{mo.group(1)}, {' '.join(ch + '.' for ch in mo.group(2))}" if mo and "," not in n else n.strip()
+
+
+def source_fields(c):
+    """A source card's bibliographic fields, in the reference card's terms, so the two can be matched and exported."""
+    v = re.match(r"(.*?)\s+(\d{1,4}[A-Z]?),\s*([\w.\-–]+)\s*$", c.get("venue") or "")
+    return {"authors": c.get("authors"), "year": c.get("year"), "title": re.sub(r"^.*?\((?:1[5-9]|20)\d{2}\)\s*", "", c.title), "doi": c.get("doi"),
+            "journal": v.group(1) if v else c.get("venue"), "volume": v.group(2) if v else "", "pages": bib_pages(v.group(3)) if v else "",
+            "kind": "article" if c.get("venue") else "misc"}
+
+
+def ref_keys(f):
+    """Ways of recognising one cited work across sources: DOI, arXiv id, first author + year + volume + first page,
+    first author + year + title words."""
+    out, sur = [], re.sub(r"[^a-z]", "", ascii_fold(first_surname(f.get("authors"))).lower())
+    if f.get("doi"): out.append("doi:" + f["doi"].lower().rstrip("."))
+    if f.get("pmid"): out.append("pmid:" + f["pmid"])
+    if f.get("arxiv"): out.append("arxiv:" + f["arxiv"])
+    page = re.match(r"[A-Za-z.]*(\d+)", f.get("pages") or "")
+    if sur and f.get("year") and f.get("volume") and page: out.append(f"cite:{sur}{f['year']}v{f['volume']}p{page.group(1)}")
+    words = [w for w in re.findall(r"[a-z]{4,}", ascii_fold(f.get("title") or "").lower())][:6]
+    if sur and f.get("year") and len(words) >= 3: out.append(f"title:{sur}{f['year']}" + "-".join(words))
+    return out
+
+
+def bibtex(f, key):
+    kind = f.get("kind") or "misc"
+    names = [bib_name(n) for n in (f.get("authors") or "").split(";") if n.strip()]
+    fields = [("author", " and ".join(n for n in names)), ("title", "{" + f["title"] + "}" if f.get("title") else ""), ("journal", f.get("journal") if kind == "article" else ""),
+              ("booktitle", f.get("booktitle") if kind in ("inproceedings", "incollection") else ""), ("series", f.get("series")), ("publisher", f.get("publisher") if kind in ("book", "inproceedings", "incollection") else ""),
+              ("volume", f.get("volume")), ("pages", f.get("pages")), ("year", f.get("year")), ("doi", f.get("doi")),
+              ("pmid", f.get("pmid")), ("eprint", f.get("arxiv")), ("archiveprefix", "arXiv" if f.get("arxiv") else ""), ("url", f.get("url"))]
+    body = ",\n".join(f"  {k} = {{{v}}}" for k, v in fields if v)
+    return f"@{kind}{{{key},\n{body}\n}}"
+
+
 def find_root():
     c = [os.environ.get("MESH_ROOT"), os.path.dirname(os.path.dirname(os.path.abspath(__file__)))]
     d = os.getcwd()
@@ -209,6 +377,9 @@ class Card:
         s.type, s.status = str(s.fm.get("type", "")), str(s.fm.get("status", ""))
     def get(s, k, d=""): return next((v for kk, v in s.codes if kk == k), d)
     def all(s, k): return [v for kk, v in s.codes if kk == k]
+    def fields(s):
+        """The bibliographic fields of a reference card, from its Codes."""
+        return {k: s.get(k) for k in REF_FIELDS}
     def prose(s): return re.sub(r"<!--AUTO:START.*?<!--AUTO:END-->", "", re.sub(r"^# .+$", "", s.human, count=1, flags=re.M), flags=re.S).strip()
 
 class Mesh:
@@ -244,6 +415,10 @@ class Mesh:
                 b = os.path.basename(f)[:-3]
                 if re.fullmatch(pre + r"\d{3}(-[a-z0-9-]+)?", b): add(f, "page", b[:4])
                 else: s.err.append(f"{folder}/{b}.md: name must be {pre}NNN-<slug>.md")
+        for f in sorted(glob.glob(J(root, "references", "*.md"))):
+            b = os.path.basename(f)[:-3]
+            if re.fullmatch(r"R\d{4}(-[a-z0-9-]+)?", b): add(f, "reference", b[:5])
+            elif b != "README": s.err.append(f"references/{b}.md: name must be RNNNN-<slug>.md")
         lp = J(root, "ledger", "lenses.md")
         s.lenses = set(re.findall(r"^## (L\d{3})", rd(lp), re.M)) if os.path.exists(lp) else set()
 
@@ -342,7 +517,7 @@ class Mesh:
             if not c.has_codes: E.append(f"{i}: no '## Codes' section"); continue
             if c.get("id") != i: E.append(f"{i}: Codes need '- id:: {i}' (file name and id must agree; found '{c.get('id')}')")
             if not c.title: E.append(f"{i}: no '# Title' line")
-            if len(squeeze(c.prose())) < 25: E.append(f"{i}: the human-readable part is missing or too thin")
+            if c.fam != "reference" and len(squeeze(c.prose())) < 25: E.append(f"{i}: the human-readable part is missing or too thin")
             if c.name == i and c.fam != "concept": W.append(f"{i}: file name has no meaningful slug")
             for t, _a, _d in WIKI.findall(c.raw):
                 if not s.resolve(t) and not s.aux(t):
@@ -457,6 +632,15 @@ class Mesh:
                     elif rec != sha(f): E.append(f"{i}: {os.path.basename(f)} has changed since it was registered. The source is the ground truth; restore the original file")
                 if "<!--AUTO:START" not in c.raw: W.append(f"{i}: no AUTO block, so its card list cannot be maintained")
                 if not s.evidence(i): W.append(f"{i}: no evidence cards yet")
+            elif c.fam == "reference":
+                if c.get("retired"): continue
+                if c.type != "reference": E.append(f"{i}: type must be 'reference'")
+                if c.status not in REF_STATUS: E.append(f"{i}: status '{c.status}' not in {REF_STATUS}")
+                if not re.fullmatch(r"(1[5-9]|20)\d{2}[a-z]?", c.get("year") or "") and not c.get("url"): W.append(f"{i}: no year")
+                if not (c.get("authors") or c.get("title")): W.append(f"{i}: neither authors nor title")
+                if c.get("doi") and not re.fullmatch(r"10\.\d{4,9}/\S+", c.get("doi")): W.append(f"{i}: doi '{c.get('doi')}' does not look like a DOI")
+                if not c.all("cited_by") and c.status != "held": W.append(f"{i}: cited by no source; retire it or add its cited_by:: line")
+                if c.status == "held" and not c.get("held"): W.append(f"{i}: status held needs '- held:: [[P###]]', the source in the brain")
             elif c.fam == "concept":
                 if c.type != "concept": E.append(f"{i}: type must be 'concept'")
                 if "<!--AUTO:START" not in c.raw: W.append(f"{i}: no AUTO block, so its list of cards cannot be maintained")
@@ -497,7 +681,18 @@ class Mesh:
                     if c.status in ("fillable", "confirmed", "planned") and not c.get("searched"): W.append(f"{i}: status {c.status} needs '- searched:: <date>'")
                 if i[0] == "E" and c.status in ("registered", "running", "done") and not c.get("registered"): E.append(f"{i}: status {c.status} needs '- registered:: <date>'")
                 if i[0] == "E" and c.status == "done" and not n("results"): W.append(f"{i}: done but no '- results::' source")
-        if not only: s.dupes(E, W); s.retraction_warnings(W)
+        if not only:
+            s.dupes(E, W); s.retraction_warnings(W)
+            seen_ = {}
+            for r in [c for c in s.cards.values() if c.fam == "reference" and not c.get("retired")]:
+                for k_ in ref_keys(r.fields()):
+                    if k_ in seen_ and seen_[k_] != r.id: W.append(f"{r.id} and {seen_[k_]} look like the same work ({k_.split(':')[0]}); merge them with `mesh.py merge`")
+                    seen_.setdefault(k_, r.id)
+            cited = {m_.group(1) for r in s.cards.values() if r.fam == "reference" for v in r.all("cited_by") for m_ in [re.search(r"(P\d{3})", v)] if m_}
+            for src in [c for c in s.cards.values() if c.fam == "source"]:
+                rf = J(SRC(s.root, src.id), src.id + "_refs.md")
+                if os.path.exists(rf) and src.id not in cited: W.append(f"{src.id}: its references are extracted ({src.id}_refs.md) but not yet turned into reference cards: run `mesh.py cite {src.id}`")
+                elif not os.path.exists(rf) and src.get("kind") in ("paper", "preprint", "thesis", "report"): notes["papers whose reference list is not extracted"] += 1
         return notes
 
     def figure_values(s, c, pid, an, vals, W):
@@ -685,7 +880,8 @@ links, structured values and provenance. People read the top; Claude and the too
 card highlighted on the page), `P###_text.md` (paragraph anchors
 `^b0001`) and tables beside it · `sources/P###/P###-NNN-<slug>.md` evidence cards · `concepts/<slug>.md` concept
 cards (the shared vocabulary and the hubs: every card links at least one, and each concept card lists what uses it) · `findings/K`, `tensions/X`, `gaps/G` synthesis
-cards · `hypotheses/H`, `experiments/E` workbench cards.
+cards · `hypotheses/H`, `experiments/E` workbench cards · `references/R####-<slug>.md` reference cards, one per work the
+sources cite, with BibTeX (made by `mesh.py refs` and `cite`; `ledger/reading-queue.md` lists what to read next).
 
 **Layers.** Evidence cites its source; synthesis cites evidence; workbench cites synthesis. Never edit the PDF,
 the anchored text or an id. `index/` and AUTO blocks are generated by `mesh.py build`.
@@ -1385,6 +1581,9 @@ def frontier(m):
     for c in m.evidence():
         r = " ".join(c.get("ref").lower().split())
         if r and not any(d in r for d in dois): fr[r].add(c.id[:4])
+    for r in m.cards.values():  # reference cards: works cited by two or more sources and not yet in the brain
+        cited = {pid for pid, _n, _b in ref_cites(r)} if r.fam == "reference" and r.status in ("not-held", "queued") else set()
+        if len(cited) > 1: fr[f"[[{r.name}|{one(r.title, 70)}]]"] |= cited
     return sorted(fr.items(), key=lambda kv: (-len(kv[1]), kv[0]))
 
 def lk(c, label=None): return f"[[{c.name}|{label or c.id + ' ' + one(c.title, 110)}]]"
@@ -1414,6 +1613,8 @@ def cmd_build(root):
         for t in EVIDENCE_TYPES:
             rows = [c for c in ev if c.type == t]
             if rows: L += [f"**{t.capitalize()} ({len(rows)})**"] + [f"- {lk(c, one(c.title, 120))} · {c.status}" for c in rows] + [""]
+        cites_ = sorted((int(rn), r) for r in m.cards.values() if r.fam == "reference" and not r.get("retired") for pid, rn, _b in ref_cites(r) if pid == src.id)
+        if cites_: L += [f"**References ({len(cites_)})** " + " · ".join(f"[[{r.name}|{rn}]]" for rn, r in cites_), ""]
         fill(src, L)
     inbound = defaultdict(list)  # every typed link, seen from its target: (inverse label, linking card, reason)
     for c in m.cards.values():
@@ -1449,6 +1650,58 @@ def cmd_build(root):
         co = Counter(t for c in users for t in m.terms(c) if t != con.id)
         if co: L += ["**Appears alongside:** " + " · ".join(f"[[{t}]] ({n_})" for t, n_ in ranked(co, 15)), ""]
         fill(con, L)
+    refs = sorted((c for c in m.cards.values() if c.fam == "reference" and not c.get("retired")), key=lambda c: c.id)
+    srckeys = {k: c for c in m.cards.values() if c.fam == "source" for k in ref_keys(source_fields(c))}
+    for k_, r in enumerate(refs):  # a cited work that has since become a source in the brain is marked held
+        h = next((srckeys[x] for x in ref_keys(r.fields()) if x in srckeys), None) if r.status in ("not-held", "queued") else None
+        if h:
+            wr(r.path, re.sub(r"^status: .*$", "status: held", r.raw, count=1, flags=re.M).replace("\n## Codes\n", f"\n## Codes\n- held:: [[{h.name}]]\n", 1))
+            refs[k_] = m.cards[r.id] = Card(r.path, "reference", r.id); print(f"{r.id} is now a source in the brain ({h.id}): marked held")
+    at = defaultdict(list)
+    for c in m.evidence():
+        for a in m.anchors(c):
+            if re.fullmatch(r"[bsc]\d{4}", a): at[(c.id[:4], a)].append(c)
+    keys, used = {}, Counter()
+    for r in refs:  # BibTeX keys: first author, year, first title word; a, b, c for clashes
+        f = r.fields(); sur = re.sub(r"[^a-z]", "", ascii_fold(first_surname(f.get("authors"))).lower()) or "anon"
+        word = next((w for w in re.findall(r"[a-z]+", ascii_fold(f.get("title") or f.get("journal") or "").lower()) if w not in STOP and len(w) > 2), "")
+        base = f"{sur}{f.get('year') or ''}{word}"; used[base] += 1; keys[r.id] = base + ("" if used[base] == 1 else "abcdefghijklmnopqrstuvwxyz"[used[base] - 2])
+    bysrc = defaultdict(list)
+    for r in refs:
+        f = r.fields(); L = []
+        names = [n.strip() for n in (f.get("authors") or "").split(";") if n.strip() and n.strip() != "others"]
+        who = (", ".join(names[:-1]) + " & " + names[-1] if 1 < len(names) <= 6 else (names[0] if names else "")) + (" et al." if "others" in (f.get("authors") or "") or len(names) > 6 else "")
+        where = ("*" + f["journal"] + "*" + (f" {f['volume']}" if f.get("volume") else "")) if f.get("journal") else (("in *" + f["booktitle"] + "*") if f.get("booktitle") else "")
+        tail = ", ".join(x for x in (where, (f.get("pages") or "").replace("--", "–"), f.get("publisher") if not f.get("journal") else "") if x)
+        cite = " ".join(x for x in (f"{who} ({f.get('year') or 'n.d.'})." if who else f"({f.get('year') or 'n.d.'}).", (f.get("title") + ".") if f.get("title") else "", (tail + ".") if tail else "") if x)
+        L += [f"**Citation.** {cite}" + (f" [doi:{f['doi']}](https://doi.org/{f['doi']})" if f.get("doi") else "") + (f" [arXiv:{f['arxiv']}](https://arxiv.org/abs/{f['arxiv']})" if f.get("arxiv") else "") + (f" [PubMed {f['pmid']}](https://pubmed.ncbi.nlm.nih.gov/{f['pmid']}/)" if f.get("pmid") else "") + (f" [link]({f['url']})" if f.get("url") and not f.get("doi") else ""), ""]
+        if r.get("held"): L += [f"**In the brain** as {r.get('held')}.", ""]
+        L.append("**Cited by**")
+        for v in r.all("cited_by"):
+            mo = re.search(r"(P\d{3})\S*\s+ref\s+(\d+)(?:\s*—\s*(.*))?", v)
+            if not mo: continue
+            pid, rn, bs = mo.group(1), mo.group(2), re.findall(r"[bsc]\d{4}", mo.group(3) or "")
+            bysrc[pid].append((int(rn), r))
+            src = m.cards.get(pid)
+            where = ", ".join(f"[[{pid}_text#^{b}|{b}]]" for b in bs)
+            cards = sorted({c.id: c for b in bs for c in at.get((pid, b), [])}.values(), key=lambda c: c.id)
+            L.append(f"- {lk(src) if src else pid} as ref {rn}" + (f", cited at {where}" if where else ""))
+            L += [f"  - where {lk(c, one(c.title, 90))} says this" for c in cards[:6]]
+        L += ["", "**BibTeX**", "```bibtex", bibtex(f, keys[r.id]), "```"]
+        new = r.raw[:r.raw.find("\n", r.raw.find("<!--AUTO:START")) + 1] + "\n".join(L) + "\n" + r.raw[r.raw.find("<!--AUTO:END-->"):] if "<!--AUTO:START" in r.raw else r.raw
+        if new != r.raw: wr(r.path, new)
+    for src in [c for c in m.cards.values() if c.fam == "source"]:
+        rows = sorted(bysrc.get(src.id, []), key=lambda x: x[0])
+        if not rows: continue
+        wr(J(SRC(root, src.id), src.id + "_refs.bib"), "\n\n".join(bibtex(r.fields(), keys[r.id]) for _n, r in rows) + "\n")
+    if refs:
+        srcbib = [bibtex(source_fields(c), c.id) for c in sorted((c for c in m.cards.values() if c.fam == "source"), key=lambda c: c.id)]
+        wr(J(root, "references", "library.bib"), "% Generated by brain mesh: the sources in the brain (keyed by their ids), then every work they cite.\n\n" + "\n\n".join(srcbib + [bibtex(r.fields(), keys[r.id]) for r in refs]) + "\n")
+        q = J(root, "ledger", "reading-queue.md"); t = rd(q) if os.path.exists(q) else "# Reading queue\n"
+        if "<!--AUTO:START" not in t: t = t.rstrip("\n") + "\n\n## Suggested by the brain\n\n<!--AUTO:START-->\n<!--AUTO:END-->\n"
+        a, b = t.find("<!--AUTO:START"), t.find("<!--AUTO:END-->")
+        new = t[:t.find("\n", a) + 1] + "\n".join(reading_queue(Mesh(root))) + "\n" + t[b:]
+        if new != t: wr(q, new)
     marked = mark(Mesh(root))
     m = Mesh(root); notes, ix = m.check(), J(root, "index")
     tsv = lambda rows: "\n".join("\t".join(" ".join(str(c).split()) for c in r) for r in rows) + "\n"
@@ -1661,6 +1914,8 @@ def cmd_health(m):
     rx = m.retracted(); W_ = []; m.retraction_warnings(W_)
     sec("Retracted sources and cards, with dependants not yet reviewed", [f"{x} {one(m.cards[x].title, 90)} [{m.cards[x].get('retracted')}; {sum(1 for w in W_ if f'rests on {x},' in w)} dependants to review]" for x in sorted(set(rx.values()))])
     sec("Published corrections registered", [f"{c.id} {one(c.title, 80)} [{sum(1 for e in m.evidence(c.id) if e.get('corrected'))} cards marked corrected]" for c in m.cards.values() if c.fam == "source" and os.path.exists(J(m.root, "sources", c.id, c.id + "_correction.pdf"))])
+    rq = [r for r in m.cards.values() if r.fam == "reference" and r.status in ("not-held", "queued")]
+    sec("Cited works to consider reading (see ledger/reading-queue.md)", [f"{r.id} {one(r.title, 90)} [{r.status}; cited by {len(r.all('cited_by'))} sources]" for r in sorted(rq, key=lambda r: (-len(r.all("cited_by")), r.id)) if len(r.all("cited_by")) > 1], 15)
     sec("Sources not yet integrated", [f"{row(c)} [{c.status}]" for c in m.cards.values() if c.fam == "source" and c.status != "integrated"])
     print(f"\nRetired cards kept as pointers: {sum(1 for c in m.cards.values() if c.get('retired'))}. Run `check` for errors and duplicate warnings, `gaps` for research signals.")
 
@@ -1680,6 +1935,11 @@ def cmd_merge(m, keep, drop):
     for path in [c.path for c in m.cards.values() if c.id != d.id] + [J(m.root, "MAP.md")]:
         txt = rd(path); new = re.sub(r"\[\[" + re.escape(d.name) + r"(?=[\]|#\\])", "[[" + k.name, txt)
         if new != txt: wr(path, new); n += 1
+    if k.fam == "reference":  # the kept card takes over every citation of the dropped one
+        kr = rd(k.path); extra = [f"- cited_by:: {v}" for v in d.all("cited_by") if v not in Card(k.path, k.fam, k.id).all("cited_by")]
+        if extra: wr(k.path, kr.rstrip("\n") + "\n" + "\n".join(extra) + "\n")
+        wr(d.path, rd(d.path).replace("- cited_by::", "- was_cited_by::"))
+    d = Card(d.path, d.fam, d.id)
     txt = d.raw.split("\n## Linked from")[0].rstrip("\n")
     if not d.get("retired"): wr(d.path, txt + f"\n- retired:: merged into [[{k.name}]]\n")
     print(f"links to {d.id} redirected to {k.id} in {n} files; {d.id} retired as a pointer." + (f" Now add {d.id}'s names to the aliases of {k.id} and move over any content worth keeping." if k.fam == "concept" else " Add its anchor and anything it said that the kept card lacks.") + " Then run build.")
@@ -1803,6 +2063,195 @@ def cmd_place(m, target, top=4, floor=0.15):
         print("Each may start a new finding if it passes the one-sentence test and is a result worth building on, or may stand alone.")
 
 
+def cmd_refs(m, pid, force=False):
+    """Extract a source's reference list into P012_refs.md, one entry per reference with best-effort fields, and find
+    where in the text each reference is cited. Check the entries (titles, authors, DOIs) before `cite`."""
+    out = J(SRC(m.root, pid), pid + "_refs.md")
+    if os.path.exists(out) and not force: sys.exit(f"{os.path.relpath(out, m.root)} exists and may hold corrections; --force rebuilds it from the text")
+    bl = {k: v for k, v in m.blocks(pid).items() if k[0] == "b"}
+    region = ref_region(bl)
+    refs = split_refs(" ".join(t for _b, t in region))
+    if not refs: sys.exit(f"{pid}: no numbered reference list found in {pid}_text.md (author-year lists are not supported yet: write {pid}_refs.md by hand in the same format)")
+    first_ref_block = region[0][0] if region else None
+    main = {b: v for b, v in bl.items() if first_ref_block is None or b < first_ref_block}
+    at = cite_places(m, pid, main, len(refs))
+    lines = [f"# {pid} reference list", "", "Extracted by `mesh.py refs`. Correct the fields against the paper (titles, authors, DOIs), then run `mesh.py cite " + pid + "`.",
+             "`cited_at` lists the paragraphs where the reference is cited, found automatically.", ""]
+    for n, raw in refs:
+        f = parse_ref(raw)
+        lines += [f"## {n}", f"- raw:: {raw}"] + [f"- {k}:: {f.get(k, '')}" for k in REF_FIELDS if f.get(k)]
+        lines += [f"- cited_at:: {', '.join(sorted(at[n]))}" if at.get(n) else "- cited_at::", ""]
+    wr(out, "\n".join(lines))
+    print(f"{pid}: {len(refs)} references -> {os.path.relpath(out, m.root)}; {sum(1 for n, _r in refs if at.get(n))} traced to the paragraphs that cite them")
+    thin = [n for n, raw in refs if not parse_ref(raw).get("year") or not parse_ref(raw).get("authors")]
+    if thin: print(f"  check by hand: references {', '.join(map(str, thin[:20]))} parsed without a year or authors")
+
+
+def cite_places(m, pid, main, top):
+    """{reference number: paragraphs citing it}. From the PDF when there is one: superscript numbers (Nature, Cell) and
+    italic numbers (Science) traced back to their paragraph, so that counts in brackets, '(13)', are not taken for
+    citations. Without the PDF: every bracketed number, '(3)', '(4, 5)', '(6–9)', which overcounts."""
+    at = defaultdict(set)
+    pdf = J(SRC(m.root, pid), pid + ".pdf")
+    try:
+        try: import pymupdf as fitz
+        except ImportError: import fitz
+    except ImportError: fitz = None
+    if fitz and os.path.exists(pdf):
+        norm = lambda t: re.sub(r"[^a-z0-9]", "", t.lower())
+        bypage = defaultdict(list)
+        for b, (pg, t) in main.items():
+            if len(re.findall(r"[A-Z][a-z]+ (?:[A-Z]\. ?)*[A-Z][\w\-]+\d", t)) < 3: bypage[pg].append((b, norm(t)))  # skip author lists: Brian K. Lee1, Emily J. Mayhew2,3
+        NUM = r"\s*\d{1,3}(?:\s*[,–-]\s*\d{1,3})*\s*"
+        for pno, page in enumerate(fitz.open(pdf), 1):
+            for bk in page.get_text("dict")["blocks"]:
+                before, prev_cite = "", False
+                for ln in bk.get("lines", []):
+                    for sp in ln["spans"]:
+                        t, italic = sp["text"], bool(sp["flags"] & 2) or bool(re.search(r"[.\-,](I|It|Italic|Oblique|BoldItalic)\b|Italic", sp["font"]))
+                        sup = bool(sp["flags"] & 1) and not re.search(r"(\d|[−\-^×]|\d\s?[a-zA-Zµμ]{1,3})\s*$", before)  # not 10^-4 or mm^2
+                        ita = italic and re.search(r"[(,–\-]\s*$", before) is not None
+                        if re.fullmatch(NUM, t) and (sup or ita) and len(norm(before)) >= 6:
+                            ctx = norm(before)[-24:]
+                            hit = next((b for b, nt in bypage.get(pno, []) if ctx in nt), None)
+                            if hit:
+                                nums = expand_nums(t, top)
+                                rng = re.search(r"⟦(\d+)⟧\s*[–-]\s*$", before) if ita else None  # Science sets (7–9) as italic 7, roman –, italic 9
+                                if rng and nums: nums |= expand_nums(f"{rng.group(1)}-{min(nums)}", top)
+                                for n in nums: at[n].add(hit)
+                            before += "⟦" + t.strip() + "⟧" if ita else t
+                        else: before += t
+                    before += " "
+        if at: return {n: {b for b in bs} for n, bs in at.items()}
+    for b, (_pg, t) in main.items():
+        for grp in re.findall(r"\((\d{1,3}(?:\s*[,–-]\s*\d{1,3})*)\)", t):
+            for n in expand_nums(grp, top): at[n].add(b)
+    return at
+
+
+def expand_nums(t, top):
+    out = set()
+    for part in re.split(r"\s*,\s*", t.strip()):
+        mo = re.fullmatch(r"(\d+)\s*[–-]\s*(\d+)", part)
+        if mo and int(mo.group(1)) < int(mo.group(2)) <= top and int(mo.group(2)) - int(mo.group(1)) < 30: out |= set(range(int(mo.group(1)), int(mo.group(2)) + 1))
+        elif part.isdigit() and 1 <= int(part) <= top: out.add(int(part))
+    return out
+
+
+def read_refs(path):
+    """Entries of a P012_refs.md file: [(number, {field: value})]."""
+    out = []
+    for blk in re.split(r"^## ", rd(path), flags=re.M)[1:]:
+        head, *body = blk.split("\n")
+        if not head.strip().isdigit(): continue
+        out.append((int(head.strip()), {k: v.strip() for k, v in re.findall(r"^- ([a-z_]+)::[ \t]*(.*)$", "\n".join(body), re.M)}))
+    return out
+
+
+def cmd_cite(m, pid):
+    """Turn a source's checked reference list into reference cards: one card per cited work, shared by every source
+    that cites it, matched by DOI, arXiv id, first author + year + volume + page, or first author + year + title."""
+    path = J(SRC(m.root, pid), pid + "_refs.md")
+    if not os.path.exists(path): sys.exit(f"cite: no {pid}_refs.md; run `mesh.py refs {pid}` first")
+    index = {}
+    for r in [c for c in m.cards.values() if c.fam == "reference" and not c.get("retired")]:
+        for k in ref_keys(r.fields()): index.setdefault(k, r)
+    srcs = {k: c for c in m.cards.values() if c.fam == "source" for k in ref_keys(source_fields(c))}
+    nxt = max([int(c.id[1:]) for c in m.cards.values() if c.fam == "reference"] or [0]) + 1
+    made, merged = 0, 0
+    os.makedirs(J(m.root, "references"), exist_ok=True)
+    for n, f in read_refs(path):
+        line = f"- cited_by:: [[{pid}]] ref {n}" + (f" — {f['cited_at']}" if f.get("cited_at") else "")
+        keys = ref_keys(f); hit = next((index[k] for k in keys if k in index), None)
+        held = next((srcs[k] for k in keys if k in srcs), None)
+        if hit:
+            raw = rd(hit.path); codes = [l for l in raw.split("\n## Codes", 1)[1].split("\n") if l.startswith(f"- cited_by:: [[{pid}") or l.startswith(f"- cited_by:: [[{pid}-")] if "\n## Codes" in raw else []
+            new = raw
+            for l in codes: new = new.replace(l + "\n", "", 1)
+            for k, v in f.items():  # fill fields the card lacks; never overwrite checked ones
+                if k in REF_FIELDS and v and not hit.get(k):
+                    new = new.replace("\n## Codes\n", f"\n## Codes\n- {k}:: {v}\n", 1)
+            new = new.rstrip("\n") + "\n" + line + "\n"
+            if new != raw: wr(hit.path, new); hit.raw = new
+            merged += 1
+            continue
+        rid = f"R{nxt:04d}"; nxt += 1
+        sur = ascii_fold(first_surname(f.get("authors"))).strip() or "anon"
+        words = [w for w in re.findall(r"[a-z0-9]+", ascii_fold(f.get("title") or f.get("journal") or f.get("publisher") or "").lower()) if w not in STOP][:4]
+        name = re.sub(r"-+", "-", f"{rid}-{re.sub(r'[^a-z]', '', sur.lower())}-{f.get('year') or 'nd'}-{'-'.join(words)}").strip("-")
+        others = len([a for a in (f.get("authors") or "").split(";") if a.strip()])
+        who = sur + (" et al." if others > 2 or "others" in (f.get("authors") or "") else (" & " + (f.get("authors") or "").split(";")[1].split(",")[0].strip() if others == 2 else ""))
+        title = f"{who} ({f.get('year') or 'n.d.'}) " + (f.get("title") or (("in " + f["booktitle"]) if f.get("booktitle") else "") or " ".join(x for x in (f.get("journal"), f.get("volume"), (f.get("pages") or "").split("--")[0]) if x) or f.get("raw", "")[:80])
+        status = "held" if held else "not-held"
+        codes = [f"- id:: {rid}"] + [f"- {k}:: {f[k]}" for k in REF_FIELDS if f.get(k)]
+        codes += [f"- held:: [[{held.id}]]"] if held else []
+        codes += [line]
+        wr(J(m.root, "references", name + ".md"), f"---\ntype: reference\nstatus: {status}\nupdated: {TODAY}\n---\n# {title}\n\n<!--AUTO:START-->\n<!--AUTO:END-->\n\n## Notes\n\n## Codes\n" + "\n".join(codes) + "\n")
+        index.update({k: m.cards.setdefault(rid, Card(J(m.root, "references", name + ".md"), "reference", rid)) for k in keys})
+        made += 1
+    print(f"{pid}: {made} new reference cards, {merged} references matched to existing cards. Run `mesh.py build` to write the BibTeX and the reading queue.")
+
+
+def ref_cites(r):
+    """[(source id, reference number, [paragraphs])] from a reference card's cited_by:: lines."""
+    out = []
+    for v in r.all("cited_by"):
+        mo = re.search(r"(P\d{3})\S*\s+ref\s+(\d+)(?:\s*—\s*(.*))?", v)
+        if mo: out.append((mo.group(1), mo.group(2), re.findall(r"[bsc]\d{4}", mo.group(3) or "")))
+    return out
+
+
+def reading_queue(m):
+    """What to read next, from the reference cards. Four lists: works cited where the brain's research gaps rest
+    (marked ★); works cited where open gaps and tensions rest; works cited near cards that share concepts with a gap
+    or tension (weaker); works cited by more than one source in the brain."""
+    refs = [r for r in m.cards.values() if r.fam == "reference" and not r.get("retired")]
+    at = defaultdict(list)  # (source, paragraph) -> evidence cards anchored there
+    for c in m.evidence():
+        for a in m.anchors(c):
+            if re.fullmatch(r"[bsc]\d{4}", a): at[(c.id[:4], a)].append(c)
+    pages, w = [p for p in m.pages("GX") if p.status not in ("closed", "dropped", "resolved")], rarity(m)
+    tiers = {"star": [], "direct": [], "near": [], "multi": []}
+    for r in refs:
+        if r.status in ("held", "skip"): continue
+        cites = ref_cites(r)
+        cards = {c.id: c for pid, _n, bs in cites for b in bs for c in at.get((pid, b), [])}
+        star, direct, near = [], [], []
+        if cards:
+            dep = m.dependants(set(cards))
+            for p in pages:
+                basis = {t for k in PAGES[p.id[0]][3] for v in p.all(k) for t in m.ids(v)[0]}
+                via = [cid for cid in cards if cid in basis] or ([sorted(cards)[0]] if p.id in dep else [])
+                rg = p.id[0] == "G" and p.status in ("confirmed", "planned")
+                kind = "research gap" if rg else ("gap" if p.id[0] == "G" else "tension")
+                if via: (star if rg else direct).append((p, via[0], kind, "rests on"))
+                else:
+                    best = max(cards, key=lambda c: relevance(m, cards[c], p, w)); sc = relevance(m, cards[best], p, w)
+                    if sc >= 0.35: (star if rg else near).append((p, best, kind, f"shares concepts ({sc:.2f}) with"))
+        n_par = sum(len(bs) for _p, _n, bs in cites)
+        label = f"[[{r.name}|{one(r.title, 80)}]]" + (f" · [doi:{r.get('doi')}](https://doi.org/{r.get('doi')})" if r.get("doi") else (f" · [arXiv:{r.get('arxiv')}](https://arxiv.org/abs/{r.get('arxiv')})" if r.get("arxiv") else ""))
+        by = ", ".join(f"{pid} ref {n} ({len(bs)}×)" if bs else f"{pid} ref {n}" for pid, n, bs in cites)
+        box = "- [ ] " if r.status == "not-held" else "- [~] "
+        why = lambda hits: "; ".join(f"{kind} [[{p.name}|{p.id}]] ({how} [[{m.cards[c].name}|{c}]], where it is cited)" for p, c, kind, how in hits[:3])
+        key = (-len({pid for pid, _n, _b in cites}), -n_par, r.id)
+        if star: tiers["star"].append((key, f"{box}★ {label} — cited by {by}; bears on {why(star + direct)}"))
+        elif direct: tiers["direct"].append((key, f"{box}{label} — cited by {by}; bears on {why(direct)}"))
+        elif near:
+            top_ = -max(float(re.search(r"\((\d\.\d+)\)", h[3]).group(1)) for h in near)
+            tiers["near"].append(((top_, r.id), f"{box}{label} — cited by {by}; {why(near)}"))
+        if len({pid for pid, _n, _b in cites}) > 1: tiers["multi"].append((key, f"{box}{label} — cited by {by}"))
+    held = sum(1 for r in refs if r.status == "held")
+    L = [f"_Generated by `build` from {len(refs)} reference cards. Mark progress on the reference card: status `queued` once asked for, `held` once it is a source in the brain (with `- held:: [[P###]]`), `skip` to drop it. `[~]` means queued; `2×` means cited in two paragraphs._", ""]
+    for k, title, cap in (("star", "★ Bearing on research gaps (gaps/RESEARCH-GAPS.md): read these first", 50),
+                          ("direct", "Cited where the brain's open gaps and tensions rest", 50),
+                          ("near", "Cited near cards sharing concepts with a gap or tension (weaker; top 12)", 12),
+                          ("multi", "Cited by more than one source in the brain", 50)):
+        rows = [x[-1] for x in sorted(tiers[k])]
+        L += [f"### {title} ({len(rows)})"] + (rows[:cap] or ["None yet."]) + ([f"…and {len(rows) - cap} more"] if len(rows) > cap else []) + [""]
+    L += [f"Already in the brain: {held} cited works. Research gaps are gap cards with status confirmed or planned; open gaps become research gaps once a literature search finds no answer."]
+    return L
+
+
 def cmd_related(m, pid):
     mine = set().union(*[m.terms(c) for c in m.evidence(pid)] or [set()])
     for n, c in sorted(((len(mine & m.terms(c)), c) for c in m.pages("KXGHE")), key=lambda r: (-r[0], r[1].id)):
@@ -1830,6 +2279,8 @@ matrix <var> [<var>] [--all]  cross-tab observations by condition (also: type, s
 sample <P###> [n]             random cards beside their source text, for spot checks
 unread <P###> [min chars]     paragraphs of a source that no card is anchored to, for finding missed cards
 progress <P###>               where the extraction of a source stands, for resuming it
+refs <P###> [--force]         extract a source's reference list into P###_refs.md, with where each reference is cited
+cite <P###>                   turn the checked reference list into reference cards (references/R####), one per cited work
 place <P###|id>               where new evidence goes: findings, tensions, gaps and hypotheses each card bears on, and what each match calls for
 equations <P###> [--si]       displayed equations of a source, with boxes to crop (figure ... eq4) and transcribe into LaTeX
 latex <card id>               render a card's equation:: lines beside the cropped original, to check the transcription
@@ -1853,7 +2304,7 @@ def main():
     if c == "version": print(VERSION); return
     if c == "upgrade": return cmd_upgrade(a[0])
     if c == "schema":
-        print(json.dumps({"schema": SCHEMA, "evidence_types": EVIDENCE_TYPES, "evidence_status": EVIDENCE_STATUS, "origin (default authors)": ORIGIN, "via (default text)": VIA, "evidence_relations": EVIDENCE_RELS, "pages (folder, type, status, link keys)": PAGES, "gap_kinds": GAP_KINDS, "concept_kinds": CONCEPT_KINDS, "concept_relations": CONCEPT_RELS, "inverse_labels_in_linked_from": INVERSE, "source_status": SOURCE_STATUS, "coverage_depths": DEPTHS, "source_kinds": SOURCE_KINDS}, indent=1)); return
+        print(json.dumps({"schema": SCHEMA, "evidence_types": EVIDENCE_TYPES, "evidence_status": EVIDENCE_STATUS, "origin (default authors)": ORIGIN, "via (default text)": VIA, "evidence_relations": EVIDENCE_RELS, "pages (folder, type, status, link keys)": PAGES, "gap_kinds": GAP_KINDS, "concept_kinds": CONCEPT_KINDS, "concept_relations": CONCEPT_RELS, "inverse_labels_in_linked_from": INVERSE, "source_status": SOURCE_STATUS, "coverage_depths": DEPTHS, "source_kinds": SOURCE_KINDS, "reference_status": REF_STATUS, "reference_fields": REF_FIELDS}, indent=1)); return
     root = find_root()
     if c == "build": return cmd_build(root)
     m = Mesh(root)
@@ -1861,6 +2312,8 @@ def main():
     elif c == "figure": cmd_figure(m, a)
     elif c == "progress": cmd_progress(m, a[0])
     elif c == "place": cmd_place(m, a[0])
+    elif c == "refs": cmd_refs(m, a[0], "--force" in a)
+    elif c == "cite": cmd_cite(m, a[0])
     elif c == "equations": cmd_equations(m, a[0], "_SI" if "--si" in a else "")
     elif c == "latex": cmd_latex(m, a[0])
     elif c == "staged": cmd_staged(m)

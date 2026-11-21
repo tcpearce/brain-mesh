@@ -27,6 +27,7 @@ When it arrives: `python3 tools/mesh.py anchor P012 --si <files...>`. Supplement
 3. `python3 tools/mesh.py anchor P012 <file.pdf>` copies the PDF in as `P012.pdf`, records its checksum so that any later change to the file is caught, and writes `P012_text.md`, the text split into numbered paragraphs (`^b0001` ...). Check the page count and skim the file. Garbled or missing text means a scan: OCR it and rerun with `--force`. Anchors are permanent once any card cites them, so never re-anchor after that.
 4. Notes and other plain-text sources anchor the same way.
 5. Supplementary material: `python3 tools/mesh.py anchor P012 --si <files...>` (step 0).
+6. **References.** `python3 tools/mesh.py refs P012` finds the reference list and writes `P012_refs.md`: one entry per reference with its authors, year, title, journal, volume, pages, DOI and kind, and `cited_at::`, the paragraphs that cite it. Citations are traced from the PDF's fonts (superscript numbers in Nature and Cell style, italic bracketed numbers in Science style), so a count in brackets is not taken for a citation. Then check the file against the paper's list: the count, and every entry it names under "check by hand". Fill in what the paper leaves out, chiefly titles and DOIs (Science prints no titles): look them up in PubMed for biomedical work, or with a web search, and copy only what a record confirms; never type one from memory. Then `python3 tools/mesh.py cite P012` turns each entry into a reference card, or adds this source to the card that already exists for the same work (matched by DOI, PubMed id, arXiv id, or first author with year, volume and page). A list in author-year style is not parsed yet: write `P012_refs.md` by hand in the same format. `refs` will not overwrite a checked file without `--force`.
 
 From this point `P012.pdf` is the sealed ground truth. Nothing writes to it again.
 
@@ -164,7 +165,7 @@ Then:
 - For each main result and claim, act on the placement report as above.
 - Turn the authors' open questions and limitations into gap candidates (`brain-mesh-gaps`), searching existing gaps first.
 - **Check the workbench.** Does the source support or undermine an open hypothesis, or already answer a planned or registered experiment? Say so on that card, under `## Amendments` for a registered experiment, and tell the user at once.
-- If the source was in `ledger/reading-queue.md`, mark it ingested and revisit the gap it was meant to fill.
+- If the source was in `ledger/reading-queue.md`, `build` marks its reference card held by itself (by DOI, or first author, year, volume and page; set `status: held` and `held:: [[P012]]` by hand if it did not match). Revisit the gap or tension it was queued for.
 
 ## 9. Update the concept hubs
 
@@ -180,7 +181,7 @@ This is what the user reads, so it is not optional. For every concept the source
 
 Set the source card's status to `integrated`. Rewrite the Overview in `MAP.md` if the picture has changed. Run `python3 tools/mesh.py build` until there are no errors, then `python3 tools/mesh.py log "add P012 <authors year> (<n> cards); <findings, tensions and gaps changed>"`.
 
-Report to the user in a few lines: cards by type; findings added or re-graded; new tensions and gaps; hubs updated; anything bearing on their hypotheses or experiments; what was not extracted and why; and the most-cited references not yet in the brain (`index/frontier.tsv`). If the session's files are temporary, hand back the vault archive.
+Report to the user in a few lines: cards by type; findings added or re-graded; new tensions and gaps; hubs updated; anything bearing on their hypotheses or experiments; what was not extracted and why; and the top of the reading queue: the ★ works bearing on research gaps, then works cited where open gaps and tensions rest, with their DOIs. If the session's files are temporary, hand back the vault archive.
 
 ## Lens pass: re-reading sources for a new question
 

@@ -412,4 +412,60 @@ sed -i.bak 's/^status: probable$/status: established/' "$f"
 (python3 tools/mesh.py check || true) | grep -q "K001: status is established but its last 'graded::' line says probable" && pass "a status change without a graded:: line is flagged" || fail "graded check"
 sed -i.bak 's/^\(- graded:: .* probable — .*\)$/\1\n- graded:: 2026-11-21 established — a third independent source replicates it/' "$f"
 (python3 tools/mesh.py check || true) | grep -q "K001: status is" && fail "graded:: line not accepted" || pass "a graded:: line records the change"
+# 9. references: extraction in two styles, shared reference cards, works in the brain, BibTeX, reading queue (1.5.0)
+cp -r "$ROOT/demo-vault" "$T/r"; cd "$T/r"; cp "$MESH" tools/mesh.py
+S1=$(ls -d sources/P001*); S2=$(ls -d sources/P002*)
+sed -i.bak 's/which we could not explain\. ^b0004$/which we could not explain (3). ^b0004/' $S1/P001_text.md
+cat >> $S1/P001_text.md <<'TXT'
+
+Hydrogels swell when heated (1, 2). ^b0006
+
+References ^b0007
+
+1. Lee, K. & Park, J. Hydrogel swelling scales with temperature. J. Appl. Polym. Sci. 98, 101–109 (2015). ^b0008
+
+2. Garcia, C. & Chen, D. Binding retained in acetonitrile. Polymer Sensing Letters 4, 55–60 (2023). ^b0009
+
+3. Novak, P. Thermal ageing of imprinted polymers. Eur. Polym. J. 41, 230–238 (2005). ^b0010
+
+4. de Vries, M. et al. Cavity collapse in imprinted films. Macromolecules 50, 1–9 (2017). ^b0011
+TXT
+cat >> $S2/P002_text.md <<'TXT'
+
+Thermal ageing of imprinted films is known (1) and hydrogels swell (2). We tested 3 films (3). ^b0006
+
+REFERENCES AND NOTES ^b0007
+
+1. P. Novak, Eur. Polym. J. 41, 230–238 (2005). ^b0008
+
+2. K. Lee, J. Park, J. Appl. Polym. Sci. 98, 101–109 (2015). ^b0009
+
+3. G. Branwen, The scaling hypothesis (2020); https://gwern. net/scaling-hypothesis. ^b0010
+TXT
+python3 tools/mesh.py refs P001 > refs.txt; grep -q "P001: 4 references" refs.txt && pass "refs splits a Nature-style list" || { cat refs.txt; fail "refs P001"; }
+grep -q "^- authors:: de Vries, M.; others$" $S1/P001_refs.md && grep -q "^- journal:: J. Appl. Polym. Sci.$" $S1/P001_refs.md && grep -q "^- pages:: 101--109$" $S1/P001_refs.md && pass "Nature-style fields: particles, et al., abbreviated journals, page ranges" || { cat $S1/P001_refs.md; fail "Nature fields"; }
+grep -A9 "^## 3$" $S1/P001_refs.md | grep -q "^- cited_at:: b0004$" && pass "refs finds the paragraph that cites a reference" || fail "cited_at"
+python3 tools/mesh.py refs P002 > refs.txt; grep -q "P002: 3 references" refs.txt && pass "refs splits a Science-style list" || { cat refs.txt; fail "refs P002"; }
+grep -q "^- authors:: Novak, P.$" $S2/P002_refs.md && grep -q "^- url:: https://gwern.net/scaling-hypothesis$" $S2/P002_refs.md && pass "Science-style fields, and a link broken across lines rejoined" || { cat $S2/P002_refs.md; fail "Science fields"; }
+(python3 tools/mesh.py check || true) | grep -q "P001: its references are extracted (P001_refs.md) but not yet turned into reference cards" && pass "check asks for cite after refs" || fail "refs not cited"
+python3 tools/mesh.py refs P001 > /dev/null 2>&1 && fail "refs overwrote a checked list without --force" || pass "refs keeps a checked list unless --force"
+python3 tools/mesh.py cite P001 | grep -q "4 new reference cards" && python3 tools/mesh.py cite P002 | grep -q "1 new reference cards, 2 references matched" && pass "a work cited by two sources gets one reference card" || fail "cite dedupe"
+grep -q "^status: held" references/R0002-garcia-2023-*.md && grep -q "^- held:: \[\[P002\]\]" references/R0002-*.md && pass "a cited work already in the brain is marked held" || fail "held"
+python3 tools/mesh.py build > build.txt; grep -q "check: 0 errors" build.txt && pass "a vault with reference cards builds clean" || { cat build.txt; fail "build refs"; }
+grep -q "^@article{novak2005thermal," references/library.bib && grep -q "^@article{P001," references/library.bib && grep -q "^@misc{branwen2020scaling," $S2/P002_refs.bib && pass "BibTeX for each source and for the library" || fail "bibtex"
+grep -q "pages = {230--238}" $S2/P002_refs.bib && grep -q "author = {Smith, A. and Jones, B.}" references/library.bib && pass "BibTeX names and page ranges are well formed" || fail "bibtex fields"
+grep -q '^```bibtex$' references/R0003-novak-*.md && grep -q "as ref 3, cited at \[\[P001_text#^b0004|b0004\]\]" references/R0003-novak-*.md && pass "a reference card shows its BibTeX and where it is cited" || fail "reference card"
+grep -q "^\*\*References (4)\*\* \[\[R0001-" $S1/P001-smith-*.md && pass "a source card lists its references" || fail "source references"
+q=ledger/reading-queue.md
+sed -n '/^### ★/,/^### Cited where/p' $q | grep -q "★ \[\[R0003-novak.*research gap \[\[G002-" && pass "the queue stars a work cited where a research gap rests" || { cat $q; fail "queue star"; }
+sed -n '/^### Cited by more than one/,$p' $q | grep -q "R0001-lee-2015.*cited by P001 ref 1 (1×), P002 ref 2 (1×)" && pass "the queue lists works cited by more than one source" || { cat $q; fail "queue multi"; }
+grep -q "R0002-garcia" $q && fail "a work already in the brain is still queued" || pass "works in the brain are left out of the queue"
+python3 tools/mesh.py build > /dev/null; cp -r . ../r2; python3 tools/mesh.py build > /dev/null; diff -r -q . ../r2 -x index > /dev/null && pass "building twice changes nothing" || { diff -r -q . ../r2 | head; fail "build not idempotent"; }
+sed -i.bak 's/^status: not-held$/status: skip/' references/R0003-novak-*.md; python3 tools/mesh.py build > /dev/null
+grep -q "R0003-novak" $q && fail "a skipped work is still queued" || pass "status skip drops a work from the queue"
+sed -i.bak 's/^- authors:: Smith A; Jones B$/- authors:: Lee K; Park J/; s/^- year:: 2021$/- year:: 2015/; s/^- venue:: .*$/- venue:: J. Appl. Polym. Sci. 98, 101-109/' $S1/P001-smith-*.md
+python3 tools/mesh.py build > build.txt; grep -q "R0001 is now a source in the brain (P001): marked held" build.txt && grep -q "^status: held" references/R0001-*.md && pass "a queued work that becomes a source is marked held at the next build" || fail "auto held"
+cp references/R0004-*.md references/R0099-devries-copy.md; sed -i 's/^- id:: R0004$/- id:: R0099/' references/R0099-devries-copy.md
+(python3 tools/mesh.py check || true) | grep -q "R0099 and R0004 look like the same work\|R0004 and R0099 look like the same work" && pass "check spots two reference cards for one work" || fail "reference dupes"
+python3 tools/mesh.py merge R0004 R0099 > /dev/null && grep -q "^- retired:: merged into" references/R0099-*.md && python3 tools/mesh.py build > build.txt && grep -q "check: 0 errors" build.txt && pass "merge retires a duplicate reference card" || { cat build.txt; fail "reference merge"; }
 echo "ALL TESTS PASSED"

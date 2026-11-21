@@ -61,10 +61,14 @@ sources/P012-<slug>/      one folder per source, named after its source card (P0
   P012_correction.pdf, P012_correction_marked.pdf, P012_correction_text.md   published corrections, appended in order (^c0001 ...)
   P012_concepts.md          concepts an extraction agent proposed, waiting to be merged (brain-mesh-batch)
   P012_progress.md          an extraction agent's notes on where it stands
+  P012_refs.md              its reference list, one entry per reference with fields and the paragraphs that cite it (checked by hand)
+  P012_refs.bib             generated BibTeX of its reference list
+references/R0001-<slug>.md  reference cards: one per cited work, shared by every source that cites it
+references/library.bib    generated BibTeX of the sources in the brain and every work they cite
 findings/K###-<slug>.md   tensions/X###-...   gaps/G###-...
 hypotheses/H###-...       experiments/E###-...
 gaps/RESEARCH-GAPS.md     generated research-gaps document
-ledger/                   CHANGELOG.md, lenses.md, reading-queue.md, checksums.txt
+ledger/                   CHANGELOG.md, lenses.md, reading-queue.md (with a generated list of what to read next), checksums.txt
 index/                    generated lookup tables (cards.tsv, edges.tsv, coverage.tsv, marks.json ...)
 tools/mesh.py             the tooling (a copy; the repository holds the source of truth)
 .brain-mesh/              hidden: an offline copy of these instructions and the tooling version
@@ -73,7 +77,7 @@ notes/                    optional: the user's own free-form notes, ignored by t
 
 ## Ids and names
 
-- The id is the code at the start of the file name: `P012` (a source), `P012-007` (its seventh evidence card), `K003`, `X001`, `G004`, `H002`, `E001`. A concept card's id is its slug: `binding-capacity`.
+- The id is the code at the start of the file name: `P012` (a source), `P012-007` (its seventh evidence card), `K003`, `X001`, `G004`, `H002`, `E001`, `R0042` (a cited work). A concept card's id is its slug: `binding-capacity`.
 - File name = id plus a short meaningful slug, lower case with hyphens, two to six words: `P012-007-capacity-falls-at-45c.md`. The slug is frozen when the card is created; refine the title inside the card instead of renaming the file. A source card's slug starts with a letter, usually the first author: `P012-smith-2021-film-temperature.md`.
 - Ids are never changed or reused. A card that is wrong or merged is retired by adding `- retired:: <reason and a link to its replacement>` to its Codes. It is never deleted, so nothing that cites it breaks.
 - Get the next free id from `python3 tools/mesh.py id P` (also `K`, `X`, `G`, `H`, `E`, `L`), or `id P012` for that source's next card.
@@ -216,6 +220,16 @@ Written by Claude across sources. One proposition, disagreement or unknown per c
 ### Workbench cards
 
 Hypothesis `H` and experiment `E`: see `brain-mesh-experiment`.
+
+### Reference cards: what the sources cite
+
+Every work cited by a source in the brain has one reference card in `references/`, `R0042-keller-2017-predicting-human-olfactory.md`, shared by every source that cites it. It is bibliographic, not evidence: it says what the work is, who cites it and where, and gives its BibTeX. The tooling makes and maintains them (`refs` and `cite` in `brain-mesh-add-paper`); edit only their Codes and the `## Notes` section.
+
+- Front matter `type: reference`; status `not-held` (cited, not in the brain), `queued` (asked for or downloading), `held` (now a source in the brain), `skip` (decided against).
+- Codes: `id`, `authors` (`Surname, I.; Surname, I.`, ending `; others` for et al.), `year`, `title`, `journal` or `booktitle` and `publisher`, `volume`, `pages`, `doi`, `pmid`, `arxiv`, `url`, `kind` (article, incollection, book, misc), one `cited_by:: [[P012]] ref 7 — b0031, b0040` per citing source (its number in that list and the paragraphs that cite it), and `held:: [[P015]]` once the work is a source in the brain. `build` marks a work held by itself when a source card with the same DOI, or the same first author, year, volume and page, appears.
+- The generated block shows the citation with DOI, PubMed and arXiv links, each citing passage with the evidence cards anchored there ("where P001-039 says this"), and the BibTeX.
+- A source card lists its references by number; `P012_refs.bib` and `references/library.bib` are rebuilt on every `build`.
+- `ledger/reading-queue.md` gets a generated list, rebuilt on every `build`: works cited where research gaps rest (★, read first), works cited where open gaps and tensions rest, works cited near cards that share concepts with a gap or tension, and works cited by more than one source. Mark progress on the reference card's status, never in the generated list.
 
 ## Links
 

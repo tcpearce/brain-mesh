@@ -2,6 +2,17 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.5.0 (2026-11-21)
+
+Citations: every source's reference list becomes reference cards, and the reading queue suggests what to read next.
+
+- **`refs P012`** finds a source's numbered reference list and writes `P012_refs.md`, one entry per reference with authors, year, title, journal or book, volume, pages, DOI, arXiv id or link, kind, and `cited_at::`, the paragraphs that cite it. Both the Nature and Cell style (`Surname, I.`, superscript citations) and the Science style (`I. Surname`, italic bracketed citations, no titles) are parsed. Citation places come from the PDF's fonts, so a count in brackets is not mistaken for a citation; without a PDF every bracketed number counts. The file is checked by hand, and missing titles and DOIs filled from PubMed or another record, before the next step. Author-year lists are not parsed yet.
+- **`cite P012`** turns the checked list into reference cards, `references/R0001-<surname>-<year>-<words>.md`, one per cited work and shared by every source that cites it, matched by DOI, PubMed id, arXiv id, first author with year, volume and first page, or first author with year and title. Each card has a `cited_by::` line per citing source with its reference number and paragraphs, and status `not-held`, `queued`, `held` or `skip`. A work that is already a source in the brain is marked `held`, at once or at the next `build`.
+- **BibTeX.** Each reference card shows its BibTeX; `build` writes `P012_refs.bib` per source and `references/library.bib` with every source in the brain and every work it cites. Source cards list their references by number. Reference cards show each citing passage with the evidence cards anchored there.
+- **Reading queue.** `build` writes a generated section in `ledger/reading-queue.md`: works cited where a research gap rests (★, read first), works cited where open gaps and tensions rest, works cited near cards sharing concepts with a gap or tension, and works cited by more than one source; each with its DOI link and how often it is cited. The hand-kept table above it stays.
+- **Checks.** Reference cards are checked for type, status, year, DOI form and a citing source; `check` warns when a reference list is extracted but not carded, and when two reference cards look like the same work. `merge` moves the dropped card's citations to the survivor. `health` lists works cited by several sources, and the frontier (MAP and health) now includes them.
+- Docs: add-paper step 1 gains the references step; batch agents run `refs` and the orchestrator runs `cite` in turn; gaps rung 2 starts from the works cited where a gap rests; housekeeping item 10.
+
 ## 1.4.1 (2026-11-21)
 
 - **Builds on Windows match builds elsewhere.** Files are always written with LF line endings, and every path the tooling writes into a file (the card index, the marked PDFs' links, the marking signature) uses forward slashes. Before, a build on Windows rewrote files with Windows line endings and back-slashed paths, so they no longer matched the repository and `git pull` refused to run.

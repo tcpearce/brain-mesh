@@ -41,9 +41,10 @@ Give each agent, in its prompt:
 
 - The vault's path, its paper's id and title, and where the clone of `tcpearce/brain-mesh` is (or how to get it).
 - "Read `skills/brain-mesh/SKILL.md`, then `skills/brain-mesh-add-paper/SKILL.md`. Carry out steps 2 to 7 for P012 only. Step 8 (integration) is done later by the session that launched you."
-- **May write only** inside its own source folder (`sources/P012-<slug>/`, or `sources/P012/` before its source card exists): its evidence cards, figure files (`P012-F2.png`, `P012-F2.csv`), `P012_concepts.md` and `P012_progress.md`.
+- **May write only** inside its own source folder (`sources/P012-<slug>/`, or `sources/P012/` before its source card exists): its evidence cards, figure files (`P012-F2.png`, `P012-F2.csv`), `P012_refs.md`, `P012_concepts.md` and `P012_progress.md`.
 - **Must not write** `concepts/`, `findings/`, `tensions/`, `gaps/`, `hypotheses/`, `experiments/`, `index/`, `MAP.md`, `ledger/`, or another source's folder. Must not run `build`, `mark`, `log`, `anchor`, `seal` or `upgrade`, which write shared files.
-- **May run** `check P012`, `unread P012`, `sample P012`, `progress P012`, `figure P012 ...`, `id P012`, `find`, `show`, `concept`, `neighbours P012`, and `split` for batches that hold only its own evidence cards.
+- **May run** `check P012`, `unread P012`, `sample P012`, `progress P012`, `figure P012 ...`, `refs P012`, `id P012`, `find`, `show`, `concept`, `neighbours P012`, and `split` for batches that hold only its own evidence cards. Must not run `cite`, which allocates reference ids shared by every paper.
+- **References.** Run `refs P012` and check `P012_refs.md` as add-paper step 1 says, filling in missing titles and DOIs from records it can look up.
 - **New concepts.** Look for an existing concept first (`python3 tools/mesh.py concept "<name>"`). Only if none fits, write a full concept card block, in the usual `=== <name>` batch format, into `sources/P012/P012_concepts.md`, and link it from the cards as usual. `check P012` reports those links as warnings, not errors. Never put concept blocks in a batch for `split`.
 - **Links to other papers.** Typed links with reasons are welcome from its own cards to cards of papers already integrated. Never edit another paper's cards. Candidate links to papers in the same batch go in the progress note.
 - **Progress note.** After each section of the paper, append to `P012_progress.md`: the date, the section done, the last card id, and anything open (figures still to read, flags, questions for the user). A resumed agent starts with `python3 tools/mesh.py progress P012` and then reads the note.
@@ -60,10 +61,11 @@ Launch a new agent with the same brief plus "Resume: run `progress P012` first a
 ## Phase 3: merge
 
 1. **Concepts.** `python3 tools/mesh.py staged` lists every proposed concept, which papers propose it, the existing concepts it resembles and its twins proposed by other agents. For each, either merge it into an existing concept (add the alias there, and change the links in the proposing cards to `[[existing|text]]`), or create it once from the best of the proposed blocks. Then delete the `P###_concepts.md` files.
-2. **Build.** `python3 tools/mesh.py build` must end with 0 errors. This also marks every new PDF.
-3. **Links across papers.** For each new paper run `python3 tools/mesh.py neighbours P012`. Candidates are ranked by the concepts two cards share, rare concepts weighing most. Read both cards and link with a reason, or decide they are unrelated. Add the links the agents suggested in their reports.
-4. **Integrate.** Do add-paper step 8 for each paper: update the concept hubs, findings, tensions and gaps, and set each source to `integrated`.
-5. **Verify.** Do the spot checks of add-paper step 7 on a sample of each paper's cards. For a vault that decisions will rest on, a fresh agent that did not write the cards does the checking.
-6. **Close.** `python3 tools/mesh.py log "..."`, `gapsdoc`, `build`, then commit and push.
+2. **References.** Run `python3 tools/mesh.py cite P012` for each paper in turn, never in parallel: it allocates reference ids, and a work cited by several papers in the batch gets one card.
+3. **Build.** `python3 tools/mesh.py build` must end with 0 errors. This also marks every new PDF and rebuilds the reading queue.
+4. **Links across papers.** For each new paper run `python3 tools/mesh.py neighbours P012`. Candidates are ranked by the concepts two cards share, rare concepts weighing most. Read both cards and link with a reason, or decide they are unrelated. Add the links the agents suggested in their reports.
+5. **Integrate.** Do add-paper step 8 for each paper: update the concept hubs, findings, tensions and gaps, and set each source to `integrated`.
+6. **Verify.** Do the spot checks of add-paper step 7 on a sample of each paper's cards. For a vault that decisions will rest on, a fresh agent that did not write the cards does the checking.
+7. **Close.** `python3 tools/mesh.py log "..."`, `gapsdoc`, `build`, then commit and push. Report the works now cited by several papers in the brain and the ★ works in the reading queue.
 
 Then the next batch: phases 2 and 3 again. The vocabulary that later agents start from now includes every concept merged so far.

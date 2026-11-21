@@ -33,7 +33,7 @@ Skipping a rung is the main way this goes wrong: proposing an experiment that pa
 | condition variables only ever held at one value; sparse condition pairs | `untested-region` |
 | numeric variables never measured as an outcome | `unmeasured` |
 | source units not fully extracted | an extraction gap, rung 1 |
-| most-cited sources not in the brain | a brain gap, rung 2 |
+| most-cited sources not in the brain, and the generated list in `ledger/reading-queue.md` (works cited where gaps and tensions rest) | a brain gap, rung 2 |
 | evidence the sources do not give (`missing::`) | marked "supplementary material unread": an extraction gap, rung 1, so get the supplementary material. Otherwise a missing method or basis that a finding or design depends on is a gap of kind `method` or `untested-assumption`, and missing data or statistics a gap of kind `unmeasured` |
 
 For each sparse pair the scan names, run `python3 tools/mesh.py matrix <variable> <variable>` to see exactly which combinations nobody has measured. Read the **Open questions** and **Relationships** sections of the main concept hubs too: a relationship stated with no finding behind it is a gap. The marked PDFs help with rung 1: passages with no highlight were never carded.
@@ -96,16 +96,16 @@ Record every step in the card's **Search log**, dated. The log is what makes an 
 
 - Build queries from the gap's concept cards. Their names and `aliases` are ready-made synonym lists; combine the variable, the system and the condition.
 - Use whatever search this session offers: literature connectors, a literature-search skill, web search. Use at least two independent routes for a priority 1 gap.
-- Follow citations as well as keywords: the references the brain's own sources lean on (`index/frontier.tsv`) and the papers that cite the brain's key sources.
+- Follow citations as well as keywords. Start with the works the brain's own sources cite in the passages this gap rests on: the gap's entries in the generated part of `ledger/reading-queue.md`, or the reference cards whose "Cited by" names the gap's evidence cards. Then the most-cited references (`index/frontier.tsv`) and the papers that cite the brain's key sources.
 - Screen each hit against the gap as stated: does it measure this variable, in this system, under these conditions? A paper on the general topic does not fill a specific gap.
 - Log the date, where you searched, the exact queries, the number of hits, how many were screened, and a one-line verdict on each serious candidate.
 
 Then:
 
-- **Papers that would fill it.** Set status `fillable` and `- searched:: <date>`. Add each paper to `ledger/reading-queue.md` with its DOI or link, the gap it would fill, a priority and whether the full text is openly available. Tell the user which PDFs to supply; full text often cannot be fetched from here. Once a paper is ingested with `brain-mesh-add-paper`, return to the gap: `closed` with `closed_by::` if it is answered, a rewritten **Unknown** if it is only narrowed.
+- **Papers that would fill it.** Set status `fillable` and `- searched:: <date>`. A paper that already has a reference card: set its status to `queued`. Any other: add it to the table in `ledger/reading-queue.md` with its DOI or link, the gap it would fill, a priority and whether the full text is openly available. Tell the user which PDFs to supply; full text often cannot be fetched from here. Once a paper is ingested with `brain-mesh-add-paper`, return to the gap: `closed` with `closed_by::` if it is answered, a rewritten **Unknown** if it is only narrowed.
 - **Nothing answers it.** Set status `confirmed` and `- searched:: <date>`. Word the conclusion as what it is: "no answer found in <where> on <date>". Never "nobody has done this".
 
-**Rung 3: a research gap.** A confirmed gap goes into the research-gaps document and is offered to `brain-mesh-experiment`. When an experiment is registered against it, set status `planned`. When results answer it, `closed`.
+**Rung 3: a research gap.** A confirmed gap goes into the research-gaps document and is offered to `brain-mesh-experiment`. From then on the reading queue stars (★) every work cited where it rests: read those before designing anything, since one of them may answer it after all. When an experiment is registered against it, set status `planned`. When results answer it, `closed`.
 
 A search goes stale. Repeat it before an experiment is designed on a confirmed gap, and whenever `python3 tools/mesh.py health` reports the search as old.
 

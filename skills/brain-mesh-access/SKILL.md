@@ -78,6 +78,7 @@ Choose the home by what the material is. Everything that enters keeps its proven
 | A new concept | The user's call. An agent proposes it (`propose <slug> "<definition>" --from P012`) and links the proposed name; the user adopts it (`adopt`), folds it into another (`adopt <slug> into <concept>`) or rejects it. The user can also make one by hand: a note in `concepts/` with a sentence saying what it is, which `build` turns into a card. Either way, then run `scan <slug>` and card what the papers say about it (`brain-mesh-concept-scan`). |
 | An idea that would explain something | A hypothesis (`brain-mesh-experiment`) |
 | Something nobody knows | A gap (`brain-mesh-gaps`) |
+| Two cards, or a card and a concept fact, that cannot both hold | The contradictions register: `contradictions add <card> <card> "<the clash>" --by "<who found it>"` (`brain-mesh`, **Contradiction**). Never resolve a clash by editing one side away. |
 | A paper to read | Set its reference card's status to `queued`, or add a row to the table in `ledger/reading-queue.md` |
 | Free-form thinking, to-dos, meeting notes | `notes/`. The tooling ignores it; notes may link to any card. |
 | A correction to a card | Edit the card (section 4), or follow housekeeping for published corrections |

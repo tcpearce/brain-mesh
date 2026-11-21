@@ -1,13 +1,13 @@
 ---
 name: "brain-mesh-concept-scan"
-description: "Scan chosen sources of a brain mesh, or all of them, for every concept in the brain and card each new fact with the works the paper cites for it; add missing citations to existing cards; update the concept hubs. Use when the user asks to scan sources for concepts, facts or citations, after a concept is adopted or made by hand, and to backfill papers added before the scan existed."
+description: "Scan chosen sources of a brain mesh, or all of them, for every concept in the brain and card each new fact with the works the paper cites for it; log every contradiction with what the brain holds on the contradictions register; add missing citations to existing cards; update the concept hubs. Use when the user asks to scan sources for concepts, facts or citations, after a concept is adopted or made by hand, and to backfill papers added before the scan existed."
 ---
 
 # Brain mesh: concept scan
 
 Read `brain-mesh` first for the card formats, and `brain-mesh-access` for syncing. This skill goes back over sources already in the brain. For a new paper the same work is part of `brain-mesh-add-paper` step 4.
 
-The aim: for every source in scope, everything the paper says about any concept in the brain is either on a card or recorded as nothing new, and every fact the paper backs with a citation carries that citation, on its evidence card and in the concept hub.
+The aim: for every source in scope, everything the paper says about any concept in the brain is either on a card or recorded as nothing new; every fact the paper backs with a citation carries that citation, on its evidence card and in the concept hub; and every contradiction between what the paper says and what the brain holds is logged on the contradictions register.
 
 ## 1. Scope
 
@@ -39,11 +39,19 @@ The end of the `scan` output, and **Citations to add** in `P012_scan.md`, list t
 
 If the source has no reference cards yet, make them first: `refs P012`, check the file, `cite P012` (add-paper step 1).
 
+## 3a. Contradictions
+
+The facts a concept scan adds are the ones most likely to clash with the brain: statements made in passing, in introductions and discussions, that nobody has yet set against the other papers.
+
+1. As you card each new fact, read it against the concept's hub facts and evidence (`python3 tools/mesh.py facts <concept>`). Does it deny a fact on the hub, contradict another source's card, or exclude a mechanism the brain holds?
+2. `python3 tools/mesh.py contradictions P012` lists what the tooling sees in the Codes, including any `contradicts::` link you made.
+3. Log every real one: `contradictions add <key>`, or `contradictions add <card> <card> "<the clash>" --by "concept scan P012"`, and write **Why both cannot hold** and **Ways out**. Dismiss a candidate that is not one with its reason. Never edit a hub fact or another source's card to make a clash go away: the register keeps it until evidence explains or resolves it.
+
 ## 4. Close the source
 
-1. `python3 tools/mesh.py scan P012` again, until **To do** and **Citations to add** are empty.
+1. `python3 tools/mesh.py scan P012` again, until **To do** and **Citations to add** are empty, and `python3 tools/mesh.py contradictions P012` shows nothing unlogged.
 2. `python3 tools/mesh.py check P012`: fix every error, clear every warning or record why it stands.
-3. Add a pass line to the source card: `- pass:: <date> | concept scan | <n> new cards, <m> citations added | <k> concepts decided`.
+3. Add a pass line to the source card: `- pass:: <date> | concept scan | <n> new cards, <m> citations added | <k> concepts decided, <c> contradictions logged`.
 
 ## 5. Link and place the new cards
 
@@ -51,10 +59,10 @@ For each source done: `python3 tools/mesh.py neighbours P012` and `python3 tools
 
 ## 6. Update the concept hubs
 
-For every concept that gained a fact, add-paper step 9: a line under **What is known** (or **Relationships**, **How it is measured**, **Open questions**) citing the evidence card and the works it cites, as `[[R0042-…|Keller et al. 2017]]`, with the matching `- cites::` line in Codes. `check` flags a hub line that states a fact from a citing card without its works. Revise lines the new facts overtake, and set `updated`.
+For every concept that gained a fact, add-paper step 9 (a fact on a logged contradiction is stated with it: "against [[P001-014]], see [[V002]]"): a line under **What is known** (or **Relationships**, **How it is measured**, **Open questions**) citing the evidence card and the works it cites, as `[[R0042-…|Keller et al. 2017]]`, with the matching `- cites::` line in Codes. `check` flags a hub line that states a fact from a citing card without its works. Revise lines the new facts overtake, and set `updated`.
 
 ## 7. Finish
 
 1. `python3 tools/mesh.py build` until it shows 0 errors.
-2. `python3 tools/mesh.py log "concept scan P001-P003: <n> new cards, <m> citations added, hubs <list>"` and `python3 tools/mesh.py sync "concept scan <sources>"`.
-3. Report in a few lines: per source, the new facts by concept and the citations added; the hubs updated; findings, gaps or tensions affected; the concepts proposed, one line each with its definition, for the user to adopt (`adopt <slug>`, or `adopt --all`), fold (`adopt <slug> into <concept>`) or reject (`reject <slug> "<why>"`).
+2. `python3 tools/mesh.py log "concept scan P001-P003: <n> new cards, <m> citations added, <c> contradictions logged, hubs <list>"` and `python3 tools/mesh.py sync "concept scan <sources>"`.
+3. Report in a few lines: per source, the new facts by concept and the citations added; the contradictions logged, each in one line, and those that suggest a theory or an experiment; the hubs updated; findings, gaps or tensions affected; the concepts proposed, one line each with its definition, for the user to adopt (`adopt <slug>`, or `adopt --all`), fold (`adopt <slug> into <concept>`) or reject (`reject <slug> "<why>"`).

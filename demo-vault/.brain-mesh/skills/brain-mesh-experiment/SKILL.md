@@ -14,7 +14,7 @@ This is what the brain is for. Every choice made here should trace back to cards
 Draw candidates from, roughly in this order of value:
 
 1. **Confirmed research gaps**, high priority first (`gaps/RESEARCH-GAPS.md`, or `python3 tools/mesh.py gaps`). Propose for high-priority gaps, tensions and hypotheses first and design them in full; a low-priority one gets a one-line idea at most. If a gap's search is old, repeat it first with `brain-mesh-gaps`.
-2. **Open tensions.** The best experiment is the one whose result differs depending on which side is right.
+2. **Open contradictions and tensions** (`ledger/contradictions.md`). The best experiment is the one whose result differs depending on which side is right, or which tells the ways out of a contradiction apart (its **Ways out** section). A hypothesis written for one `explains::` it, and an experiment `addresses::` it, so the register shows what works on it.
 3. **Findings resting on one source**, where much depends on them: replication.
 4. **Untested assumptions** beneath important observations.
 5. **Models** never tested outside the range they were fitted on.

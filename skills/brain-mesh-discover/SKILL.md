@@ -1,6 +1,6 @@
 ---
 name: "brain-mesh-discover"
-description: "Mine a brain mesh, with the user, for new hypotheses and new links: run the miners (bridges, moderators, transfer, implied effects, constraints, genealogy, assumptions, oddities, theories, analogies, links), propose cards with the case for each, keep theory, analogy and seed cards, and recheck every mined card as sources are added."
+description: "Mine a brain mesh, with the user, for new hypotheses and new links: run the miners (contradictions, bridges, moderators, transfer, implied effects, constraints, genealogy, assumptions, oddities, theories, analogies, links), propose cards that respect every fact and piece of evidence except where a logged contradiction frees it, log the contradictions found on the register, keep theory, analogy and seed cards, and recheck every mined card as sources are added."
 ---
 
 # Brain mesh: discovery
@@ -11,11 +11,12 @@ The other documents build the brain from what papers say and find what they leav
 
 ## The rules
 
-1. **Interactive.** The miners print signals. Claude judges them and proposes cards to the user, each with the case for it. Only what the user accepts is written. The exception is housekeeping, marked `housekeeping` in the miner output: linking two cards (`links`), recording on a concept card an effect the data already show (`implied:data`), and a lens pass where a held work has no card for what other sources cite it for (`genealogy:held`). Claude does these, then reports them in one line.
-2. **Discovery cards change nothing beneath them.** A seed, theory or analogy never edits evidence, re-grades a finding or moves a gap. Those change only through their own documents, when evidence arrives.
-3. **Every mined card carries a stamp,** so it can be followed as the brain grows (section 8).
-4. **Nothing is deleted.** A seed is promoted, answered or dropped; a theory abandoned; an analogy failed; always with the reason.
-5. **Brain-relative.** "No card holds both" means in this brain. Before a proposal is promoted to a hypothesis or gap, it climbs the ladder in `brain-mesh-gaps` (coverage of the sources held, then a literature search).
+1. **Interactive.** The miners print signals. Claude judges them and proposes cards to the user, each with the case for it. Only what the user accepts is written. The exception is housekeeping, marked `housekeeping` in the miner output: linking two cards (`links`), recording on a concept card an effect the data already show (`implied:data`), a lens pass where a held work has no card for what other sources cite it for (`genealogy:held`), and logging a contradiction on the register once Claude has judged it real (`contradictions:log`). Claude does these, then reports them in one line.
+2. **The evidence and the concept facts are constraints.** Every proposal (seed, theory, analogy, hypothesis, gap, verdict) must agree with every evidence card, finding and concept fact (the lines of a hub's **What is known**, **Relationships** and **How it is measured**, and its `affects::` relations) that bears on its concepts. `python3 tools/mesh.py facts <concept> ...` lists them; each signal names the call it needs (`respect: mesh.py facts ...`). A proposal may go against a card only where that card is a side of an open or explained contradiction on the register; it is then offered as a way out of that contradiction, citing it. A proposal that clashes with anything else is wrong as it stands: reshape it or drop it. If the clash shows two pieces of evidence that cannot both hold, that is a contradiction to log, not a licence. The `implied` and `analogies` miners already withhold predictions that evidence in the brain looked for and did not find, unless a logged contradiction frees that evidence; the `theories` miner flags theories in conflict with findings no contradiction frees.
+3. **Discovery cards change nothing beneath them.** A seed, theory or analogy never edits evidence, re-grades a finding or moves a gap. Those change only through their own documents, when evidence arrives.
+4. **Every mined card carries a stamp,** so it can be followed as the brain grows (section 8).
+5. **Nothing is deleted.** A seed is promoted, answered or dropped; a theory abandoned; an analogy failed; always with the reason.
+6. **Brain-relative.** "No card holds both" means in this brain. Before a proposal is promoted to a hypothesis or gap, it climbs the ladder in `brain-mesh-gaps` (coverage of the sources held, then a literature search).
 
 ## 1. When to run
 
@@ -32,8 +33,9 @@ Each miner reads only the Codes. Scores rank signals within one miner, never acr
 
 | Miner | What it finds | What a good proposal from it usually becomes |
 |---|---|---|
+| `contradictions` | Possible contradictions in the Codes not yet on the register (`contradicts::` links, values of one quantity that clash under the same conditions, a recorded effect the data reverse, opposite directions in different sources, a null result against an effect, evidence against a finding), and open contradictions that no theory, hypothesis, seed or experiment works on yet. | A contradiction logged on the register (housekeeping, once judged real); for an open one, a theory that makes both sides true, a hypothesis naming the hidden variable, or a discriminating experiment. |
 | `bridges` | Two concepts that no evidence card or finding holds together, joined through other concepts in different sources (Swanson's ABC: A–B in one paper, B–C in another, A–C never looked at). Sibling values of one variable and hub concepts are skipped. | A seed: does A affect C, or has technique T been used on X? |
-| `moderators` | For open and explained tensions, findings with evidence against them, and parallel results that disagree beyond their errors: the conditions, methods and materials that differ between the sides. | A seed naming the hidden variable; a rival in a hypothesis; a line in the tension's possible explanations. |
+| `moderators` | For open and explained tensions and contradictions, findings with evidence against them, and parallel results that disagree beyond their errors: the conditions, methods and materials that differ between the sides. | A seed naming the hidden variable; a rival in a hypothesis; a line in the tension's possible explanations. |
 | `transfer` | An outcome, a method or a finding established at one value of a categorical variable and never tried at another value present in the brain (species, preparation, level, solvent …). | A gap of kind `untested-region`, or a seed for a method transfer. |
 | `implied` | Chains of effects, recorded on concept cards or visible in the data: A → B → C with A → C never measured (with the sign the chain predicts); a direct effect opposite to the indirect one; loops. Also effects the data show that no concept card records (housekeeping). | A seed or hypothesis with a signed prediction. |
 | `constraints` | Every value of one quantity pooled across sources and grouped by conditions: agreement within each condition set, spread, units. | Arithmetic across papers (a seed carrying the derivation); a tension where values clash; a correction where units are mixed. |
@@ -50,6 +52,8 @@ Each miner reads only the Codes. Scores rank signals within one miner, never acr
 
 Some of the best ideas need reading, not counting. Each pass produces proposals like a miner, with `- miner::` naming the pass and no stamp.
 
+- **Contradiction pass.** Open the register (`ledger/contradictions.md`) and take each open contradiction in turn. A contradiction is the strongest prompt the brain has: something is missing from the account that both sides share. For each, ask what would make both sides true (a condition one side did not record, a difference of method or definition, a level of organisation, a time course) and what would show one side wrong. Propose the best answer as a hypothesis or a theory that `explains::` the contradiction, or as a seed `from::` it, with the experiment that would tell the ways out apart (`brain-mesh-experiment`).
+- **Contradiction hunt.** The tooling sees contradictions only in the Codes. Reading the cards a signal names, or the evidence on a concept (`facts`), look also for statements that exclude each other in words: two mechanisms that cannot both run, a claim one paper makes that another's data deny, a concept fact a new card overturns. Log each one real with `contradictions add <card> <card> "<the clash>" --by "discover: <pass>"`.
 - **Theory pass.** Gather the explanatory claims and models (claim and model cards that are inferred or speculated, especially those cited by findings and tensions). Group them into rival accounts. For each, propose a theory card: core claim, commitments, what it explains, what it forbids. Then propose a verdict for every finding against every theory: explains, conflicts or silent. The miner works from these cards.
 - **Analogy pass.** Look for a system, in another field or another part of this brain, with the same relations as a structure here: the same circuit motif in another species, the same computation in an algorithm, the same physics in another material. Propose the mapping as an analogy card; the miner then lists what carries across.
 - **Inversion pass.** For each established or probable finding that much rests on (`python3 tools/mesh.py impact K003`), ask what would follow if it failed at the edge of its scope, and propose seeds for the most consequential answers.
@@ -66,14 +70,16 @@ For each signal worth attention:
 
 1. **Is it real?** Open the cards it names. Many signals come from the extraction: a missing `when::` line, one concept used for two things, a value in the wrong unit. Fix that as housekeeping and say so; it is not a proposal.
 2. **Is it already known here?** Read the cards listed as `touched by`, and check the coverage of the sources involved (`index/coverage.tsv`).
-3. **What card would it become?** A seed by default. A gap, hypothesis, theory verdict or finding directly only when the brain already meets that card's own rules.
-4. **Make the case.** Present three to seven proposals at a time, best first, mixed across miners. Never paste the miner output. Each proposal:
+3. **Does it respect the facts?** Run the `facts` call the signal names and read every line against the proposal (rule 2). Drop or reshape it where it clashes with a card that no logged contradiction frees; where it rests on a logged contradiction, say so in the case. A clash between two cards found on the way is logged on the register.
+4. **What card would it become?** A seed by default. A gap, hypothesis, theory verdict or finding directly only when the brain already meets that card's own rules.
+5. **Make the case.** Present three to seven proposals at a time, best first, mixed across miners. Never paste the miner output. Each proposal:
 
 ```markdown
 **1. Seed: Binding capacity may fall in step with film thickness, film by film**
 - From: bridges, binding-capacity ~ film-thickness, joined through swelling in P001 and P003
 - Why it is worth a card: it turns the swelling account (T001) into a quantitative prediction that the damage account (T002) does not make
 - Already known? X001 mentions both only as a possible explanation; both sources are fully extracted; no literature search yet
+- Respects the facts? Yes: agrees with K001 and every card on binding-capacity and film-thickness; goes against nothing
 - Fastest way to kill it: a paper reporting thickness and capacity on the same films; failing that, one heat cycle with both measured
 - How sure the signal is real: high; both quantities are carded with conditions in two sources
 ```
@@ -207,4 +213,4 @@ The new card cites the seed's `from::` cards, not the seed, because layers cite 
 
 ## 10. Close
 
-Run `python3 tools/mesh.py build` until it is clean, then `python3 tools/mesh.py log "discover: <n> proposed, <n> accepted (<ids>), <n> rejected, <n> housekeeping; recheck: <n> dissolved, <n> strengthened, <n> re-opened"`. Report in a few lines: the cards written, the housekeeping done, and the one next step most worth taking.
+Run `python3 tools/mesh.py build` until it is clean, then `python3 tools/mesh.py log "discover: <n> proposed, <n> accepted (<ids>), <n> rejected, <n> housekeeping, <n> contradictions logged (<V ids>); recheck: <n> dissolved, <n> strengthened, <n> re-opened"`. Report in a few lines: the cards written, the contradictions logged and the open ones still unworked, the housekeeping done, and the one next step most worth taking.

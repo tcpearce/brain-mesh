@@ -28,7 +28,7 @@ Start with a concept below, for example [[binding-capacity|Binding capacity]] or
 - [[equilibration-time|Equilibration time]] · variable · 1 cards from 1 sources
 - [[quartz-crystal-microbalance|Quartz crystal microbalance]] · technique · 1 cards from 1 sources
 
-**Open tensions, gaps, hypotheses and experiments**
+**Open contradictions, tensions, gaps, hypotheses and experiments**
 - [[X001-does-heat-or-solvent-uptake-lower-capacity|X001 Does heating itself lower binding capacity, or only heating in water?]] · explained
 - [[G002-no-thickness-data-in-acetonitrile|G002 Film thickness has never been measured in acetonitrile, so swelling is not ruled in or out there]] · confirmed
 - [[H001-loss-is-reversible-swelling|H001 The loss of binding capacity on heating in water is reversible swelling, not damage]] · supported

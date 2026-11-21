@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.12.1"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.13.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -29,7 +29,7 @@ STALE_DAYS = {"high": 90, "elevated": 180, "normal": 180, "low": 365}  # when a 
 CLAIMS_STATUS = ["drafted", "checked"]
 CLAIM_KEYS = ["main_claim", "sub_claim"]
 UNIVERSAL = ["cites", "see_also"]  # link keys any card may carry: cites:: a reference card or source, see_also:: any card, each with a reason
-REVIEW_OPEN = {"G": ("open", "fillable", "confirmed", "planned"), "X": ("open", "explained"), "H": ("open",)}
+REVIEW_OPEN = {"G": ("open", "fillable", "confirmed", "planned"), "X": ("open", "explained"), "H": ("open",), "V": ("open",)}
 PAGES = {  # id prefix: (folder, type, allowed status, link keys in Codes)
     "K": ("findings", "finding", ["established", "probable", "tentative", "single-source", "contested"], ["support", "against"]),
     "X": ("tensions", "tension", ["open", "explained", "resolved"], ["sides", "explained_by", "resolved_by"]),
@@ -42,11 +42,13 @@ PAGES = {  # id prefix: (folder, type, allowed status, link keys in Codes)
     "T": ("theories", "theory", ["active", "strained", "abandoned"], ["explains", "conflicts_with", "includes", "rivals"]),
     "A": ("analogies", "analogy", ["proposed", "productive", "failed"], ["maps", "from"]),
     "S": ("seeds", "seed", ["new", "developing", "promoted", "answered", "dropped"], ["from", "promoted_to", "answered_by"]),
+    # the contradictions register: two or more cards that cannot both hold as stated
+    "V": ("contradictions", "contradiction", ["open", "explained", "resolved", "dissolved"], ["sides", "explained_by", "resolved_by", "tension"]),
 }
 PG = "".join(PAGES)
 MINED = re.compile(r"([a-z]+:\S+) \| (\d{4}-\d\d-\d\d) \| ([-\d.]+) \| ?(.*)")  # stamp on a card a miner proposed: key | date | score | basis sources  # id prefixes of synthesis, workbench and discovery cards
-GRADED = "KXGHTA"    # cards that keep a graded:: history of their status
-MINERS = ["bridges", "moderators", "transfer", "implied", "constraints", "genealogy", "assumptions", "oddities", "theories", "analogies", "links"]
+GRADED = "KXGHTAV"    # cards that keep a graded:: history of their status
+MINERS = ["contradictions", "bridges", "moderators", "transfer", "implied", "constraints", "genealogy", "assumptions", "oddities", "theories", "analogies", "links"]
 SEED_ROUTES = MINERS + ["inversion", "red-team", "levels", "lens", "manual"]  # how a seed arose: a miner, or a pass Claude runs by reading
 GAP_KINDS = ["untested-region", "unreplicated", "unresolved-tension", "unexplained", "untested-assumption", "unvalidated-model", "unmeasured", "open-question", "method", "scope"]
 CONCEPT_KINDS = ["entity", "variable", "count", "technique", "concept"]  # count: a variable that only counts items (sample-size), never compared across cards
@@ -63,7 +65,7 @@ INVERSE = {"obtained_by": "used_to_obtain", "based_on": "basis_for", "qualifies"
            "broader": "narrower", "part_of": "has_part", "measured_by": "measures", "affects": "affected_by", "related": "related",
            "uses_data": "data_for", "uses_code": "code_for", "used_by": "uses", "derived_from": "source_of", "depends_on": "dependency_of",
            "cites": "cited_in", "see_also": "see_also", "main_claim": "main_claim_of", "sub_claim": "sub_claim_of",
-           "resolved_by": "resolves", "explained_by": "explains_tension"}
+           "resolved_by": "resolves", "explained_by": "explains_tension", "tension": "includes_contradiction"}
 BACKLABELS = set(INVERSE.values()) | {"mentioned_in", "in_source", "used_in_source", "cited_in_its_paragraph", "key_reference_for", "listed_in", "cited_as"}
 is_backlabel = lambda k: k in BACKLABELS or k.endswith("_of")  # labels of generated back-links; any other '- key::' line below '## Linked from' was written by hand
 STOP = set("a an the of in on at to for by with and or is are was were be as it its this that from into than not no does do did between about".split())
@@ -439,7 +441,7 @@ class Mesh:
             if pid not in s.cards: s.err.append(f"{pid}: folder has no source card")
         for f in sorted(glob.glob(J(root, "concepts", "*.md"))):
             b = os.path.basename(f)[:-3]
-            if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", b) or re.fullmatch(r"[pkxghelcdrtas]\d{3}.*", b): s.err.append(f"concepts/{b}.md: name must be a lower-case hyphenated slug that does not look like an id"); continue
+            if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", b) or re.fullmatch(r"[pkxghelcdrtasv]\d{3}.*", b): s.err.append(f"concepts/{b}.md: name must be a lower-case hyphenated slug that does not look like an id"); continue
             add(f, "concept", b)
             c = s.cards[b]
             for al in [] if c.get("retired") else [b, b.replace("-", " "), c.title] + [str(a) for a in (c.fm.get("aliases") or [])]:
@@ -795,6 +797,13 @@ class Mesh:
                     elif last and last.group(2) != c.status: W.append(f"{i}: status is {c.status} but its last 'graded::' line says {last.group(2)}. Add '- graded:: {TODAY} {c.status} — <why>' below the others")
                     elif last and len(reason(gl[-1]).split()) < 2: W.append(f"{i}: the last 'graded::' line needs ' — ' and the reason for the status")
                 if i[0] == "X" and n("sides") < 2: W.append(f"{i}: tension needs at least two sides")
+                if i[0] == "V":
+                    if n("sides") < 2: W.append(f"{i}: a contradiction needs at least two sides")
+                    if c.get("kind") not in CONTRA_KINDS: W.append(f"{i}: '- kind::' should be one of {CONTRA_KINDS}")
+                    if c.status == "explained" and not n("explained_by") and not any(i in s.ids(v)[0] for h in s.pages("HT") for v in h.all("explains")): W.append(f"{i}: explained, but no '- explained_by::' and no hypothesis or theory explains:: it")
+                    if c.status == "resolved" and not n("resolved_by"): W.append(f"{i}: resolved, but no '- resolved_by::' names the evidence that settled it")
+                    if c.status == "dissolved" and not c.get("dissolved"): W.append(f"{i}: dissolved, but no '- dissolved:: <why it was not a contradiction after all>'")
+                    if "(to write" in c.prose(): W.append(f"{i}: write why both sides cannot hold and the ways out (the '(to write' lines)")
                 if i[0] == "X" and c.status == "resolved" and not n("resolved_by"): W.append(f"{i}: resolved, but no '- resolved_by::' names the evidence that settled it")
                 if i[0] == "X" and c.status == "explained" and not n("explained_by") and not any(i in s.ids(v)[0] for h in s.pages("H") for v in h.all("explains")):
                     W.append(f"{i}: explained, but no '- explained_by::' and no hypothesis explains:: it")
@@ -868,6 +877,8 @@ class Mesh:
                 if os.path.exists(rf) and src.id not in cited: W.append(f"{src.id}: its references are extracted ({src.id}_refs.md) but not yet turned into reference cards: run `mesh.py cite {src.id}`")
                 elif not os.path.exists(rf) and src.get("kind") in ("paper", "preprint", "thesis", "report"): notes["papers whose reference list is not extracted"] += 1
         if not only:
+            oc = open_candidates(s)
+            if oc: W.append(f"{len(oc)} possible contradiction{'s are' if len(oc) > 1 else ' is'} not on the register: " + ", ".join(r[0] for r in oc[:4]) + (" …" if len(oc) > 4 else "") + " — `mesh.py contradictions` lists them: log each (`contradictions add <key>`) or dismiss it with the reason")
             lk_ = {c.id: set(s.ids(c.raw)[0]) - {c.id} for c in s.cards.values()}
             oneway = sorted((a, b) for a, ts in lk_.items() if not s.cards[a].get("retired") for b in ts if a not in lk_[b])
             if oneway: W.append(f"{len(oneway)} link{'s have' if len(oneway) > 1 else ' has'} no link back, e.g. " + ", ".join(f"{a} → {b}" for a, b in oneway[:5]) + ": `mesh.py build` writes the missing back-links")
@@ -1650,7 +1661,7 @@ def cmd_split(m, batch, update=False):
         if ev: folder, cid = relp(SRC(m.root, ev.group(1)), m.root), ev.group(1) + (ev.group(2) or "")
         elif pg: folder, cid = PAGES[pg.group(1)][0], name[:4]
         elif cl: folder, cid = relp(SRC(m.root, cl.group(1)), m.root), name
-        elif re.fullmatch(r"[a-z0-9][a-z0-9-]*", name) and not re.match(r"[pkxghelcdrtas]\d{3}", name): folder, cid = "concepts", name
+        elif re.fullmatch(r"[a-z0-9][a-z0-9-]*", name) and not re.match(r"[pkxghelcdrtasv]\d{3}", name): folder, cid = "concepts", name
         else: skipped.append(f"{name}: not a valid card file name"); continue
         if cid in m.cards and m.cards[cid].name != name: skipped.append(f"{name}: id {cid} already belongs to {m.cards[cid].name}"); continue
         path = J(m.root, folder, name + ".md")
@@ -1989,6 +2000,7 @@ def cmd_build(root):
         a, b = t.find("<!--AUTO:START"), t.find("<!--AUTO:END-->")
         new = t[:t.find("\n", a) + 1] + "\n".join(reading_queue(Mesh(root))) + "\n" + t[b:]
         if new != t: wr(q, new)
+    write_register(Mesh(root))
     write_backlinks(Mesh(root))
     marked = mark(Mesh(root))
     m = Mesh(root); notes, ix = m.check(), J(root, "index")
@@ -2023,7 +2035,7 @@ def cmd_build(root):
         L += ["**Concepts (start here): the most-used hubs**"] + [f"- [[{t}|{m.cards[t].title or t}]] · {m.cards[t].get('kind')} · {n_} cards from {len(tsrc[t])} sources" for t, n_ in ranked(tc, 40)]
         L += [f"- … {len(tc) - 40} more in concepts/"] * (len(tc) > 40) + [""]
     closed = ("resolved", "closed", "dropped", "refuted", "retired", "done", "abandoned")
-    sect("Open tensions, gaps, hypotheses and experiments", [c for c in m.pages("XGHE") if c.status not in closed])
+    sect("Open contradictions, tensions, gaps, hypotheses and experiments", [c for c in m.pages("VXGHE") if c.status not in closed + ("dissolved",)])
     sect("Findings", m.pages("K"))
     sect("Theories", m.pages("T"))
     sect("Analogies", m.pages("A"))
@@ -2449,7 +2461,7 @@ def cmd_adopt(m, args):
         print(f"adopt: '{name}' (proposed by {', '.join(sorted({x[0] for x in props}))}) is now an alias of {tid}; links rewritten in {n} files")
         return
     if name in m.cards: sys.exit(f"adopt: a concept '{name}' already exists; use `adopt {name} into {name}` to fold the proposal into it")
-    if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", name) or re.fullmatch(r"[pkxghelcdrtas]\d{3}.*", name): sys.exit(f"adopt: '{name}' is not a valid concept slug")
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", name) or re.fullmatch(r"[pkxghelcdrtasv]\d{3}.*", name): sys.exit(f"adopt: '{name}' is not a valid concept slug")
     best = max(props, key=lambda x: (len(x[2]), x[0]))[2]
     raw = best if best.startswith("---") else f"---\ntype: concept\nupdated: {TODAY}\n---\n" + best
     if not re.search(r"^type:\s*concept\s*$", raw.split("\n---\n", 1)[0], re.M): raw = set_fm(raw, "type", "concept")
@@ -2758,7 +2770,7 @@ def cmd_propose(m, args):
         if rest[k] in ("--from", "--kind", "--unit", "--low", "--title") and k + 1 < len(rest): o[rest[k][2:]] = rest[k + 1]; k += 2
         elif rest[k] == "--alias" and k + 1 < len(rest): aliases += [a.strip() for a in rest[k + 1].split(";") if a.strip()]; k += 2
         else: sys.exit(f"propose: unknown option '{rest[k]}'")
-    if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", name) or re.fullmatch(r"[pkxghelcdrtas]\d{3}.*", name): sys.exit(f"propose: '{name}' is not a concept slug (lower case, hyphens, not like an id)")
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", name) or re.fullmatch(r"[pkxghelcdrtasv]\d{3}.*", name): sys.exit(f"propose: '{name}' is not a concept slug (lower case, hyphens, not like an id)")
     title = o.get("title") or name.replace("-", " ").capitalize()
     for nm in [name, name.replace("-", " "), title] + aliases:
         hit = m.alias.get(" ".join(nm.lower().split()))
@@ -2840,7 +2852,7 @@ def fixconcepts(root):
         if re.search(r"^- id:: *\S", t, re.M): continue
         b = os.path.basename(f)[:-3]
         slug = re.sub(r"[^a-z0-9]+", "-", ascii_fold(b).lower()).strip("-")
-        if not slug or re.fullmatch(r"[pkxghelcdrtas]\d{3}.*", slug): print(f"concepts/{b}.md: no concept name can be made from this file name; rename the note"); continue
+        if not slug or re.fullmatch(r"[pkxghelcdrtasv]\d{3}.*", slug): print(f"concepts/{b}.md: no concept name can be made from this file name; rename the note"); continue
         if slug != b and os.path.exists(J(root, "concepts", slug + ".md")): print(f"concepts/{b}.md: the concept {slug} already exists; add your text to concepts/{slug}.md, or give this note another name"); continue
         mo = re.match(r"---\n(.*?)\n---\n?", t, re.S)
         fm, body = (mo.group(1), t[mo.end():]) if mo else ("", t)
@@ -2880,6 +2892,280 @@ def fixconcepts(root):
         made.append(slug); print(f"concepts/{b}.md made by hand: now concept {slug} (kind {kind_}); scan the sources for it with `mesh.py scan {slug}`")
     return made
 
+# ---- 1.13.0: the contradictions register ----
+CONTRA_KINDS = ["values", "direction", "null", "against", "link", "mechanism", "definition", "scope", "other"]
+
+
+def logged_pairs(m):
+    """Cards held on opposite sides of a logged contradiction (V) or a tension (X): ({card: cards it is logged
+    against}, {card: ids of the live contradictions and tensions it is a side of})."""
+    against, free = defaultdict(set), defaultdict(set)
+    for p in m.pages("VX"):
+        if p.get("retired"): continue
+        sides = [t for v in p.all("sides") for t in m.ids(v)[0]]
+        for a in sides:
+            if p.status in ("open", "explained"): free[a].add(p.id)
+            against[a] |= {b for b in sides if b != a}
+    return against, free
+
+
+def dismissed_contradictions(root):
+    """{candidate key: 'date: why'} from the 'Not contradictions' part of ledger/contradictions.md."""
+    p = J(root, "ledger", "contradictions.md")
+    t = rd(p).split("<!--AUTO:START")[0] if os.path.exists(p) else ""
+    return {mo.group(1): mo.group(2).strip() for mo in re.finditer(r"^- ([a-z]+:\S+) — (.*)$", t, re.M)}
+
+
+def contradiction_candidates(m):
+    """Possible contradictions visible in the Codes: [(key, kind, side A, side B, text, concepts)]. Kinds: a
+    contradicts:: link; values of one quantity that disagree beyond error under the same conditions; a concept's
+    recorded effect against the data, or opposite directions in different sources; a null result against an effect
+    another source shows; evidence counted against a finding."""
+    out, ev, seen = [], m.evidence(), set()
+    def add(key, kind, A, B, text, cs):
+        k = f"{kind}:{key}"
+        if k not in seen: seen.add(k); out.append((k, kind, sorted(set(A)), sorted(set(B)), text, sorted(set(cs))))
+    for c in ev:
+        for v in c.all("contradicts"):
+            for t in m.ids(v)[0]:
+                if t not in m.cards or m.cards[t].get("retired"): continue
+                x, y = sorted((c.id, t)); add(f"{x}~{y}", "link", [x], [y], f"{c.id} records that it contradicts {t}" + (f": {reason(v)}" if reason(v) else ""), m.terms(c) | m.terms(m.cards[t]))
+    for a, b, va, vb in m.disagreements(ev):
+        x, y = sorted((a.id, b.id)); var = m.pair(a.get("value"))[0]
+        add(f"{x}~{y}", "values", [x], [y], f"{x} and {y} measure [[{var}]] under the same conditions and disagree beyond their errors ({va:g} against {vb:g})", m.terms(a) | m.terms(b))
+    for k in m.pages("K"):
+        if k.get("retired"): continue
+        for t in [t for v in k.all("against") for t in m.ids(v)[0]]:
+            add(f"{k.id}~{t}", "against", [k.id], [t], f"{t} counts against finding {k.id} ({k.status})", m.terms(k) | m.terms(m.cards[t]))
+    eff = effects(m)
+    for (x, y), e in sorted(eff.items()):
+        rs, ds = e.get("recorded_sign"), e.get("data_sign")
+        if rs in ("+", "-") and ds in ("+", "-") and rs != ds:
+            add(f"{x}>{y}", "direction", [x], e["data_basis"], f"[[{x}]] records that it affects [[{y}]] ({rs}), but the observations show the opposite ({ds})", (x, y))
+        for pa, pb in e.get("opposite", [])[:1]:
+            add(f"{x}>{y}:{pa[0]}~{pb[0]}", "direction", pa, pb, f"Changing [[{x}]] moves [[{y}]] up in {', '.join(sorted({i[:4] for i in pa}))} and down in {', '.join(sorted({i[:4] for i in pb}))}, under the same other recorded conditions", (x, y))
+    for c in ev:
+        if not c.get("null") or not c.get("value"): continue
+        y = m.pair(c.get("value"))[0]
+        if not y: continue
+        cw = {w_: v_ for w_, v_, _t in m.whens(c) if w_}
+        for x in cw:
+            e = eff.get((x, y))
+            if not e or e.get("data_sign") not in ("+", "-"): continue
+            B = [b for b in e["data_basis"] if b[:4] != c.id[:4] and all(cw.get(w_) == v_ for w_, v_, _t in m.whens(m.cards[b]) if w_ and w_ != x and w_ in cw)]
+            if B: add(f"{c.id}~{x}>{y}", "null", [c.id], B, f"{c.id} finds no effect of [[{x}]] on [[{y}]], but {', '.join(B[:3])} show one ({e['data_sign']}) under the same other recorded conditions", m.terms(c))
+    return out
+
+
+def open_candidates(m):
+    """Possible contradictions not yet logged (no contradiction or tension holds the two sides) and not dismissed."""
+    against, _f = logged_pairs(m); dis = dismissed_contradictions(m.root)
+    return [r for r in contradiction_candidates(m) if r[0] not in dis and not any(b in against[a] for a in r[2] for b in r[3])]
+
+
+def seeded_by(m, vid):
+    """Theories, hypotheses, seeds, experiments, analogies and tensions that link a contradiction."""
+    return sorted(p.id for p in m.pages("HTSEAX") if not p.get("retired") and any(vid in m.ids(v)[0] for k in PAGES[p.id[0]][3] + UNIVERSAL for v in p.all(k)))
+
+
+def contradiction_register(m):
+    """The generated part of ledger/contradictions.md."""
+    vs = sorted((p for p in m.pages("V") if not p.get("retired")), key=lambda p: p.id)
+    sides = lambda p: " vs ".join(f"[[{m.cards[t].name}|{t}]]" for v in p.all("sides") for t in m.ids(v)[0])
+    L = []
+    for st, head in (("open", "Open"), ("explained", "Explained"), ("resolved", "Resolved"), ("dissolved", "Dissolved")):
+        rows = [p for p in vs if p.status == st]
+        if not rows: continue
+        L += [f"**{head} ({len(rows)})**"]
+        for p in rows:
+            sd = seeded_by(m, p.id)
+            L.append(f"- {lk(p)} · {p.get('kind') or 'other'} · {sides(p)} · found by {p.get('logged_by') or '?'}" + (f" · working on it: {' '.join(f'[[{m.cards[x].name}|{x}]]' for x in sd)}" if sd else (" · **nothing works on it yet: a source of theories, hypotheses and experiments**" if st == "open" else "")))
+        L.append("")
+    xs = [p for p in m.pages("X") if not p.get("retired")]
+    if xs: L += [f"**Tensions ({len(xs)})**, disagreements worked up into a question: " + " · ".join(f"[[{p.name}|{p.id}]] {p.status}" for p in sorted(xs, key=lambda p: p.id)), ""]
+    oc = open_candidates(m)
+    if oc:
+        L += [f"**Not yet logged ({len(oc)})**: possible contradictions the tooling sees in the Codes. Log each (`mesh.py contradictions add <key>`) or dismiss it with the reason (`mesh.py contradictions dismiss <key> \"<why>\"`)."]
+        L += [f"- `{k}` · {plain(text)} · " + " vs ".join(", ".join(f"[[{m.cards[t].name}|{t}]]" for t in side[:3]) for side in (A, B)) for k, _kind, A, B, text, _cs in oc]
+        L.append("")
+    if not L: L = ["No contradictions logged yet.", ""]
+    return L
+
+
+REGISTER_HEAD = """# Contradictions register
+
+Every contradiction in the brain: two or more cards that cannot both hold as stated. Each one logged is a card in
+`contradictions/` (V###), written by the paper import, the concept scan, the discovery miners or by hand
+(`mesh.py contradictions add`). Open contradictions are a first source of theories, hypotheses and experiments, and
+the only place where a discovery proposal may go against the evidence.
+
+## Not contradictions
+
+Possible contradictions judged not to be ones, with the reason (`mesh.py contradictions dismiss <key> "<why>"`), so
+they are not raised again.
+
+## The register
+
+<!--AUTO:START-->
+<!--AUTO:END-->
+"""
+
+
+def write_register(m):
+    p = J(m.root, "ledger", "contradictions.md")
+    if not os.path.exists(p) and not m.pages("V") and not open_candidates(m): return
+    t = rd(p) if os.path.exists(p) else REGISTER_HEAD
+    if "<!--AUTO:START" not in t: t = t.rstrip("\n") + "\n\n## The register\n\n<!--AUTO:START-->\n<!--AUTO:END-->\n"
+    a, b = t.find("<!--AUTO:START"), t.find("<!--AUTO:END-->")
+    new = t[:t.find("\n", a) + 1] + "\n".join(contradiction_register(m)) + "\n" + t[b:]
+    if new != t: wr(p, new)
+
+
+def cmd_contradictions(m, args):
+    """The contradictions register. `contradictions [P###|<concept>]` lists the logged contradictions and the possible
+    ones not yet logged (all, or those touching a source or concept); `contradictions add <key>` or `contradictions add
+    <card> <card> [...] "<the clash>" [--by <who found it>] [--kind k]` logs one as a V card; `contradictions dismiss
+    <key> "<why>"` records that a possible one is not a contradiction."""
+    if args and args[0] == "add": return contradiction_add(m, args[1:])
+    if args and args[0] == "dismiss":
+        if len(args) < 3: sys.exit('contradictions dismiss: give <key> "<why it is not a contradiction>"')
+        key, why = args[1], " ".join(args[2:])
+        if key not in {r[0] for r in contradiction_candidates(m)}: sys.exit(f"contradictions dismiss: no possible contradiction '{key}' (see `mesh.py contradictions`)")
+        p = J(m.root, "ledger", "contradictions.md"); t = rd(p) if os.path.exists(p) else REGISTER_HEAD
+        line = f"- {key} — {TODAY}: {why}\n"
+        t = t.replace("\n## The register", "\n" + line + "\n## The register", 1) if "\n## The register" in t else t.rstrip("\n") + "\n" + line
+        wr(p, re.sub(r"\n{3,}", "\n\n", t)); print(f"dismissed {key}: {why}"); return
+    scope = args[0] if args else None
+    cid = None
+    if scope and not re.fullmatch(r"P\d{3}", scope):
+        cid = m.resolve(scope) or m.alias.get(" ".join(scope.lower().replace("-", " ").split()))
+        if not cid or m.cards[cid].fam != "concept": sys.exit(f"contradictions: '{scope}' is neither a source (P###) nor a concept")
+    inscope = lambda ids, cs: not scope or (cid in cs if cid else any(i.startswith(scope) for i in ids))
+    vs = [p for p in m.pages("VX") if not p.get("retired") and inscope([t for v in p.all("sides") for t in m.ids(v)[0]], m.terms(p))]
+    print(f"Logged contradictions and tensions{' touching ' + scope if scope else ''}: {len(vs)}")
+    for p in sorted(vs, key=lambda p: p.id):
+        print(f"  {p.id} [{p.status}] {one(p.title, 90)}\n      sides: {', '.join(t for v in p.all('sides') for t in m.ids(v)[0])}" + (f" · working on it: {' '.join(seeded_by(m, p.id))}" if p.id[0] == "V" and seeded_by(m, p.id) else ""))
+    oc = [r for r in open_candidates(m) if inscope(r[2] + r[3], r[5])]
+    print(f"\nPossible contradictions not yet logged{' touching ' + scope if scope else ''}: {len(oc)}")
+    for k, kind, A, B, text, _cs in oc:
+        print(f"  {k}\n      {plain(text)}")
+        for x in A[:2] + B[:2]: print(f"      {x}: {one(m.cards[x].title, 90)}")
+    print("\nThe tooling sees only what the Codes hold. Also read the new cards against what the brain says: statements that cannot both be true are contradictions too, whatever their form." if not scope or re.fullmatch(r"P\d{3}", scope or "") else "")
+    if oc: print("Log a real one with `mesh.py contradictions add <key>` (then write why both cannot hold and the ways out); dismiss one that is not, with `mesh.py contradictions dismiss <key> \"<why>\"`. Fix a missing condition or unit at its card instead.")
+
+
+def contradiction_add(m, args):
+    by, kind, rest, k = "manual", None, [], 0
+    while k < len(args):
+        if args[k] in ("--by", "--kind") and k + 1 < len(args):
+            if args[k] == "--by": by = args[k + 1]
+            else: kind = args[k + 1]
+            k += 2
+        else: rest.append(args[k]); k += 1
+    cand = {r[0]: r for r in contradiction_candidates(m)}
+    if len(rest) == 1 and rest[0] in cand:
+        key, kind0, A, B, text, cs = cand[rest[0]]; clash = plain(text); kind = kind or kind0
+        if kind0 == "link" and ": " in clash: clash = clash.split(": ", 1)[1]; clash = clash[:1].upper() + clash[1:]  # the reason the contradicts:: link gives
+    else:
+        if len(rest) < 3: sys.exit('contradictions add: give a key from `mesh.py contradictions`, or <card> <card> [...] "<the clash in one sentence>"')
+        ids = [m.resolve(x) or x for x in rest[:-1]]
+        bad = [x for x in ids if x not in m.cards]
+        if bad: sys.exit(f"contradictions add: no card {', '.join(bad)}")
+        A, B, clash, key = [ids[0]], ids[1:], rest[-1], None
+        cs = set().union(*[m.terms(m.cards[i]) if m.cards[i].fam != "concept" else {i} for i in ids])
+        kind = kind or "other"
+    if kind not in CONTRA_KINDS: sys.exit(f"contradictions add: kind '{kind}' not in {CONTRA_KINDS}")
+    against, _f = logged_pairs(m)
+    if any(b in against[a] for a in A for b in B): sys.exit(f"contradictions add: {', '.join(A)} and {', '.join(B)} are already on opposite sides of {', '.join(sorted(set(p.id for p in m.pages('VX') if set(A + B) & {t for v in p.all('sides') for t in m.ids(v)[0]})))}")
+    cs = sorted(set(cs) | {i for i in A + B if m.cards[i].fam == "concept"})
+    if not cs: sys.exit("contradictions add: the sides link no concept; give sides that do")
+    used = [int(p.id[1:]) for p in m.pages("V")] + [int(g[1:]) for g in removed_ids(m.root) if re.fullmatch(r"V\d{3}", g)]
+    vid = "V%03d" % (max(used + [0]) + 1)
+    words = [w for w in re.findall(r"[a-z0-9]+", ascii_fold(re.sub(r"\[\[([^\]|]*\|)?([^\]]*)\]\]", r"\2", clash)).lower()) if w not in STOP][:6]
+    name = f"{vid}-{'-'.join(words) or 'contradiction'}"
+    who = lambda i: f" ({short_cite(m.cards[i[:4]])})" if m.cards[i].fam == "evidence" and i[:4] in m.cards else ""
+    why = "(to write: what makes the statements incompatible)"
+    if kind == "values" and key:
+        a, b = m.cards[A[0]], m.cards[B[0]]
+        why = f"Both measure {m.pair(a.get('value'))[0]} under the same recorded conditions, and {plain(m.pair(a.get('value'))[1]).strip()} against {plain(m.pair(b.get('value'))[1]).strip()} is more than twice their combined uncertainty. (Check first that no condition is missing from either card.)"
+    body = f"""---
+type: contradiction
+status: open
+updated: {TODAY}
+---
+# {clash}
+
+**The clash.** {clash}
+
+**Sides.**
+""" + "\n".join(f"- [[{m.cards[i].name}|{i}]]: {one(m.cards[i].title, 140)}{who(i)}" for i in A + B) + f"""
+
+**Why both cannot hold.** {why}
+
+**Ways out.** (to write: different conditions, methods or definitions; an error on one side; a moderator. Each is a candidate hypothesis or experiment.)
+
+## Codes
+- id:: {vid}
+""" + "\n".join(f"- sides:: [[{i}]] — {one(m.cards[i].title, 100)}" for i in A + B) + f"""
+- concepts:: {', '.join(f'[[{c}]]' for c in cs)}
+- kind:: {kind}
+- logged_by:: {by}
+- graded:: {TODAY} open — logged from {by}{' (' + key + ')' if key else ''}
+"""
+    os.makedirs(J(m.root, "contradictions"), exist_ok=True)
+    wr(J(m.root, "contradictions", name + ".md"), body)
+    print(f"logged {vid}: contradictions/{name}.md. Write why both cannot hold and the ways out, then `mesh.py build`.")
+
+
+def null_results(m):
+    """{(cause, outcome): [null observations]}: cards that looked for an effect of a condition on an outcome and found none."""
+    out = defaultdict(list)
+    for c in m.evidence():
+        if c.get("null") and c.get("value"):
+            y = m.pair(c.get("value"))[0]
+            for w_, _v, _t in m.whens(c):
+                if w_ and y: out[(w_, y)].append(c.id)
+    return out
+
+
+def cmd_facts(m, args):
+    """What a proposal about these concepts must respect: each concept's hub facts and relations, the effects and null
+    results among them, the findings and evidence that hold them, and the logged contradictions that free a side."""
+    if not args: sys.exit("facts: give one or more concepts")
+    cids = []
+    for a in args:
+        c = m.resolve(a) or m.alias.get(" ".join(a.lower().replace("-", " ").split())) or m.alias.get(" ".join(a.lower().split()))
+        if not c or m.cards[c].fam != "concept": sys.exit(f"facts: '{a}' is not a concept")
+        cids.append(c)
+    S = set(cids)
+    for cid in cids:
+        con = m.cards[cid]
+        dfn = re.sub(r".*?\*\*Definition\.\*\*\s*", "", con.prose(), count=1, flags=re.S).split("\n")[0]
+        print(f"[[{cid}]] {con.title}: {one(dfn, 200)}")
+        sect = None
+        for line in con.prose().split("\n"):
+            h = re.match(r"## (.+)", line)
+            if h: sect = h.group(1).strip(); continue
+            if line.startswith("- ") and sect != "Open questions": print(f"   fact ({sect or 'hub'}): {one(plain(line[2:]), 200)}")
+            elif line.startswith("**How it is measured.**"): print(f"   fact (how it is measured): {one(plain(line), 200)}")
+        for k in CONCEPT_RELS:
+            for v in con.all(k): print(f"   relation: {cid} {k} {plain(v)}")
+    eff = effects(m)
+    for (x, y), e in sorted(eff.items()):
+        if x in S or y in S: print(f"effect: {x} → {y} ({e['sign']}, {e['how']}) {' '.join(e['basis'][:5])}")
+    for (x, y), ns in sorted(null_results(m).items()):
+        if x in S or y in S: print(f"no effect found: {x} → {y} in {' '.join(ns[:6])}")
+    ks = [k for k in m.pages("K") if not k.get("retired") and S <= m.terms(k)]
+    for k in ks: print(f"finding: {k.id} [{k.status}] {one(k.title, 140)}")
+    ev = sorted((c for c in m.evidence() if S <= m.terms(c)), key=lambda c: c.id)
+    for c in ev[:60]: print(f"evidence: {c.id} [{c.type}, {c.status}{', null' if c.get('null') else ''}] {one(c.title, 130)}")
+    if len(ev) > 60: print(f"evidence: … {len(ev) - 60} more (`mesh.py show {cids[0]}`)")
+    if not ev and len(cids) > 1: print("evidence: no card holds all of them; each concept's own cards: " + ", ".join(f"{c} {sum(1 for x in m.evidence() if c in m.terms(x))}" for c in cids))
+    _a, free = logged_pairs(m)
+    vs = [p for p in m.pages("VX") if not p.get("retired") and p.status in ("open", "explained") and m.terms(p) & S]
+    for p in vs: print(f"logged contradiction: {p.id} [{p.status}] {one(p.title, 120)}; sides {' '.join(t for v in p.all('sides') for t in m.ids(v)[0])}")
+    print("\nA proposal must agree with all of these. It may go against a card only where that card is a side of an open or explained contradiction listed above, and is then offered as a way out of it. Any other clash is the proposal's error, or a new contradiction to log (`mesh.py contradictions add`).")
+
 
 def rarity(m):
     """Weight of each concept: rare concepts count for much, a concept on every card for almost nothing."""
@@ -2901,7 +3187,7 @@ def cmd_place(m, target, top=4, floor=0.15):
     source (or one card): the findings, tensions, gaps and hypotheses it most likely bears on, and what each match
     calls for: support within a finding's scope, a sibling finding outside it, a tension where it conflicts."""
     cards = m.evidence(target) if re.fullmatch(r"P\d{3}", target) else [need(m, target)]
-    pages, w = m.pages("KXGHT"), rarity(m)
+    pages, w = m.pages("KXGHTV"), rarity(m)
     cited = {p.id: {t for k in PAGES[p.id[0]][3] for v in p.all(k) for t in m.ids(v)[0]} for p in pages}
     var = lambda c: m.pair(c.get("value"))[0] if c.get("value") else None
     unplaced = []
@@ -3252,7 +3538,7 @@ def cmd_priority(m, args):
 def review_due(m, only=None):
     """Open gaps, tensions and hypotheses that an integrated source bears on, by shared concepts, with no recorded
     decision for that source: no link to its cards, no reviewed:: or graded:: line naming it. [(page, source, card, score)]"""
-    pages = [p for p in m.pages("GXH") if p.status in REVIEW_OPEN[p.id[0]] and not p.get("retired")]
+    pages = [p for p in m.pages("".join(REVIEW_OPEN)) if p.status in REVIEW_OPEN[p.id[0]] and not p.get("retired")]
     if not pages: return []
     w, out = rarity(m), []
     for src in [c for c in m.cards.values() if c.fam == "source" and c.status == "integrated" and (not only or c.id == only)]:
@@ -3498,7 +3784,8 @@ finds it in the papers already in the brain.
 
 `MAP.md` (start here) · `concepts/` hubs · `sources/P###-…/` papers, their evidence cards and claims cards ·
 `findings/` `tensions/` `gaps/` synthesis · `hypotheses/` `experiments/` workbench · `data-sets/` · `code/` ·
-`references/` cited works and `library.bib` · `ledger/` changelog, reading queue, checksums · `notes/` the user's own.
+`references/` cited works and `library.bib` · `contradictions/` and `ledger/contradictions.md` the contradictions
+register · `ledger/` changelog, reading queue, checksums · `notes/` the user's own.
 <!-- brain-mesh:end -->
 """
 
@@ -3526,6 +3813,7 @@ def cmd_log(m, msg):
 SIGN_UP = re.compile(r"\b(raises?|increases?|enhances?|promotes?|strengthens?|higher|up)\b|\(\+\)|↑", re.I)
 SIGN_DOWN = re.compile(r"\b(lowers?|decreases?|reduces?|suppresses?|inhibits?|weakens?|lower|down)\b|\(−\)|\(-\)|↓", re.I)
 MINER_DESC = {
+    "contradictions": "possible contradictions in the Codes not yet on the register, and open contradictions nothing yet works on (a source of theories, hypotheses and experiments)",
     "bridges": "concept pairs that no card holds together, joined through other concepts in different sources (Swanson's ABC)",
     "moderators": "what differs between the sides of a disagreement: conditions, methods, materials",
     "transfer": "outcomes, methods and findings established at one value of a categorical variable (species, level, solvent …) and never tried at another",
@@ -3538,8 +3826,8 @@ MINER_DESC = {
     "analogies": "relations true on one side of an analogy and untested on the other",
     "links": "cards in different sources that share rare concepts and are not linked",
 }
-HOUSEKEEPING = {"links", "implied:data", "genealogy:held"}  # signal kinds Claude may act on without asking (brain-mesh-discover)
-LIVE = {"S": ("new", "developing"), "G": ("open", "fillable", "confirmed", "planned"), "H": ("open",), "T": ("active", "strained"), "A": ("proposed", "productive"), "K": None, "X": ("open", "explained"), "E": ("proposed", "registered", "running")}
+HOUSEKEEPING = {"links", "implied:data", "genealogy:held", "contradictions:log"}  # signal kinds Claude may act on without asking (brain-mesh-discover)
+LIVE = {"V": ("open", "explained"), "S": ("new", "developing"), "G": ("open", "fillable", "confirmed", "planned"), "H": ("open",), "T": ("active", "strained"), "A": ("proposed", "productive"), "K": None, "X": ("open", "explained"), "E": ("proposed", "registered", "running")}
 
 
 def leading(m, rest):
@@ -3570,7 +3858,8 @@ def effects(m):
             g = m.ids(v)[0]; tgt = next((t for t in g if m.cards[t].fam == "concept"), None)
             if not tgt: continue
             r = reason(v); up, dn = bool(SIGN_UP.search(r)), bool(SIGN_DOWN.search(r))
-            out[(con.id, tgt)] = {"sign": "+" if up and not dn else "-" if dn and not up else "?", "how": "recorded", "basis": sorted(t for t in g if m.cards[t].fam != "concept")}
+            sg = "+" if up and not dn else "-" if dn and not up else "?"
+            out[(con.id, tgt)] = {"sign": sg, "recorded_sign": sg, "how": "recorded", "basis": sorted(t for t in g if m.cards[t].fam != "concept")}
     groups, num = defaultdict(list), lambda t: (lambda mo: float(mo.group(0)) if mo else None)(re.search(r"[-+]?\d+(?:\.\d+)?", t.replace("−", "-")))
     for c in m.evidence():
         if c.type != "observation" or not c.get("value"): continue
@@ -3581,19 +3870,23 @@ def effects(m):
             groups[(y, x, tuple(sorted((k, v[0]) for k, v in conds.items() if k != x)))].append((conds[x], val, u, c.id))
     for (y, x, _rest), rows in sorted(groups.items()):
         if x == y or len({r[0][0] for r in rows}) < 2: continue
-        signs, basis = set(), set()
+        signs, basis, signed = set(), set(), []
         for (xa, va, ua, ca), (xb, vb, ub, cb) in itertools.combinations(rows, 2):
             if xa[0] == xb[0]: continue
             tol = 2 * math.sqrt((ua or 0) ** 2 + (ub or 0) ** 2) if (ua or ub) else 0.1 * max(abs(va), abs(vb))
             if abs(va - vb) <= tol: continue
             basis |= {ca, cb}
             na, nb = (None, None) if xa[1] or xb[1] else (num(xa[0]), num(xb[0]))
-            signs.add("?" if na is None or nb is None or na == nb else ("+" if (vb - va) * (nb - na) > 0 else "-"))
+            sg_ = "?" if na is None or nb is None or na == nb else ("+" if (vb - va) * (nb - na) > 0 else "-")
+            signs.add(sg_); signed.append((sg_, sorted({ca, cb})))
         if not basis: continue
         sg = "±" if {"+", "-"} <= signs else "+" if signs == {"+"} else "-" if signs == {"-"} else "?"
+        opp = [(pa, pb) for s1, pa in signed if s1 == "+" for s2, pb in signed if s2 == "-" and not {i[:4] for i in pa} & {i[:4] for i in pb}]  # up in one source, down in another
         e = out.get((x, y))
-        if e: e.update(how="both", basis=sorted(set(e["basis"]) | basis), sign=sg if sg != "?" else e["sign"])
-        else: out[(x, y)] = {"sign": sg, "how": "data", "basis": sorted(basis)}
+        if e:
+            e.setdefault("recorded_sign", e["sign"])
+            e.update(how="both", basis=sorted(set(e["basis"]) | basis), sign=sg if sg != "?" else e["sign"], data_sign=sg, data_basis=sorted(set(e.get("data_basis", [])) | basis), opposite=e.get("opposite", []) + opp)
+        else: out[(x, y)] = {"sign": sg, "how": "data", "basis": sorted(basis), "data_sign": sg, "data_basis": sorted(basis), "opposite": opp}
     return out
 
 
@@ -3618,6 +3911,26 @@ def mine(m, want):
         if k in seen: return
         seen.add(k); rows[miner].append((round(score, 2), k, text, lines, tuple(sorted(set(cs))), tuple(sorted(srcs_of(m, basis)))))
     def eff_line(a, b, e): return f"{a} → {b} ({e['sign']}): {e['how']}, {' '.join(e['basis'][:5]) or 'no basis cited on the concept card'}"
+    nulls, (_ag, free) = null_results(m), logged_pairs(m)
+    withheld = Counter()
+    def veto(miner, a, c):
+        """Evidence a proposal about an effect of a on c must respect: cards that looked and found none. Returns
+        (withhold, note): withhold unless one of them is a side of an open or explained contradiction."""
+        bad = nulls.get((a, c), [])
+        if not bad: return False, None
+        fr = sorted({v for x in bad for v in free.get(x, ())})
+        if not fr: withheld[miner] += 1; return True, None
+        return False, f"against it: {' '.join(bad[:4])} found no effect, but {' '.join(fr)} logs that contradiction: offer this as a way out of it"
+    if "contradictions" in want:
+        wk = {"link": 3, "values": 3, "direction": 3, "null": 2.5, "against": 2}
+        for key, kind, A, B, text, cs in open_candidates(m):
+            add("contradictions", wk.get(kind, 2) + 0.5 * len(srcs_of(m, A + B)), "log:" + key, text + ". Not on the register",
+                [f"{x}: {one(m.cards[x].title, 90)}" for x in (A[:2] + B[:2])] + [f"log it: mesh.py contradictions add {key}"], cs, A + B)
+        for v in [p for p in pg if p.id[0] == "V" and p.status == "open"]:
+            if seeded_by(m, v.id): continue
+            sides = [t for x in v.all("sides") for t in m.ids(x)[0]]
+            add("contradictions", 2.5 + 0.5 * len(srcs_of(m, sides)), f"seed:{v.id}", f"Open contradiction {v.id} has no theory, hypothesis, seed or experiment working on it: which account makes both sides true, and what experiment would tell them apart?",
+                [one(v.title, 110), "sides: " + " ".join(sides)], m.terms(v), sides)
     eff = effects(m) if {"implied", "analogies"} & set(want) else {}
     co = cooccurrence(m) if {"bridges", "analogies"} & set(want) else {}
     crel = set()
@@ -3673,11 +3986,11 @@ def mine(m, want):
             for e in sorted((ea ^ eb) - vals, key=lambda t: (-w(t), t))[:3]: out.append((round(w(e) / 3, 2), e, f"{e} appears only on the side of {', '.join(sorted(sa if e in ea else sb))}"))
             return sorted(out, key=lambda r: (-r[0], r[1]))
         ctx, inside = [], set()
-        for x in [p for p in pg if p.id[0] == "X" and p.status in ("open", "explained")]:
+        for x in [p for p in pg if p.id[0] in "XV" and p.status in ("open", "explained")]:
             sides = [t for v in x.all("sides") for t in m.ids(v)[0]]
             for a, b in itertools.combinations(sides, 2):
                 A, B = expand(a), expand(b); inside |= A | B
-                ctx.append((1.5 if x.status == "open" else 0.5, x.id, f"Tension {x.id} ({x.status}): candidate moderators", A, B, set(m.terms(x))))
+                ctx.append((1.5 if x.status == "open" else 0.5, x.id, f"{'Tension' if x.id[0] == 'X' else 'Contradiction'} {x.id} ({x.status}): candidate moderators", A, B, set(m.terms(x))))
         for k in [p for p in pg if p.id[0] == "K" and p.all("against")]:
             A = {u for v in k.all("support") for t in m.ids(v)[0] for u in expand(t)}; B = {u for v in k.all("against") for t in m.ids(v)[0] for u in expand(t)}
             ctx.append((1.2, k.id, f"Finding {k.id} ({k.status}) has evidence against it: what differs between support and against", A, B, set(m.terms(k))))
@@ -3729,7 +4042,9 @@ def mine(m, want):
                     if d and d["sign"] in "+-" and s_ in "+-" and d["sign"] != s_:
                         add("implied", 3, f"{a}>{b}>{c}", f"[[{a}]] affects [[{c}]] directly ({d['sign']}), but the route through [[{b}]] predicts the opposite ({s_}): a compensating pathway, or a difference of scope?", [eff_line(a, c, d), eff_line(a, b, e1), eff_line(b, c, e2)], (a, b, c), d["basis"] + e1["basis"] + e2["basis"])
                     elif not d:
-                        add("implied", 2 if s_ in "+-" else 1.2, f"{a}>{b}>{c}", f"[[{a}]] affects [[{b}]] and [[{b}]] affects [[{c}]]: does [[{a}]] affect [[{c}]] ({s_})? Nothing in the brain measures it", [eff_line(a, b, e1), eff_line(b, c, e2)], (a, b, c), e1["basis"] + e2["basis"])
+                        hold, note = veto("implied", a, c)
+                        if hold: continue
+                        add("implied", 2 if s_ in "+-" else 1.2, f"{a}>{b}>{c}", f"[[{a}]] affects [[{b}]] and [[{b}]] affects [[{c}]]: does [[{a}]] affect [[{c}]] ({s_})?" + (" Nothing in the brain measures it" if not note else ""), [eff_line(a, b, e1), eff_line(b, c, e2)] + ([note] if note else []), (a, b, c), e1["basis"] + e2["basis"])
         for (x, y), e in sorted(eff.items()):
             if e["how"] == "data":
                 add("implied", 1 + (e["sign"] == "±"), f"data:{x}>{y}", f"The observations show [[{x}]] changing [[{y}]] ({e['sign']}{': it rises and falls' if e['sign'] == '±' else ''}), but no affects:: line on [[{x}]] records it", ["cards: " + " ".join(e["basis"][:6])], (x, y), e["basis"])
@@ -3833,9 +4148,11 @@ def mine(m, want):
                                   [one(m.cards[a].title, 90), one(m.cards[b].title, 90), "what observation would one explain and the other forbid?"], m.terms(m.cards[a]) & m.terms(m.cards[b]), [x for x, vs in verdict.items() if a in vs or b in vs])
             for t in th:
                 bad = sorted(x for x, vs in verdict.items() if vs.get(t.id) == "conflicts" and m.cards[x].status in ("established", "probable"))
-                if bad and t.status == "active": add("theories", 2, f"strained:{t.id}", f"Theory {t.id} is active but conflicts with {len(bad)} established or probable findings", [one(t.title, 100), "conflicts with " + " ".join(bad)], m.terms(t), bad)
-            for x in [p for p in pg if p.id[0] == "X" and p.status == "open" and not verdict.get(p.id)]:
-                add("theories", 1.5, f"tension:{x.id}", f"Open tension {x.id} is addressed by no theory: which account predicts which side?", [one(x.title, 110)], m.terms(x), [x.id])
+                unfree = [x for x in bad if not free.get(x)]
+                if bad and t.status == "active": add("theories", 2 + bool(unfree), f"strained:{t.id}", f"Theory {t.id} is active but conflicts with {len(bad)} established or probable findings" + (f"; {len(unfree)} of them in no logged contradiction, so the theory must be strained or abandoned, or the contradiction logged" if unfree else ", each a side of a logged contradiction"),
+                                                     [one(t.title, 100), "conflicts with " + " ".join(f"{x}" + (f" (freed by {' '.join(sorted(free[x]))})" if free.get(x) else "") for x in bad)], m.terms(t), bad)
+            for x in [p for p in pg if p.id[0] in "XV" and p.status == "open" and not verdict.get(p.id)]:
+                add("theories", 1.5 + 0.5 * (x.id[0] == "V"), f"{'tension' if x.id[0] == 'X' else 'contradiction'}:{x.id}", f"Open {'tension' if x.id[0] == 'X' else 'contradiction'} {x.id} is addressed by no theory: which account predicts which side, or makes both true?", [one(x.title, 110)], m.terms(x), [x.id])
         elif [p for p in pg if p.id[0] == "K"]:
             claims = [c for c in ev if c.type in ("claim", "model") and c.status in ("inferred", "speculated", "derived")]
             notes["theories"] = f"No theory cards yet. The {len(claims)} explanatory claim and model cards are the raw material for rival accounts (brain-mesh-discover, theory pass)."
@@ -3851,6 +4168,7 @@ def mine(m, want):
             for a1, r_, a2 in sorted(rel):
                 if a1 in mp and a2 in mp and (mp[a1], r_, mp[a2]) not in rel:
                     b1, b2 = mp[a1], mp[a2]; n = len(co.get(tuple(sorted((b1, b2))), ()))
+                    if r_ == "affects" and veto("analogies", b1, b2)[0]: continue
                     basis = eff.get((a1, a2), {}).get("basis", []) if r_ == "affects" else []
                     v3, v1 = {"affects": ("affects", "affect"), "part_of": ("is part of", "form part of"), "broader": ("is a kind of", "count as a kind of"), "measured_by": ("is measured by", "get measured by"), "related": ("is related to", "relate to")}[r_]
                     add("analogies", 2.5 if not n else 1.5, f"{A.id}:{a1}>{a2}", f"{A.id}: on the base side [[{a1}]] {v3} [[{a2}]]; does [[{b1}]] {v1} [[{b2}]] on the target side?" + (" No card holds both" if not n else f" Never stated, though cards from {n} sources hold both"), [one(A.title, 100)], (b1, b2), basis or [A.id])
@@ -3880,6 +4198,7 @@ def mine(m, want):
                 shared = sorted(m.terms(a) & m.terms(b), key=lambda t: (-w(t), t))
                 add("links", sc, f"{x}~{y}", f"{x} and {y} (different sources) share rare concepts but are not linked", [one(a.title, 100), one(b.title, 100), f"shared: {', '.join(shared[:5])}"], shared, [x, y])
     if "analogies" in want and not m.pages("A"): notes["analogies"] = "No analogy cards yet: an analogy pass proposes them (brain-mesh-discover)."
+    for mn, k in withheld.items(): notes[mn] = (notes.get(mn, "") + " " if notes.get(mn) else "") + f"{k} signal{'s' if k > 1 else ''} withheld: they predict an effect that evidence in the brain looked for and did not find, and no logged contradiction frees that evidence."
     for k in rows: rows[k].sort(key=lambda r: (-r[0], r[1]))
     return rows, notes
 
@@ -3951,16 +4270,17 @@ def cmd_discover(m, args):
         if miner in notes: print("  " + notes[miner])
         for n_, (_c, _s, _k, r, rj) in enumerate(shown[:top], 1):
             sc, key, text, lines, cs, src = r
+            cc = [c for c in cs if c in m.cards and m.cards[c].fam == "concept"]
             print(f"  {n_}. [{sc:g}] {plain(text)}")
             for l in lines: print(f"       {plain(l)}")
-            tags = [f"key {key}"] + (["housekeeping"] if any(key.startswith(h) for h in HOUSEKEEPING) else []) + ([f"touched by {', '.join(touched(cs))}"] if touched(cs) else []) + ([f"already carded as {', '.join(carded[key])}"] if carded.get(key) else [])
+            tags = [f"key {key}"] + (["housekeeping"] if any(key.startswith(h) for h in HOUSEKEEPING) else []) + ([f"respect: mesh.py facts {' '.join(cc[:3])}"] if cc and not key.startswith("contradictions:log") else []) + ([f"touched by {', '.join(touched(cs))}"] if touched(cs) else []) + ([f"already carded as {', '.join(carded[key])}"] if carded.get(key) else [])
             if rj: tags.append(f"REOPENED: judged before{' on ' + rj[0] if rj[0] else ''} ({one(rj[3], 60)}); new sources since: {' '.join(sorted(set(src) - rj[2])) or 'none'}")
             print("       " + " · ".join(tags))
             if not carded.get(key): print(f"       stamp: {stamp_line(r)}")
         if len(shown) > top: print(f"  … {len(shown) - top} more (--top N)")
         total += len(shown)
     print(f"\n{total} signals" + (f"; {hidden} hidden because they were rejected and nothing new bears on them (--all shows them)" if hidden else "") +
-          ". These are prompts, not findings. Judge each against its cards and the PDF, then propose the worthwhile ones to the user as cards (brain-mesh-discover). Paste the stamp into each accepted card; record each rejection with `mesh.py dismiss <key> <reason>`.")
+          ". These are prompts, not findings. Judge each against its cards and the PDF, and against every fact and piece of evidence on its concepts (`mesh.py facts`): a proposal may go against evidence only where a logged contradiction frees it. Then propose the worthwhile ones to the user as cards (brain-mesh-discover). Paste the stamp into each accepted card; record each rejection with `mesh.py dismiss <key> <reason>`.")
 
 
 def recheck(m):
@@ -4057,6 +4377,8 @@ staged                        concepts proposed by extraction agents, with the e
 propose <slug> "<definition>" [--from P###] [--kind k] [--unit u] [--alias "a; b"] [--low "<why>"]  propose a concept card (agents never create concepts themselves)
 adopt <name> [into <concept>] | --all  make a proposed concept a card (the user's call), or fold it into a concept or another proposal and rewrite every link
 reject <name> "<why>"           turn a proposed concept down: links become plain words, and the name is not proposed again
+contradictions [P###|<concept>] | add <key>|<card> <card> "<clash>" | dismiss <key> "<why>"  the contradictions register: list, log, dismiss
+facts <concept> [<concept> ...]  what a proposal about these concepts must respect: hub facts, effects, null results, findings, evidence, logged contradictions
 scan [P### ...|<concept>]       look for every concept across a source's text: passages no card covers, the works cited there, cards missing cites::; writes P###_scan.md
 related <P###>                synthesis and workbench cards, and sources, sharing concepts with a source
 neighbours <id|P###>          per card: likely duplicates, and cards in other sources to link, ranked by rare shared concepts
@@ -4102,6 +4424,8 @@ def main():
     elif c == "staged": cmd_staged(m)
     elif c == "adopt": cmd_adopt(m, a)
     elif c == "propose": cmd_propose(m, a)
+    elif c == "contradictions": cmd_contradictions(m, a)
+    elif c == "facts": cmd_facts(m, a)
     elif c == "reject": cmd_reject(m, a)
     elif c == "scan":
         if len(a) > 1 and all(re.fullmatch(r"P\d{3}", x) for x in a):

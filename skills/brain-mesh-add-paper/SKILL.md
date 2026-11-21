@@ -156,6 +156,15 @@ The web grows from the bottom up, card to card.
 
 A link should tell a reader something they would want to follow. Do not link cards merely because they share a concept; the concept hub already does that.
 
+### Scan for contradictions and log them
+
+Every paper is read against what the brain already holds, and every contradiction found goes on the register (`brain-mesh`, **Contradiction**). Contradictions are kept, not smoothed over: they are where theories, hypotheses and experiments come from.
+
+1. `python3 tools/mesh.py contradictions P012` lists the logged contradictions and tensions this paper's cards touch, and the possible contradictions the tooling sees in the Codes: a `contradicts::` link you just made, values of one quantity that disagree beyond error under the same conditions, an effect running the opposite way to a concept's recorded effect or to another source, a null result against an effect, evidence against a finding.
+2. Read for the ones the Codes cannot show. For each claim, model and main result of the paper, look at the cards and hub facts on the same concepts (`python3 tools/mesh.py facts <concept> ...`): does the paper state something that cannot be true if they are? A mechanism excluded by another paper's data, a claim against a hub's **What is known**, a definition that makes two results incompatible. The paper's own internal clashes count too (abstract against results), as do its stated disagreements with earlier work.
+3. For each real one: `python3 tools/mesh.py contradictions add <key>`, or `contradictions add <card> <card> "<the clash in one sentence>" --by "import P012"` for one found by reading. Then write **Why both cannot hold** and **Ways out** on the card. For a candidate that is not a contradiction, fix the missing condition or unit on the card if that is the cause, otherwise `contradictions dismiss <key> "<why>"`.
+4. Where the new paper speaks to a contradiction already logged, record the decision in step 8.
+
 ## 7. Verify against the PDF
 
 1. `python3 tools/mesh.py check P012` also flags observations whose numbers are not coded, observations without a method and claims without a basis unless a `missing::` line says why, and figure values without a data file or a reading error. It confirms that every anchor exists, every `loc::` phrase occurs in its paragraph, and every number in a `value::` line occurs in the source. Resolve each warning.
@@ -198,14 +207,14 @@ Then:
 - For each main result and claim, act on the placement report as above.
 - Turn the authors' open questions and limitations into gap candidates (`brain-mesh-gaps`), searching existing gaps first.
 - **Check the workbench.** Does the source support or undermine an open hypothesis, or already answer a planned or registered experiment? Say so on that card, under `## Amendments` for a registered experiment, and tell the user at once.
-- **Decide on every open gap, tension and hypothesis the source bears on** (below).
+- **Decide on every open gap, tension, contradiction and hypothesis the source bears on** (below).
 - **Write the claims card** (below).
 - **Recheck the discovery cards.** Run `python3 tools/mesh.py discover --recheck` and take every dissolved, strengthened, weakened or re-opened item to the user (`brain-mesh-discover` section 8). A new paper that answers a seed is often the most useful thing it does.
 - If the source was in `ledger/reading-queue.md`, `build` marks its reference card held by itself (by DOI, or first author, year, volume and page; set `status: held` and `held:: [[P012]]` by hand if it did not match). Revisit the gap or tension it was queued for.
 
 ### Decisions on gaps, tensions and hypotheses
 
-A new paper may close a gap, settle a tension or decide a hypothesis, and the brain must not go on treating them as open. The end of `place P012`, under **Decisions to record**, lists every open gap, tension and hypothesis the source bears on that has no decision for it yet. Read each against the source and record one of these:
+A new paper may close a gap, settle a tension or a contradiction, or decide a hypothesis, and the brain must not go on treating them as open. The end of `place P012`, under **Decisions to record**, lists every open gap, tension, contradiction and hypothesis the source bears on that has no decision for it yet. Read each against the source and record one of these:
 
 | Card | What the source can do | What to write |
 |---|---|---|
@@ -215,6 +224,10 @@ A new paper may close a gap, settle a tension or decide a hypothesis, and the br
 | Tension | Takes a side | add its card to `sides::` |
 | | Accounts for both sides | status `explained`, `- explained_by:: [[H002]]` or the evidence, a `graded::` line |
 | | Settles it by decisive evidence | status `resolved`, `- resolved_by:: [[P012-020]] — why it settles it`, a `graded::` line |
+| Contradiction | Takes a side | add its card to `sides::` |
+| | Makes both sides true (a moderator, a difference of method or definition) | status `explained`, `- explained_by::` the evidence or hypothesis, a `graded::` line |
+| | Shows one side wrong | status `resolved`, `- resolved_by:: [[P012-020]] — why it settles it`, a `graded::` line |
+| | Shows it was never a contradiction (a condition one card left out) | fix the cards, status `dissolved`, `- dissolved:: <why>`, a `graded::` line |
 | Hypothesis | Tests a prediction | status `supported` or `refuted`, a `graded::` line naming the evidence |
 | Any | Touches it but changes nothing | `- reviewed:: <date> P012 — untouched: <why>` |
 
@@ -260,7 +273,7 @@ This is what the user reads, so it is not optional. For every concept the source
 
 Set the source card's status to `integrated`. Rewrite the Overview in `MAP.md` if the picture has changed. Run `python3 tools/mesh.py build` until there are no errors (the decisions on gaps and tensions and the claims card are checked from here on), then `python3 tools/mesh.py log "add P012 <authors year> (<n> cards); <findings, tensions and gaps changed>"` and `python3 tools/mesh.py sync "add P012"`.
 
-Report to the user in a few lines: the paper's main claim and how far its evidence carries it; cards by type; what the concept scan added (new facts by concept, citations added); the concepts proposed, for the user to adopt, fold or reject, one line each with its definition; findings added or re-graded; gaps closed or narrowed and tensions explained or resolved; new tensions and gaps; data sets and code carded; hubs updated; anything bearing on their hypotheses or experiments; what was not extracted and why; and the top of the reading queue: the ★ works bearing on research gaps, then works cited where open gaps and tensions rest, with their years and DOIs (the queue puts recent work first and marks foundational old works ⌛). If the session's files are temporary, hand back the vault archive.
+Report to the user in a few lines: the paper's main claim and how far its evidence carries it; cards by type; the contradictions it logged, explained or resolved; what the concept scan added (new facts by concept, citations added); the concepts proposed, for the user to adopt, fold or reject, one line each with its definition; findings added or re-graded; gaps closed or narrowed and tensions explained or resolved; new tensions and gaps; data sets and code carded; hubs updated; anything bearing on their hypotheses or experiments; what was not extracted and why; and the top of the reading queue: the ★ works bearing on research gaps, then works cited where open gaps and tensions rest, with their years and DOIs (the queue puts recent work first and marks foundational old works ⌛). If the session's files are temporary, hand back the vault archive.
 
 ## Lens pass: re-reading sources for a new question
 

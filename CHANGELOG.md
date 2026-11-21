@@ -2,6 +2,18 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.13.0 (2026-11-21)
+
+The contradictions register; discovery respects the evidence.
+
+- **Contradiction cards `V###`** in `contradictions/`: two or more cards (evidence, findings, concepts) that cannot both hold as stated, with the clash, why both cannot hold, the ways out, the kind (values, direction, null, against, link, mechanism, definition, scope, other) and who found it. Status open, explained, resolved or dissolved, with a graded history. Hypotheses and theories `explains::` them, seeds come `from::` them, experiments `addresses::` them, tensions gather them (`tension::`).
+- **`contradictions [P###|<concept>]`** lists the logged ones and the possible contradictions in the Codes not yet logged: `contradicts::` links, values that clash under the same conditions, a recorded effect the data reverse, opposite directions in different sources, null results against effects, evidence against findings. `contradictions add <key>` (or `<card> <card> "<clash>" --by ...`) logs one; `contradictions dismiss <key> "<why>"` records one that is not. `check` warns about candidates neither logged nor dismissed, and an integrated paper owes each open contradiction it bears on a decision.
+- **The register,** `ledger/contradictions.md`, rebuilt by `build`: open contradictions and what works on them (marked when nothing does), the explained, resolved and dissolved, tensions, candidates not yet logged, and the dismissed. MAP lists open contradictions.
+- **Discovery respects the evidence.** New miner `contradictions`: candidates to log (housekeeping, once judged real) and open contradictions nothing works on (theory, hypothesis and experiment prompts). `implied` and `analogies` withhold predictions that evidence in the brain looked for and did not find, unless a logged contradiction frees that evidence; `theories` flags theories in conflict with findings no contradiction frees; `moderators` works on contradictions as on tensions. Each signal names its `facts` call.
+- **`facts <concept> ...`** lists what a proposal must respect: hub facts and relations, effects and null results, findings, evidence, and the logged contradictions that free a side.
+- Skills: discover (constraint rule, contradiction pass and hunt), add-paper and concept-scan (scan for contradictions and log them; decisions on open ones), batch, experiment, access, housekeeping, main skill.
+- A test parses the tooling with Python 3.11 where it is installed (beside the 1.12.1 check for backslashes in f-string expressions).
+
 ## 1.12.1 (2026-11-21)
 
 - The tooling starts again on Python 3.10 and 3.11. 1.11.0 put a backslash inside an f-string expression, which only Python 3.12 accepts. A test now flags any such expression, and the test suite runs on Windows (UTF-8 mode, paths from glob) (issue #10).

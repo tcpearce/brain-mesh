@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.8.2"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.9.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -2074,7 +2074,13 @@ def cmd_concept(m, name):
     c = [a for a in m.alias if (len(a) > 3 and (k in a or a in k)) or a == k or words & {w.rstrip("s") for w in a.split() if len(w) > 3}] + difflib.get_close_matches(k, list(m.alias), n=6, cutoff=0.75)
     ids = list(dict.fromkeys(m.alias[a] for a in c))
     for i in ids: x = m.cards[i]; print(f"[[{i}]]\t{x.get('kind')}\t{x.title}\taliases={x.fm.get('aliases', [])}\tunit={x.get('unit') or '-'}")
-    if not ids: print(f"no existing concept resembles '{name}': create concepts/<slug>.md")
+    found = []
+    for nm, props in sorted(staged_blocks(m).items()):
+        names = [nm.replace("-", " ")] + [" ".join(t.lower().split()) for _p, _f, _b, t, _a in props] + [" ".join(a.lower().split()) for _p, _f, _b, _t, al in props for a in al]
+        if any((len(a) > 3 and (k in a or a in k)) or a == k or words & {w.rstrip("s") for w in a.split() if len(w) > 3} for a in names) or difflib.get_close_matches(k, names, n=1, cutoff=0.75):
+            found.append(nm); print(f"[[{nm}]]\tPROPOSED by {', '.join(sorted({x[0] for x in props}))}, not yet a card\t{props[0][3]}\taliases={sorted({a for x in props for a in x[4]})}")
+    if found: print("A name proposed by another paper's agent: link to that same name and do not propose it again; the merging session adopts it.")
+    if not ids and not found: print(f"no existing or proposed concept resembles '{name}': propose it in your source's P###_concepts.md (agents) or create concepts/<slug>.md")
 
 def cmd_neighbours(m, target, top=5, floor=0.2):
     """For one card, or each evidence card of a source: likely duplicates in the same source, and the cards in other
@@ -2233,6 +2239,95 @@ def cmd_progress(m, pid):
     if os.path.exists(p): print("  progress note:\n" + "\n".join("    " + l for l in rd(p).strip().splitlines()[-12:]))
 
 
+def staged_blocks(m):
+    """Concept proposals in every source's P###_concepts.md: {name: [(source id, file, block text, title, aliases)]}."""
+    out = defaultdict(list)
+    for f in sorted(glob.glob(J(m.root, "sources", "P[0-9][0-9][0-9]*", "P[0-9][0-9][0-9]_concepts.md"))):
+        pid, t = os.path.basename(f)[:4], rd(f)
+        for name, body in zip(*[iter(re.split(r"^=== *(\S+?)(?:\.md)? *$", t, flags=re.M)[1:])] * 2):
+            title = (re.search(r"^# (.+)$", body, re.M) or [None, name.replace("-", " ")])[1].strip()
+            al = re.search(r"^aliases:\s*\[(.*?)\]", body, re.M)
+            aliases = [x.strip().strip("'\"") for x in al.group(1).split(",") if x.strip()] if al else []
+            out[name].append((pid, f, body.strip("\n"), title, aliases))
+    return out
+
+
+def relink(m, old, new):
+    """Point every link to `old` at `new` in every card: plain in Codes, keeping the reader's words in the prose.
+    Returns the number of files changed."""
+    pat = re.compile(r"\[\[" + re.escape(old) + r"(#[^\]|]*)?(\|[^\]]*)?\]\]")
+    n = 0
+    files = [c.path for c in m.cards.values()] + sorted(glob.glob(J(m.root, "sources", "P[0-9][0-9][0-9]*", "P[0-9][0-9][0-9]_concepts.md")))
+    for path in files:
+        t = rd(path)
+        if f"[[{old}" not in t: continue
+        head, sep, tail = t.partition("\n## Codes")
+        head = pat.sub(lambda mo: f"[[{new}{mo.group(1) or ''}{mo.group(2) or '|' + old.replace('-', ' ')}]]", head)
+        tail = pat.sub(lambda mo: f"[[{new}{mo.group(1) or ''}{mo.group(2) or ''}]]", tail)
+        if head + sep + tail != t: wr(path, head + sep + tail); n += 1
+    return n
+
+
+def drop_proposal(f, name):
+    t = rd(f)
+    parts = re.split(r"(^=== *\S+?(?:\.md)? *$)", t, flags=re.M)
+    keep, skip = [parts[0]], False
+    for k in range(1, len(parts), 2):
+        nm = re.match(r"=== *(\S+?)(?:\.md)? *$", parts[k]).group(1)
+        if nm != name: keep += [parts[k], parts[k + 1]]
+    new = "".join(keep)
+    if re.search(r"^=== ", new, re.M) or new.strip(): wr(f, new.rstrip("\n") + "\n")
+    else: os.remove(f)
+
+
+def add_aliases(raw, names):
+    """Add names to a card's aliases (front matter), once each, case-insensitively."""
+    mo = re.match(r"---\n(.*?)\n---\n", raw, re.S)
+    fm = mo.group(1) if mo else ""
+    cur = re.search(r"^aliases:\s*\[(.*?)\]\s*$", fm, re.M)
+    have = [x.strip().strip("'\"") for x in cur.group(1).split(",") if x.strip()] if cur else []
+    add = [x for x in dict.fromkeys(names) if x and x.lower() not in {h.lower() for h in have}]
+    if not add: return raw
+    line = "aliases: [" + ", ".join(json.dumps(x, ensure_ascii=False) for x in have + add) + "]"
+    if cur: fm = fm[:cur.start()] + line + fm[cur.end():]
+    else: fm = (fm + "\n" if fm else "") + line
+    return "---\n" + fm + "\n---\n" + (raw[mo.end():] if mo else raw)
+
+
+def cmd_adopt(m, args):
+    """Settle a concept an extraction agent proposed. `adopt <name>` makes it a concept card from the fullest
+    proposal, adding every proposing paper's aliases. `adopt <name> into <concept>` makes it an alias of an existing
+    concept, or of another proposal (adopted first), and points every link at that concept. Either way the proposal
+    leaves every P###_concepts.md."""
+    if not args: sys.exit("adopt: give <proposed name> [into <concept>]")
+    name, target = args[0], (args[2] if len(args) > 2 and args[1] == "into" else None)
+    st = staged_blocks(m)
+    if name not in st: sys.exit(f"adopt: no proposal named '{name}' (see `mesh.py staged`)")
+    props = st[name]
+    if target:
+        if target not in m.cards and target in st:
+            cmd_adopt(m, [target]); m = Mesh(m.root)
+        tid = m.resolve(target) or m.alias.get(" ".join(target.lower().split()))
+        if not tid or m.cards[tid].fam != "concept": sys.exit(f"adopt: '{target}' is neither a concept nor a proposal")
+        tc = m.cards[tid]
+        wr(tc.path, add_aliases(rd(tc.path), [name.replace("-", " ")] + [t for _p, _f, _b, t, _a in props] + [a for _p, _f, _b, _t, al in props for a in al]))
+        n = relink(m, name, tc.name)
+        for _pid, f, _b, _t, _a in props: drop_proposal(f, name)
+        print(f"adopt: '{name}' (proposed by {', '.join(sorted({x[0] for x in props}))}) is now an alias of {tid}; links rewritten in {n} files")
+        return
+    if name in m.cards: sys.exit(f"adopt: a concept '{name}' already exists; use `adopt {name} into {name}` to fold the proposal into it")
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", name) or re.fullmatch(r"[pkxghelcdrtas]\d{3}.*", name): sys.exit(f"adopt: '{name}' is not a valid concept slug")
+    best = max(props, key=lambda x: (len(x[2]), x[0]))[2]
+    raw = best if best.startswith("---") else f"---\ntype: concept\nupdated: {TODAY}\n---\n" + best
+    raw = add_aliases(raw, [t for _p, _f, _b, t, _a in props] + [a for _p, _f, _b, _t, al in props for a in al])
+    if "\n## Codes" not in raw: raw = raw.rstrip("\n") + "\n\n## Codes\n"
+    if not re.search(r"^- id::", raw, re.M): raw = raw.replace("\n## Codes\n", f"\n## Codes\n- id:: {name}\n", 1)
+    wr(J(m.root, "concepts", name + ".md"), raw.rstrip("\n") + "\n")
+    for _pid, f, _b, _t, _a in props: drop_proposal(f, name)
+    print(f"adopt: concept {name} created from the proposal of {max(props, key=lambda x: (len(x[2]), x[0]))[0]}" + (f", with the aliases of {len(props) - 1} other proposals" if len(props) > 1 else "")
+          + (" (proposed as low priority; `build` records it)" if re.search(r"^priority:\s*low", raw, re.M) else ""))
+
+
 def cmd_staged(m):
     """Concepts proposed by extraction agents: which sources propose each, and the existing concepts they resemble."""
     st = m.staged()
@@ -2241,9 +2336,10 @@ def cmd_staged(m):
     for nm in names:
         k = nm.replace("-", " "); words = {x.rstrip("s") for x in k.split() if len(x) > 3}
         like = [a for a in m.alias if (len(a) > 3 and (k in a or a in k)) or words & {x.rstrip("s") for x in a.split() if len(x) > 3}] + difflib.get_close_matches(k, list(m.alias), n=4, cutoff=0.75)
-        twins = [o for o in names if o != nm and (difflib.SequenceMatcher(None, o, nm).ratio() > 0.8 or set(o.split("-")) & set(nm.split("-")) - {"of", "and", "the"} and len(set(o.split("-")) & set(nm.split("-"))) >= 2)]
+        cw = lambda x: {w for w in x.split("-") if len(w) >= 4 and w not in STOP}
+        twins = [o for o in names if o != nm and (difflib.SequenceMatcher(None, o, nm).ratio() > 0.75 or cw(o) & cw(nm))]
         print(f"{nm}  (from {', '.join(st[nm])})" + (f"\n   existing: {', '.join(dict.fromkeys(m.alias[a] for a in like))}" if like else "") + (f"\n   staged twins: {', '.join(twins)}" if twins else ""))
-    print(f"{len(names)} staged concepts. Merge each into an existing concept (add an alias) or create it once, then fix the links in the source's cards and delete the P###_concepts.md files.")
+    print(f"{len(names)} staged concepts. Settle each with one command: `adopt <name>` creates it, `adopt <name> into <concept or other proposal>` folds it in and rewrites every link.")
 
 
 def rarity(m):
@@ -2816,6 +2912,11 @@ with the tooling in `tools/mesh.py`. The method lives in GitHub `tcpearce/brain-
 4. **Sync when done:** `python3 tools/mesh.py sync "<what changed>"`. Every local change ends up on GitHub; never
    leave the vault with uncommitted work, and never force-push.
 
+**The one exception: an extraction agent in a batch** (`brain-mesh-batch`). It writes only inside its own paper's
+folder and never runs `sync`, `build` or any command that writes shared files; the session that launched it syncs.
+A vault rule below that asks for a shared change (a new concept, a priority) is met by proposing it in the paper's
+own files for that session to make.
+
 ## Never
 
 - Edit `sources/*/P*.pdf`, `*_text.md`, anything between `<!--AUTO:START-->` and `<!--AUTO:END-->`, `## Linked from`
@@ -3384,6 +3485,7 @@ place <P###|id>               where new evidence goes: findings, tensions, gaps 
 equations <P###> [--si]       displayed equations of a source, with boxes to crop (figure ... eq4) and transcribe into LaTeX
 latex <card id>               render a card's equation:: lines beside the cropped original, to check the transcription
 staged                        concepts proposed by extraction agents, with the existing concepts they resemble
+adopt <name> [into <concept>]  settle a proposed concept: create it, or fold it into a concept (or another proposal) and rewrite every link
 related <P###>                synthesis and workbench cards, and sources, sharing concepts with a source
 neighbours <id|P###>          per card: likely duplicates, and cards in other sources to link, ranked by rare shared concepts
 health                        housekeeping queues: stale hubs, findings to re-grade, old searches, unused evidence
@@ -3426,6 +3528,7 @@ def main():
     elif c == "equations": cmd_equations(m, a[0], "_SI" if "--si" in a else "")
     elif c == "latex": cmd_latex(m, a[0])
     elif c == "staged": cmd_staged(m)
+    elif c == "adopt": cmd_adopt(m, a)
     elif c == "id": cmd_id(m, a[0])
     elif c == "split": cmd_split(m, a[0], "--update" in a)
     elif c == "check": notes = m.check(a[0] if a else None); report(m, notes); sys.exit(1 if m.err else 0)

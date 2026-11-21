@@ -800,4 +800,71 @@ python3 tools/mesh.py health > h.txt; grep -q "S001 bridges:binding-capacity~fil
 sed -i.bak 's/^status: new$/status: answered/; s/^- miner:: bridges$/- miner:: bridges\n- answered_by:: [[P004-001]] — thickening and loss correlate film by film/' seeds/S001-*.md; rm seeds/*.bak
 python3 tools/mesh.py build > build.txt; grep -q "check: 0 errors" build.txt && ! grep -q "S001" build.txt && grep -q "answers:: \[\[S001-" sources/P004-*/P004-001-*.md && pass "an answered seed builds clean and the evidence shows what it answers" || { cat build.txt; fail "answered"; }
 python3 tools/mesh.py discover --recheck > re.txt; grep -q "0 stamped cards" re.txt && pass "a closed seed is no longer followed" || fail "closed seed followed"
+# 13. proposals from extraction agents: seen by the others, settled with adopt (1.9.0)
+cp -r "$ROOT/demo-vault" "$T/a"; cd "$T/a"; cp "$MESH" tools/mesh.py
+S1=$(ls -d sources/P001*); S2=$(ls -d sources/P002*)
+cat > $S1/P001_concepts.md <<'TXT'
+=== cavity-distortion
+---
+type: concept
+aliases: ["cavity distortion", "distorted cavities"]
+updated: 2026-11-21
+---
+# Cavity distortion
+
+**Definition.** A change in the shape of the imprinted cavities that lowers how well they bind the template.
+
+## Where it appears
+<!--AUTO:START-->
+<!--AUTO:END-->
+
+## Codes
+- kind:: concept
+TXT
+sed -i 's/^\(- concepts:: .*\)$/\1, [[cavity-distortion]]/' $S1/P001-007-*.md
+python3 tools/mesh.py concept "distorted cavities" > c.txt; grep -q "^\[\[cavity-distortion\]\].*PROPOSED by P001" c.txt && pass "concept shows another agent's proposal" || { cat c.txt; fail "concept sees proposals"; }
+cat > $S2/P002_concepts.md <<'TXT'
+=== cavity-deformation
+---
+type: concept
+aliases: ["deformed cavities"]
+updated: 2026-11-21
+---
+# Cavity deformation
+
+**Definition.** Deformation of the imprinted cavities.
+
+## Codes
+- kind:: concept
+
+=== fitted-isotherm
+---
+type: concept
+priority: low
+aliases: ["isotherm fit"]
+updated: 2026-11-21
+---
+# Fitted isotherm
+
+**Definition.** A binding isotherm fitted to rebinding data; a generic analysis term.
+
+## Where it appears
+<!--AUTO:START-->
+<!--AUTO:END-->
+
+## Codes
+- kind:: technique
+TXT
+sed -i 's/^\(- concepts:: .*\)$/\1, [[cavity-deformation]]/' $S2/P002-005-*.md
+python3 - "$S2" <<'PY'
+import glob, sys
+f = glob.glob(sys.argv[1] + "/P002-005-*.md")[0]; t = open(f).read()
+t = t.replace("\n## Codes", "\nNo [[cavity-deformation]] is seen on heating in acetonitrile.\n\n## Codes", 1); open(f, "w").write(t)
+PY
+python3 tools/mesh.py staged > st.txt; grep -q "^cavity-deformation  (from P002)" st.txt && grep -q "staged twins: cavity-distortion" st.txt && pass "staged pairs twin proposals from two agents" || { cat st.txt; fail "staged twins"; }
+python3 tools/mesh.py adopt cavity-distortion > ad.txt && [ -f concepts/cavity-distortion.md ] && [ ! -f $S1/P001_concepts.md ] && pass "adopt creates a proposed concept and clears the proposal" || { cat ad.txt; fail "adopt create"; }
+python3 tools/mesh.py adopt cavity-deformation into cavity-distortion > ad.txt && grep -q "^- concepts:: .*\[\[cavity-distortion\]\]" $S2/P002-005-*.md && grep -q "No \[\[cavity-distortion|cavity deformation\]\] is seen" $S2/P002-005-*.md && grep -q '"cavity deformation"' concepts/cavity-distortion.md && grep -q '"deformed cavities"' concepts/cavity-distortion.md && ! grep -q "cavity-deformation" $S2/P002_concepts.md && pass "adopt into folds a twin into a concept, adds its names as aliases and rewrites every link" || { cat ad.txt; grep -n "cavity" $S2/P002-005-*.md concepts/cavity-distortion.md; fail "adopt into"; }
+python3 tools/mesh.py adopt fitted-isotherm > ad.txt && grep -q "^priority: low$" concepts/fitted-isotherm.md && [ ! -f $S2/P002_concepts.md ] && pass "a proposal marked low keeps its priority when adopted" || { cat ad.txt; fail "adopt low"; }
+python3 tools/mesh.py build > build.txt; grep -q "check: 0 errors" build.txt && grep -q "^- prioritised:: .* low — " concepts/fitted-isotherm.md && pass "the vault builds clean after adoption" || { cat build.txt; fail "build after adopt"; }
+grep -q "exception: an extraction agent in a batch" CLAUDE.md && pass "CLAUDE.md exempts extraction agents from syncing" || fail "CLAUDE.md exception"
 echo "ALL TESTS PASSED"

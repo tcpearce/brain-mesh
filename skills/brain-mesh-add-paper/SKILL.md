@@ -114,6 +114,8 @@ Every data set and every code base or software package the study uses gets a car
 
 ## 4. Concepts
 
+(Working as an extraction agent in a batch? `concept` also shows the names other agents have proposed; link to one that fits, and propose new concepts in `P012_concepts.md` instead of creating them, as `brain-mesh-batch` says.)
+
 For every material, variable, technique and mechanism a card mentions, run `python3 tools/mesh.py concept "<name>"`.
 
 - An existing concept covers it: link that card. If the paper uses a new name for it, add the name to the concept's `aliases`.

@@ -2,6 +2,15 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.9.0 (2026-11-21)
+
+Parallel extraction without a mess of concepts.
+
+- **Agents see each other's proposals.** `concept "<name>"` also searches every paper's `P###_concepts.md` and marks matches PROPOSED, so the second agent links to the first agent's name instead of inventing a twin.
+- **`adopt <name> [into <concept>]`** settles a proposal in one command. Alone, it creates the concept from the fullest proposal, with every proposing paper's names as aliases. With `into`, it folds the proposal into an existing concept, or into another proposal adopted first, adds its names as aliases, and rewrites every link to it in every card (plain in Codes, the reader's words kept in the prose). Proposals leave their files, and an emptied file goes. A proposal with `priority: low` keeps it. `staged` now pairs likely twins by shared content words.
+- **Sync rule and agents.** The vault's `CLAUDE.md` and `brain-mesh-access` now exempt extraction agents in a batch from the sync rule. Vault rules that ask for a shared change (a new concept, a priority) are met by proposing it in the paper's own files.
+- Batch skill: concept search before every proposal, vault rules within the agent's limits, merge by `adopt` with twins first and before `neighbours`, batch size set by the merge, Obsidian Git paused during a batch.
+
 ## 1.8.2 (2026-11-21)
 
 - `id P` counts source folders named after their source cards. Before, once `build` had renamed the folders it found none and offered P001 again (issue #2).

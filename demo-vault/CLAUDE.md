@@ -16,6 +16,11 @@ with the tooling in `tools/mesh.py`. The method lives in GitHub `tcpearce/brain-
 4. **Sync when done:** `python3 tools/mesh.py sync "<what changed>"`. Every local change ends up on GitHub; never
    leave the vault with uncommitted work, and never force-push.
 
+**The one exception: an extraction agent in a batch** (`brain-mesh-batch`). It writes only inside its own paper's
+folder and never runs `sync`, `build` or any command that writes shared files; the session that launched it syncs.
+A vault rule below that asks for a shared change (a new concept, a priority) is met by proposing it in the paper's
+own files for that session to make.
+
 ## Never
 
 - Edit `sources/*/P*.pdf`, `*_text.md`, anything between `<!--AUTO:START-->` and `<!--AUTO:END-->`, `## Linked from`

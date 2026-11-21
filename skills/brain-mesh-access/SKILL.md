@@ -22,6 +22,8 @@ Read `brain-mesh` for the card formats. This document says how to behave in a va
 6. `python3 tools/mesh.py sync "<what changed, in a line>"`. Every local change ends up on GitHub before the session ends. Never leave uncommitted work, and never force-push.
 7. Tell the user what changed, in a few lines.
 
+**Extraction agents in a batch** (`brain-mesh-batch`) are the one exception to steps 3 and 6. They write only inside their own paper's folder and never sync or build; the session that launched them does both.
+
 **Read-only sessions.** A session that only answers questions, or a scheduled report, runs `git pull` at the start (or nothing at all, if told not to touch the repository) and commits nothing.
 
 **When `sync` stops.**

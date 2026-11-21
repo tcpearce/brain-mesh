@@ -7,13 +7,13 @@ description: "Scan chosen sources of a brain mesh, or all of them, for every con
 
 Read `brain-mesh` first for the card formats, and `brain-mesh-access` for syncing. This skill goes back over sources already in the brain. For a new paper the same work is part of `brain-mesh-add-paper` step 4.
 
-The aim: for every source in scope, everything the paper says about any concept in the brain is either on a card or recorded as nothing new; every fact the paper backs with a citation carries that citation, on its evidence card and in the concept hub; and every contradiction between what the paper says and what the brain holds is logged on the contradictions register.
+The aim: for every source in scope, everything the paper says about any concept in the brain is either on a card or recorded as nothing new; every fact the paper backs with a citation carries that citation, on its evidence card and in the concept hub; and every contradiction between what the paper says and what the brain holds is logged on the contradictions register. Each hub also shows its key equations and figures, with the cards and works they come from (step 7).
 
 ## 1. Scope
 
 1. `python3 tools/mesh.py sync`, then `python3 tools/mesh.py scan`. With no arguments, `scan` lists every source with what is left to do: concepts named in passages no card of that source covers, and how many passages.
 2. Take the sources the user named, or all of them if they said all. Work high-priority sources first, then those with most to do.
-3. One source at a time, start to finish. With more than about five sources, the sources can be split between agents as in `brain-mesh-batch`: each agent writes only in its own source's folder (new evidence cards, `cites::` lines on that source's cards, `P012_scan.md`, proposals with `propose --from P012`), and the launching session does steps 5 to 7.
+3. One source at a time, start to finish. With more than about five sources, the sources can be split between agents as in `brain-mesh-batch`: each agent writes only in its own source's folder (new evidence cards, `cites::` lines on that source's cards, `P012_scan.md`, proposals with `propose --from P012`), and the launching session does steps 5 to 8.
 
 ## 2. Work one source: `python3 tools/mesh.py scan P012`
 
@@ -49,7 +49,7 @@ The facts a concept scan adds are the ones most likely to clash with the brain: 
 
 ## 4. Close the source
 
-1. `python3 tools/mesh.py scan P012` again, until **To do** and **Citations to add** are empty, and `python3 tools/mesh.py contradictions P012` shows nothing unlogged.
+1. `python3 tools/mesh.py scan P012` again, until **To do**, **Citations to add** and **Equations and figures for the hubs** are empty (step 7), and `python3 tools/mesh.py contradictions P012` shows nothing unlogged.
 2. `python3 tools/mesh.py check P012`: fix every error, clear every warning or record why it stands.
 3. Add a pass line to the source card: `- pass:: <date> | concept scan | <n> new cards, <m> citations added | <k> concepts decided, <c> contradictions logged`.
 
@@ -61,8 +61,28 @@ For each source done: `python3 tools/mesh.py neighbours P012` and `python3 tools
 
 For every concept that gained a fact, add-paper step 9 (a fact on a logged contradiction is stated with it: "against [[P001-014]], see [[V002]]"): a line under **What is known** (or **Relationships**, **How it is measured**, **Open questions**) citing the evidence card and the works it cites, as `[[R0042-…|Keller et al. 2017]]`, with the matching `- cites::` line in Codes. `check` flags a hub line that states a fact from a citing card without its works. Revise lines the new facts overtake, and set `updated`.
 
-## 7. Finish
+## 7. Key equations and figures on the hubs
+
+Do this as you go, source by source: a hub should show the equations and figures that define or measure its concept, not just name the cards that hold them. **Equations and figures for the hubs** in the `scan` output, and in `P012_scan.md`, lists every equation and figure panel of the source for each concept its card names in `concepts::`, until each is on that hub or decided.
+
+1. **Get the image.** A printed equation is cropped as `P012-eq4.png`, and a figure panel as `P012-F2c.png` (`P012-SF3.png` in the supplementary material), with `mesh.py figure` (add-paper, **Reading values from figures** and **Equations**). An item listed "no image yet" whose figure is key: crop it now, choosing a box that takes in the panel, its axes and legend.
+2. **Judge it for this concept.** Key means it defines the concept, gives its functional form, or shows its principal measurement or result. A figure that only touches the concept is not key for it, though it may be for another.
+3. **Put a key one on the hub**, under `## Key equations and figures` (after **Open questions**, before **Where it appears**), one entry each:
+   - a bold name and one sentence on what it shows, with the conditions;
+   - for an equation, the LaTeX as a `$$ … $$` block with its symbols linked to their concepts, then `![[P012-eq4.png]]`; for a figure, `![[P012-F2c.png|400]]`;
+   - the evidence card it comes from (`[[P012-028|Pellegrino et al. 2025, Fig. 1D]]`), which carries the link to the page;
+   - every work that card cites for it, as `[[R0042-…|Keller et al. 2017]]`, with the matching `- cites:: [[R0042]] — <what it supports>` in the hub's Codes. An equation the paper takes from earlier work is credited to that work as well as to the paper.
+4. **Or decide.** For one that is not key to that concept, write `- not_key:: [[concept]] P012-F2c.png — why` in `P012_scan.md`. The line is kept when the scan runs again.
+
+When two sources give the same equation, keep one entry and cite both. Where they differ (another form, other parameters), show both and say how they differ.
+
+## 8. Finish
 
 1. `python3 tools/mesh.py build` until it shows 0 errors.
-2. `python3 tools/mesh.py log "concept scan P001-P003: <n> new cards, <m> citations added, <c> contradictions logged, hubs <list>"` and `python3 tools/mesh.py sync "concept scan <sources>"`.
-3. Report in a few lines: per source, the new facts by concept and the citations added; the contradictions logged, each in one line, and those that suggest a theory or an experiment; the hubs updated; findings, gaps or tensions affected; the concepts proposed, one line each with its definition, for the user to adopt (`adopt <slug>`, or `adopt --all`), fold (`adopt <slug> into <concept>`) or reject (`reject <slug> "<why>"`).
+2. `python3 tools/mesh.py log "concept scan P001-P003: <n> new cards, <m> citations added, <c> contradictions logged, <k> equations and figures on hubs, hubs <list>"` and `python3 tools/mesh.py sync "concept scan <sources>"`.
+3. Report in a few lines:
+   - per source, the new facts by concept and the citations added;
+   - the contradictions logged, each in one line, and those that suggest a theory or an experiment;
+   - the hubs updated, and the equations and figures put on them;
+   - findings, gaps or tensions affected;
+   - the concepts proposed, one line each with its definition, for the user to adopt (`adopt <slug>`, or `adopt --all`), fold (`adopt <slug> into <concept>`) or reject (`reject <slug> "<why>"`).

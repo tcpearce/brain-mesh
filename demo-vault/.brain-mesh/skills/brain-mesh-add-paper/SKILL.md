@@ -265,6 +265,7 @@ This is what the user reads, so it is not optional. For every concept the source
 - add to **What is known**, one line per point, citing the finding or evidence card;
 - add or revise lines under **Relationships**, and the matching relation in Codes (`affects`, `measured_by`, `part_of`, `broader`, `related`);
 - add to **Open questions**; extend **How it is measured** when the source uses a new method;
+- put the source's key equations and figure panels for the concept under **Key equations and figures**, each with its evidence card and the works that card cites (`brain-mesh-concept-scan` step 7; `scan P012` lists the candidates);
 - revise a line that the new source has overtaken, and do not leave contradictory lines standing;
 - cite the works each point rests on. A line that states a fact from an evidence card cites the works that card cites, as `[[R0042-…|Keller et al. 2017]]` (or `[[P001-…|Lee et al. 2023]]` for a source in the brain), beside the evidence card, with the matching `- cites:: [[R0042]] — what it supports` line in Codes; `check` flags lines that leave them out. The generated block shows the works each evidence card cites and, under **Key references**, the works cited where its evidence cards are anchored. Cite no work just because it is listed;
 - set `updated` to today.

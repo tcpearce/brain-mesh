@@ -158,6 +158,11 @@ updated: 2026-11-20
 ## Open questions
 - One line each, citing a gap card where one exists.
 
+## Key equations and figures
+- **Langmuir isotherm**, how capacity saturates with analyte concentration ([[P001-009|Smith & Jones 2021, eq. 2]], after [[R0007|Langmuir 1918]]):
+  $$q = \frac{q_{max} K c}{1 + K c}$$
+  ![[P001-eq2.png]]
+
 ## Where it appears
 <!--AUTO:START-->
 <!--AUTO:END-->
@@ -171,6 +176,7 @@ updated: 2026-11-20
 
 - `kind` is `entity`, `variable`, `count`, `technique` or `concept`. A `count` is a variable that only says how many items a result rests on (`sample-size`). A variable needs `unit`: a unit, `1` for dimensionless, or `categorical` when its values are themselves concept cards (solvent = water).
 - Concept-to-concept relations in Codes: `broader` (is a kind of), `part_of`, `measured_by`, `affects`, `related`. Write the relation on the card of the concept that does the affecting or belonging, for example on the temperature card: `- affects:: [[binding-capacity]] — in water only, [[K001]]`. An `affects` line must cite the finding or evidence card it rests on, because it is a scientific claim and not vocabulary.
+- **Key equations and figures** (optional) shows the equations and figure panels that define or measure the concept: the LaTeX or the embedded image, a sentence on what it shows, the evidence card it comes from, and the works that card cites, each with a `cites::` line. `scan` lists the candidates (`brain-mesh-concept-scan` step 7).
 - The block under **Where it appears** is generated: every finding, tension, gap, hypothesis and experiment that uses the concept, its evidence cards, relations pointing at it from other concepts, and the concepts it most often appears with. Keep the two AUTO marker lines in the card.
 - Before proposing a concept run `python3 tools/mesh.py concept "<name>"`. If an existing concept covers it, add the new name to that card's `aliases` instead. If another agent has proposed it, link that name.
 - **New concepts are the user's call.** They come into the brain in two ways:

@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.13.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.14.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -2596,6 +2596,46 @@ def scan_todo(m, pid):
     return [(cid, unc) for cid, (_h, unc) in sorted(scan_state(m, pid).items()) if unc and cid not in dec and m.cards[cid].priority != "low"]
 
 
+def scan_notkey(m, pid):
+    """Decisions in P###_scan.md that an equation or figure is not key for a concept: {(concept id, item): why}."""
+    p = J(SRC(m.root, pid), pid + "_scan.md")
+    return {(m.resolve(mo.group(1)) or mo.group(1).strip(), mo.group(2)): mo.group(3).strip() or "not key"
+            for mo in re.finditer(r"^- not_key:: *\[\[([^\]|#]+)[^\]]*\]\] +(\S+)\s*—?\s*(.*)$", rd(p) if os.path.exists(p) else "", re.M)}
+
+
+def hub_key_section(c):
+    """The text of a concept hub's '## Key equations and figures' section."""
+    mo = re.search(r"^## Key equations and figures\s*\n(.*?)(?=^## |\Z)", c.prose(), re.M | re.S)
+    return mo.group(1) if mo else ""
+
+
+def scan_eqfig(m, pid):
+    """A source's equations and figure panels, for the hubs of the concepts their cards name in concepts:: (issue #12):
+    [(concept id, item, card, image path or None, done)]. An item is the image of a printed equation or a figure panel
+    (P012-eq4.png, P012-F2c.png, P012-SF3.png) or, for an equation with no crop, the card's id. It is done when the
+    hub embeds the image, or links the card under '## Key equations and figures', or P012_scan.md has a not_key::
+    line for it. Low-priority and retired concepts are left out."""
+    d, nk, out, seen = SRC(m.root, pid), scan_notkey(m, pid), [], set()
+    for c in sorted(m.evidence(pid), key=lambda c: c.id):
+        if c.get("retired"): continue
+        items = []
+        for a in m.anchors(c):
+            e, f = re.fullmatch(r"eq[0-9a-z]+", a), re.fullmatch(r"(SI-)?(F\d+[a-z]*)", a)
+            if e and os.path.exists(J(d, f"{pid}-{a}.png")): items.append(f"{pid}-{a}.png")
+            elif f: items.append(f"{pid}-{'S' if f.group(1) else ''}{f.group(2)}.png")
+        if c.all("equation") and not any(i.startswith(f"{pid}-eq") for i in items): items.append(c.id)
+        cons = sorted({t for v in c.all("concepts") for t in m.ids(v)[0] if m.cards[t].fam == "concept" and m.cards[t].priority != "low" and not m.cards[t].get("retired")})
+        for cid in cons:
+            hub, key = m.cards[cid].prose(), hub_key_section(m.cards[cid])
+            for it in dict.fromkeys(items):
+                if (cid, it) in seen: continue
+                seen.add((cid, it))
+                img = J(d, it) if it.endswith(".png") and os.path.exists(J(d, it)) else None
+                done = (it.endswith(".png") and it in hub) or (not it.endswith(".png") and (c.name in key or f"[[{c.id}" in key)) or (cid, it) in nk
+                out.append((cid, it, c, img, done))
+    return out
+
+
 def cited_at(m):
     """{(source, paragraph): [reference cards cited there]} from the reference cards' cited_by:: lines."""
     if m._citedat is None:
@@ -2665,7 +2705,9 @@ def cmd_scan(m, args):
     if not args:
         for pid in srcs:
             st, todo, unc = m.cards[pid].status, scan_todo(m, pid), 0
-            print(f"{pid} ({st}): " + (f"{len(todo)} concepts to card or decide, in {sum(len(u) for _c, u in todo)} passages: " + ", ".join(c for c, _u in todo[:10]) + (" …" if len(todo) > 10 else "") if todo else "nothing to do"))
+            ef = sum(1 for x in scan_eqfig(m, pid) if not x[4])
+            print(f"{pid} ({st}): " + (f"{len(todo)} concepts to card or decide, in {sum(len(u) for _c, u in todo)} passages: " + ", ".join(c for c, _u in todo[:10]) + (" …" if len(todo) > 10 else "") if todo else "nothing to do")
+                  + (f"; {ef} equations and figures to put on hubs or decide" if ef else ""))
         return
     t = args[0]
     if re.fullmatch(r"P\d{3}", t):
@@ -2727,6 +2769,13 @@ def scan_report(m, pid, write=True, only=None):
         print(f"\nCards of {pid} whose passage cites works but which carry no cites:: line ({len(adds)}): add '- cites:: [[R…]] — what it supports' for each work the statement rests on, or '- cites:: none — <why>'")
         for c, sent, rest in adds:
             print(f"  {c.id} {one(c.title, 70)}" + (f"\n      its sentence cites: " + "; ".join(f"{r.id} {short_cite(r)}" for r in sent) if sent else "") + (f"\n      {'also ' if sent else ''}in the paragraph: " + "; ".join(f"{r.id} {short_cite(r)}" for r in rest[:8]) if rest else ""))
+    ef = [x for x in scan_eqfig(m, pid) if only is None or x[0] == only]
+    left = [x for x in ef if not x[4]]
+    if left:
+        print(f"\nEquations and figures of {pid} not yet on the hubs of the concepts their cards name ({len(left)}): embed each key one under '## Key equations and figures' in the hub, with its card and the works it cites; or write '- not_key:: [[concept]] <item> — why' in {pid}_scan.md")
+        for cid, it, c, img, _d in left:
+            ws = works_cited(m, c)
+            print(f"  [[{cid}]] {it}" + (" (no image yet: crop the panel with `mesh.py figure`)" if it.endswith(".png") and not img else "") + f" — {c.id} {one(c.title, 60)}" + (" · cites " + "; ".join(short_cite(w) for w in ws) if ws else ""))
     if not write: return
     L = [f"# {pid} concept scan", "", f"Written by `mesh.py scan {pid}` on {TODAY}: every concept in the brain looked for in this source's text. A passage is covered when a card of {pid} anchored there links the concept. For each concept under **To do**, card the new facts the passages state about it (link the concept, anchor the passage, and add `cites::` for the works the paper cites for them), or write on its `decided::` line why there is nothing new. Then run `scan {pid}` again: carded passages move to covered, and decisions are kept.", ""]
     rows = sorted(state.items())
@@ -2749,6 +2798,12 @@ def scan_report(m, pid, write=True, only=None):
     if adds:
         L += [f"## Citations to add ({len(adds)})", "", "Cards whose passage cites works but which carry no `cites::` line. Add `- cites:: [[R…]] — what it supports` for each work the statement rests on, or `- cites:: none — <why>`.", ""]
         L += [f"- [[{c.name}|{c.id}]]" + (" · its sentence cites " + ", ".join(f"[[{r.name}|{short_cite(r)}]]" for r in sent) if sent else "") + (f" · {'also ' if sent else ''}in the paragraph: " + ", ".join(f"[[{r.name}|{short_cite(r)}]]" for r in rest[:8]) if rest else "") for c, sent, rest in adds]
+    ef, nk = scan_eqfig(m, pid), scan_notkey(m, pid)
+    if ef:
+        left = [x for x in ef if not x[4]]
+        L += ["", f"## Equations and figures for the hubs ({len(left)} to add)", "", "Each equation and figure panel of this source, for each concept its card names. Embed the key ones in the concept's hub under `## Key equations and figures`: the LaTeX or the image (`![[P012-F2c.png|400]]`), a line saying what it shows, the evidence card, and the works the card cites, as `[[R…|Author et al. (year)]]` with a `cites::` line. For one that is not key to that concept, write `- not_key:: [[concept]] <item> — why` here; it is kept when the scan runs again.", ""]
+        L += [f"- [[{cid}]] · {it}" + ("" if (not it.endswith(".png") or img) else " (no image yet: crop it with `mesh.py figure`)") + f" · [[{c.name}|{c.id}]]" + (" · cites " + ", ".join(f"[[{w.name}|{short_cite(w)}]]" for w in works_cited(m, c)) if works_cited(m, c) else "") for cid, it, c, img, _d in left]
+        L += [f"- not_key:: [[{cid}]] {it} — {why}" for (cid, it), why in sorted(nk.items())]
     wr(J(SRC(m.root, pid), pid + "_scan.md"), "\n".join(L).rstrip("\n") + "\n")
     print(f"\nwritten: {relp(J(SRC(m.root, pid), pid + '_scan.md'), m.root)} ({len(td)} to do, {len(dd)} decided, {len(cv)} covered)")
 

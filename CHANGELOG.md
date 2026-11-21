@@ -2,6 +2,14 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.14.0 (2026-11-21)
+
+- The concept scan puts each concept's key equations and figures on its hub (issue #12).
+  - `scan P012` lists every equation and figure panel of the source, for each concept its card names: a crop (`P012-eq4.png`), a card id for an equation with no crop, or a panel image (`P012-F2c.png`, flagged when not yet cropped).
+  - An item stays listed until the hub embeds it, or links its card under `## Key equations and figures`, or `P012_scan.md` records `- not_key:: [[concept]] <item> — why`. These decisions survive re-scans.
+  - `brain-mesh-concept-scan` step 7 says how to judge, crop, embed and cite them: the evidence card, the works it cites, and the original source of a borrowed equation.
+  - The hub template in `brain-mesh` has the section, and `brain-mesh-add-paper` step 9 fills it for new papers.
+
 ## 1.13.0 (2026-11-21)
 
 The contradictions register; discovery respects the evidence.

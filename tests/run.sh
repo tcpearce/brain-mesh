@@ -961,6 +961,21 @@ python3 tools/mesh.py propose heat-ageing "again" > p.txt 2>&1 && fail "a reject
 python3 tools/mesh.py adopt --all > a.txt && [ -f concepts/cavity-collapse.md ] && grep -q "^- adopted:: " concepts/cavity-collapse.md && grep -q '"collapsed cavities"' concepts/cavity-collapse.md && pass "adopt --all makes cards of proposals that match nothing" || { cat a.txt; fail "adopt --all"; }
 python3 tools/mesh.py build > build.txt; grep -q "check: 0 errors" build.txt && pass "the vault builds after adoption" || { cat build.txt; fail "build after 1.11.0"; }
 grep -q "New concepts are the user's call" CLAUDE.md && pass "CLAUDE.md says new concepts are the user's call" || fail "CLAUDE.md concepts"
+c7=$(ls $S1/P001-007-*.md); cp "$c7" "$T/c7.bak"
+python3 - "$c7" <<'PY'
+import sys
+f = sys.argv[1]; t = open(f).read()
+t = t.replace("\n## Codes", "\n$$S = 1.2 T$$\n\n![[P001-eq1.png]]\n\n## Codes", 1).replace("- anchor:: ", "- equation:: S = 1.2 T (eq. 1)\n- anchor:: eq1, p1, ", 1)
+open(f, "w").write(t)
+PY
+printf 'png' > $S1/P001-eq1.png
+python3 tools/mesh.py scan P001 > scan.txt
+grep -q "^  \[\[swelling\]\] P001-eq1.png — P001-007" scan.txt && grep -q "^## Equations and figures for the hubs (5 to add)" $S1/P001_scan.md && pass "scan lists a source's equations for the hubs of the concepts their cards name" || { cat scan.txt; cat $S1/P001_scan.md; fail "scan equations"; }
+sed -i 's/^## Where it appears$/## Key equations and figures\n- **Swelling law** ([[P001-007]]): ![[P001-eq1.png]]\n\n## Where it appears/' concepts/swelling.md
+printf -- '- not_key:: [[binding-capacity]] P001-eq1.png — about swelling, not capacity\n- not_key:: [[temperature]] P001-eq1.png — temperature only enters as a variable\n- not_key:: [[imprinted-polymer-film]] P001-eq1.png — not about the film as such\n- not_key:: [[cavity-collapse]] P001-eq1.png — the law is for swelling, not collapse\n' >> $S1/P001_scan.md
+python3 tools/mesh.py scan P001 > scan.txt
+! grep -q "P001-eq1.png — P001-007" scan.txt && grep -q "^## Equations and figures for the hubs (0 to add)" $S1/P001_scan.md && grep -q "^- not_key:: \[\[temperature\]\] P001-eq1.png — temperature only" $S1/P001_scan.md && pass "an equation on the hub, or decided not key, leaves the list, and the decisions are kept" || { cat scan.txt; cat $S1/P001_scan.md; fail "scan equations done"; }
+cp "$T/c7.bak" "$c7"; rm $S1/P001-eq1.png
 # 15. every link can be followed both ways (1.12.0)
 cp -r "$ROOT/demo-vault" "$T/bl"; cd "$T/bl"; cp "$MESH" tools/mesh.py
 S1=$(ls -d sources/P001*)

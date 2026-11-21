@@ -1051,4 +1051,25 @@ python3 tools/mesh.py scan P001 > s.txt; [ "$(grep -c '«olfactory receptor»' s
 printf 'x,y\n1,2\n' > d1.csv; python3 tools/mesh.py anchor P001 --si d1.csv > /dev/null
 sed -i 's/^- coverage:: all | full | two sentences$/- coverage:: all | full | two sentences\n- coverage:: Supplementary text | missing | figures and methods not supplied/' sources/P001*/P001-overlap-note.md
 (python3 tools/mesh.py check || true) > c.txt; grep -q "supplementary material is partly in the vault; still missing: Supplementary text" c.txt && ! grep -q "still says missing" c.txt && pass "partly supplied supplementary material is reported as what is still missing" || { cat c.txt; fail "partial SI"; }
+# 19. a supplement's "Supplementary Figure 2" is found, and a card anchored in both PDFs is highlighted in each (1.14.6)
+if python3 -c "import pymupdf" 2>/dev/null || python3 -c "import fitz" 2>/dev/null; then
+python3 "$MESH" init "$T/si" "Supplement" "marking test" > /dev/null; cd "$T/si"
+python3 - <<'PY'
+try: import pymupdf as fitz
+except ImportError: import fitz
+for name, lines in (("main.pdf", ["We tested the metric on four more datasets (Supplementary Fig. 2 online)."]),
+                    ("si.pdf", ["Supplementary Figure 2: Correlation plots of four unrelated datasets.", "Each point is a pair of odorants."])):
+    doc = fitz.open(); p = doc.new_page(width=400, height=400)
+    for k, t in enumerate(lines): p.insert_text((40, 60 + 40 * k), t, fontsize=9)
+    doc.save(name)
+PY
+python3 tools/mesh.py anchor P001 main.pdf > /dev/null; python3 tools/mesh.py anchor P001 --si si.pdf > /dev/null
+b=$(grep -o "\^b[0-9]*" sources/P001/P001_text.md | head -1 | tr -d '^'); s=$(grep "Correlation plots" sources/P001/P001_SI_text.md | grep -o "\^s[0-9]*" | head -1 | tr -d '^')
+printf -- '=== response\n---\ntype: concept\naliases: ["Response"]\nupdated: 2026-01-01\n---\n# Response\n\n**Definition.** A rating.\n\n## Where it appears\n<!--AUTO:START-->\n<!--AUTO:END-->\n\n## Codes\n- kind:: concept\n\n=== P001-si-test\n---\ntype: source\nstatus: extracted\nupdated: 2026-01-01\n---\n# Supplement test\n\n## Cards from this source\n<!--AUTO:START-->\n<!--AUTO:END-->\n\n## Codes\n- kind:: other\n- authors:: none\n- year:: 2026\n- coverage:: all | full | one line\n- coverage:: Supplementary Figure 2 | anchored | the figure\n\n=== P001-001-four-datasets\n---\ntype: observation\nstatus: reported\nupdated: 2026-01-01\n---\n# Four more datasets\n\nThe [[response]] was plotted for four more datasets.\n\n## Codes\n- missing:: basis — none\n- anchor:: SI-F2, SI-p1, [[P001_SI_text#^%s]], [[P001_text#^%s]]\n- loc:: "Correlation plots of four unrelated datasets"\n\n=== P001-002-figure-only\n---\ntype: observation\nstatus: reported\nupdated: 2026-01-01\n---\n# The figure\n\nThe [[response]] figure.\n\n## Codes\n- missing:: basis — none\n- anchor:: SI-F2, SI-p1\n' "$s" "$b" > si.md
+python3 tools/mesh.py split si.md > /dev/null; python3 tools/mesh.py build > /dev/null
+how() { python3 -c "import json,sys; print(json.load(open('index/marks.json'))[sys.argv[1]]['cards'][sys.argv[2]]['how'])" "$1" "$2"; }
+[ "$(how P001_SI P001-001)" = highlight ] && [ "$(how P001 P001-001)" = paragraph ] && pass "a card anchored in the main text and the supplement is highlighted in each, at its loc and at its paragraph" || { cat index/marks.json; fail "two-part marks"; }
+[ "$(how P001_SI P001-002)" = label ] && pass "a supplement's 'Supplementary Figure 2' is found for an SI-F2 anchor" || { cat index/marks.json; fail "supplementary label"; }
+(python3 tools/mesh.py check || true) > c.txt; ! grep -q "P001-001: its loc phrase could not be found" c.txt && pass "a loc highlighted in one of a source's PDFs is not reported missing" || { cat c.txt; fail "two-part check"; }
+fi
 echo "ALL TESTS PASSED"

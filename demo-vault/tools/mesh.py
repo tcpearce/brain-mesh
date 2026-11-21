@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.14.5"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.14.6"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -670,8 +670,10 @@ class Mesh:
                     if mo and mo.group(0) not in digits: W.append(f"{i}: the value {mo.group(0)} in Codes does not appear in the prose above it; make the two agree")
                 if os.path.exists(J(SRC(s.root, pid), pid + ".pdf")):
                     if not re.search(r"\[\[" + pid + r"(_SI|_correction)?(_marked)?\.pdf", c.human): W.append(f"{i}: the prose has no link to the PDF; add '[[{pid}.pdf#page=N|open page]]' to its Source line")
-                    k = next((s.marks().get(pid + pt, {}).get("cards", {}).get(i) for pt in PARTS if s.marks().get(pid + pt, {}).get("cards", {}).get(i)), None)
-                    if k and k["how"] != "highlight" and has_block: W.append(f"{i}: its loc phrase could not be found on the PDF page, so it has only a page-level marker; correct the loc or the anchor")
+                    ks = [k for pt in PARTS for k in [s.marks().get(pid + pt, {}).get("cards", {}).get(i)] if k]  # a card anchored in the main text and the supplement is marked in both; its loc is in one (issue #18)
+                    if ks and has_block and not any(k["how"] == "highlight" for k in ks):
+                        what = "its anchored paragraph" if any(k["how"] == "paragraph" for k in ks) else "a figure or table label" if any(k["how"] == "label" for k in ks) else "a page-level marker"
+                        W.append(f"{i}: its loc phrase could not be found in the source's PDFs, so it is marked by {what} only; correct the loc or the anchor")
                 rels = {k for k, _v in c.codes}
                 if c.type == "cited" and not c.get("ref"): W.append(f"{i}: cited card has no '- ref::'")
                 eqs = c.all("equation")
@@ -1760,21 +1762,29 @@ def mark(m, only=None, force=False):
                 words = loc.split()
                 an = [strip(a) for a in m.anchors(c) if part_of(a) == part]
                 stated = [int(a[1:]) for a in an if re.fullmatch(r"p\d+", a)]
-                for a in an:
+                for a in an:  # each spot is (rank, page, quads): 0 the loc phrase, 1 the anchored paragraph, 2 a label, 3 the page
                     lab = re.fullmatch(r"([TF])(\d+)[a-z]*", a)
                     if a in bl:
                         hit = find([loc, " ".join(words[:6]), " ".join(words[-6:])], [bl[a][0]] + every)
                         if not hit:  # a phrase broken by a hyphenated line end still gets a highlight on its page (issue #16)
                             wq = next(((p, q) for p in [bl[a][0]] + every if 1 <= p <= len(doc) for q in [word_run_quads(fitz, doc[p - 1], words)] if q), None)
                             hit = wq or find([" ".join(words[i:i + 4]) for i in range(max(0, len(words) - 3))], [bl[a][0]])
-                        spots.append(hit or (min(max(bl[a][0], 1), len(doc)), None))
+                        if hit: spots.append((0, *hit)); continue
+                        pw, pg = bl[a][1].split(), min(max(bl[a][0], 1), len(doc))  # the loc is in another part of the source: mark the anchored paragraph's opening words (issue #18)
+                        q = find([" ".join(pw[:8]), " ".join(pw[:5])], [pg]) or ((pg, word_run_quads(fitz, doc[pg - 1], pw[:6])) if pw else None)
+                        spots.append((1, *q) if q and q[1] else (3, pg, None))
                     elif lab:
-                        n_ = ("S" if part == "_SI" else "") + lab.group(2)
-                        hit = find([f"Table {n_}"] if lab.group(1) == "T" else [f"Figure {n_}", f"Fig. {n_}", f"Fig {n_}"], stated + every)
-                        spots.append((hit[0], hit[1][:1]) if hit else ((stated or [1])[0], None))
-                spots = spots or [(p, None) for p in stated if 1 <= p <= len(doc)] or [(1, None)]
-                first, seen = None, set()
-                for pno, quads in spots:
+                        n, T = lab.group(2), lab.group(1) == "T"
+                        n_ = ("S" if part == "_SI" else "") + n
+                        names = [f"Table {n_}"] if T else [f"Figure {n_}", f"Fig. {n_}", f"Fig {n_}"]
+                        if part == "_SI": names += [f"Supplementary Table {n}"] if T else [f"Supplementary Figure {n}", f"Supplementary Fig. {n}", f"Supplementary Fig {n}"]  # as many supplements print it (issue #18)
+                        hit = find(names, stated + every)
+                        spots.append((2, hit[0], hit[1][:1]) if hit else (3, (stated or [1])[0], None))
+                spots = spots or [(3, p, None) for p in stated if 1 <= p <= len(doc)] or [(3, 1, None)]
+                lit = {p for _r, p, q in spots if q}
+                best, seen = None, set()
+                for rank, pno, quads in spots:
+                    if not quads and pno in lit: continue  # the card is already highlighted on this page; a page marker would only add a second tag
                     page = doc[pno - 1]
                     where = (pno, round(quads[0].rect.x0), round(quads[0].rect.y0)) if quads else (pno,)
                     if where in seen: continue  # two anchors of one card that resolve to the same passage get one mark
@@ -1789,8 +1799,8 @@ def mark(m, only=None, force=False):
                     t = page.add_freetext_annot(tag, label, fontsize=fs, text_color=(0.1, 0.1, 0.45), fill_color=col)
                     t.set_info(title="brain-mesh", subject=c.id); t.update()  # a free-text annotation displays its content, so the tag keeps just the id
                     page.insert_link({"kind": fitz.LINK_URI, "from": tag, "uri": f"obsidian://open?vault={vault}&file={urllib.parse.quote(relp(c.path, m.root))}"})
-                    first = first or {"page": pno, "annot": (h or t).xref, "how": "highlight" if h else "page"}
-                cards[c.id] = first
+                    if best is None or rank < best[0]: best = (rank, {"page": pno, "annot": (h or t).xref, "how": ("highlight", "paragraph", "label", "page")[rank] if h else "page"})
+                cards[c.id] = best[1]  # the card's link and recorded mark are its best spot, not merely its first (issue #18)
             if len(doc) and src.get("retracted") and not part:  # a retracted source says so on its first page
                 rb = doc[0].add_freetext_annot(fitz.Rect(30, 17, doc[0].rect.width - 30, 33), f"RETRACTED: {src.get('retracted')}", fontsize=9, text_color=(0.75, 0, 0), fill_color=(1, 0.92, 0.92))
                 rb.set_info(title="brain-mesh"); rb.update()

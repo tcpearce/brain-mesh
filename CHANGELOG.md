@@ -2,6 +2,12 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.14.6 (2026-11-21)
+
+- Marking a supplement finds labels as many supplements print them: "Supplementary Figure 2" and "Supplementary Table 1", as well as "Figure S2" and "Table S1".
+- A card's link and recorded mark are now its best spot: its loc highlight first, then its anchored paragraph, then a label, then the page. Before, they were its first spot, so a failed label search could hide a highlight on the same page. A page marker is no longer added where the card is already highlighted.
+- A card anchored in both the main text and the supplement has one loc phrase, which is in one of the two PDFs. In the other PDF it now highlights the opening words of its anchored paragraph, not just the page. `check` warns only when no PDF of the source has the loc phrase highlighted (issue #18).
+
 ## 1.14.5 (2026-11-21)
 
 - Supplementary material that arrives in parts (data files, but not the supplementary PDF) is reported as what is still missing, by coverage unit. Before, `check` said a coverage line was out of date and should be updated (issue #8).

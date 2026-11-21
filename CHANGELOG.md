@@ -2,6 +2,10 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.8.1 (2026-11-21)
+
+- `sync` no longer stops on local changes. Generated files (`index/`, `*.bib`) changed locally are discarded before the pull, since the build regenerates them. A local edit that clashes with a newer version on GitHub is set aside in the git stash, the GitHub version is kept, and `sync` says which files and how to see the edit. Before, a plain pull refused to run, or left conflict markers.
+
 ## 1.8.0 (2026-11-21)
 
 Merges the discovery work (built in parallel from 1.5.0 as "1.6.0", pull request #1) with 1.6.0 and 1.7.0.

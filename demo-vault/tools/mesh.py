@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.8.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.8.1"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -2755,8 +2755,21 @@ def cmd_sync(root, msg=None, push=True):
     try:
         if git(root, "rev-parse", "--is-inside-work-tree", check=False).returncode: sys.exit("sync: this vault is not a git repository")
         has_remote = bool(git(root, "remote", check=False).stdout.strip())
+        kept = []
         if has_remote:
+            # generated files are rebuilt after the pull, so local copies of them are thrown away rather than merged
+            for gen in ("index",):
+                if os.path.isdir(J(root, gen)): git(root, "checkout", "--", gen, check=False)
+            for f_ in git(root, "ls-files", "-m", check=False).stdout.split():
+                if f_.endswith(".bib"): git(root, "checkout", "--", f_, check=False)
             r = git(root, "pull", "--rebase", "--autostash", check=False)
+            clash = git(root, "diff", "--name-only", "--diff-filter=U", check=False).stdout.split()
+            if clash and "autostash" in (r.stdout + r.stderr).lower():
+                # local edits that collide with newer versions on GitHub: keep GitHub's, leave the local edits in the stash
+                for f_ in clash: git(root, "checkout", "HEAD", "--", f_, check=False)
+                git(root, "reset", "-q", check=False); kept = clash
+            elif clash:
+                sys.exit(f"sync: the pull left conflicts in {', '.join(clash)}; nothing was pushed. Resolve them, `git add -A && git rebase --continue`, and sync again.")
             if r.returncode:
                 sys.exit(f"sync: the pull failed; nothing was pushed.\n{(r.stderr or r.stdout).strip()}\n"
                          "If it is a conflict: in generated files (index/, MAP.md, AUTO blocks, *.bib, reading-queue) take either side and rebuild; "
@@ -2765,7 +2778,10 @@ def cmd_sync(root, msg=None, push=True):
         m = Mesh(root); m.check()
         if m.err: sys.exit(f"sync: build has {len(m.err)} errors; fix them before syncing (nothing committed)")
         git(root, "add", "-A")
-        if not git(root, "status", "--porcelain").stdout.strip(): print("sync: up to date, nothing to commit"); return
+        if not git(root, "status", "--porcelain").stdout.strip():
+            print("sync: up to date, nothing to commit")
+            if kept: print(f"sync: your local edits to {len(kept)} files clashed with newer versions from GitHub ({', '.join(kept[:8])}). The GitHub versions are in place; your edits are kept in the git stash (`git stash show -p`; `git stash drop` once you are sure).")
+            return
         changed = len(git(root, "diff", "--cached", "--name-only").stdout.split())
         git(root, "commit", "-q", "-m", msg or f"brain sync {TODAY}: {changed} files")
         if push and has_remote:
@@ -2775,6 +2791,7 @@ def cmd_sync(root, msg=None, push=True):
                 if git(root, "status", "--porcelain").stdout.strip(): git(root, "commit", "-q", "-m", "rebuild after sync")
                 git(root, "push", "-q")
         print(f"sync: committed {changed} files" + (" and pushed" if push and has_remote else " (no remote to push to)"))
+        if kept: print(f"sync: your local edits to {len(kept)} files clashed with newer versions from GitHub ({', '.join(kept[:8])}). The GitHub versions are in place; your edits are kept in the git stash: `git stash show -p` to see them, `git stash drop` once you are sure you do not need them.")
     except RuntimeError as e:
         sys.exit(f"sync: {e}")
 

@@ -582,6 +582,9 @@ if command -v git > /dev/null; then
   git add -A > /dev/null; git commit -qm init; git push -q -u origin main 2> /dev/null
   echo "- [stated] a note" > notes.md; python3 tools/mesh.py sync "test sync" > sync.txt && grep -q "and pushed" sync.txt && [ "$(git -C "$T/remote.git" log main -1 --format=%s)" = "test sync" ] && pass "sync builds, commits and pushes" || { cat sync.txt; fail "sync"; }
   python3 tools/mesh.py sync > sync.txt; grep -q "up to date" sync.txt && pass "sync with nothing new does nothing" || { cat sync.txt; fail "sync idle"; }
+  git clone -q -b main "$T/remote.git" "$T/other" && (cd "$T/other" && git config user.email o@o && git config user.name o && sed -i 's/^\*\*Definition\.\*\*/**Definition (revised).**/' concepts/water.md && git commit -qam "edit elsewhere" && git push -q)
+  sed -i 's/^\*\*Definition\.\*\*/**Definition (local).**/' concepts/water.md; echo '{"stale": true}' > index/stats.json
+  python3 tools/mesh.py sync "after a clash" > "$T/sync2.txt" 2>&1; grep -q "Definition (revised)" concepts/water.md && ! grep -q "<<<<<<<" concepts/water.md && grep -q "clashed with newer versions from GitHub (concepts/water.md)" "$T/sync2.txt" && git stash list | grep -q autostash && pass "sync keeps GitHub's version of a clashing file and parks the local edit in the stash" || { echo "--sync.txt:"; cat sync.txt; grep -n Definition concepts/water.md; git stash list; git status --short | head; fail "sync clash"; }
 fi
 # 11. priority: high, normal, low; history; spreading; the reading queue; concepts (1.7.0)
 cp -r "$ROOT/demo-vault" "$T/q"; cd "$T/q"; cp "$MESH" tools/mesh.py

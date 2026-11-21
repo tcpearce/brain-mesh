@@ -21,6 +21,7 @@ Draw candidates from, roughly in this order of value:
 6. The **What would change this** section of each key finding.
 7. **Oddities** nobody has explained.
 8. **Method transfer**: a technique carded for one system that has never been applied to another.
+9. **Discovery cards** (`brain-mesh-discover`): seeds the user is developing, theory pairs that nothing in the brain separates (the most decisive experiments), and predictions carried across an analogy. A hypothesis made from a seed sets the seed to `promoted`.
 
 Give the user a shortlist. For each candidate state: what would be done; why, citing card ids; what each possible result would mean; whether the methods already exist as method cards; and whether the literature has been checked for it and when. Rank by how much a result would change the brain, then by feasibility.
 

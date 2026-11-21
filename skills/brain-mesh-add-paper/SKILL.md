@@ -119,6 +119,7 @@ For every material, variable, technique and mechanism a card mentions, run `pyth
 - An existing concept covers it: link that card. If the paper uses a new name for it, add the name to the concept's `aliases`.
 - Nothing covers it: create the concept card with a definition, kind and unit.
 - A variable whose values are things (solvent, strain, polymer) is `categorical`, and each value is its own concept card.
+- Record the system as conditions, not only in the prose: organism or species, preparation (in vivo, slice, culture, in silico), level of organisation (molecule, receptor, cell, circuit, behaviour) and stimulus class, as categorical `when::` lines wherever the paper states them. The discovery miners can only look across what is coded (`brain-mesh-discover`).
 
 Use the concept's canonical unit in `value::` and `when::` lines where the conversion is exact; otherwise keep the paper's unit and say so on the concept card.
 
@@ -189,6 +190,7 @@ Then:
 - **Check the workbench.** Does the source support or undermine an open hypothesis, or already answer a planned or registered experiment? Say so on that card, under `## Amendments` for a registered experiment, and tell the user at once.
 - **Decide on every open gap, tension and hypothesis the source bears on** (below).
 - **Write the claims card** (below).
+- **Recheck the discovery cards.** Run `python3 tools/mesh.py discover --recheck` and take every dissolved, strengthened, weakened or re-opened item to the user (`brain-mesh-discover` section 8). A new paper that answers a seed is often the most useful thing it does.
 - If the source was in `ledger/reading-queue.md`, `build` marks its reference card held by itself (by DOI, or first author, year, volume and page; set `status: held` and `held:: [[P012]]` by hand if it did not match). Revisit the gap or tension it was queued for.
 
 ### Decisions on gaps, tensions and hypotheses

@@ -35,6 +35,7 @@ Work through the results in this order. Fix what is clear. Bring to the user any
 13. **Priority.** `health` opens with the focus (the cards the user set high, and how many cards each lifts) and orders its queues by effective priority; low-priority sources drop out of the unused-evidence list. Work high items first. It also lists high cards untouched for 90 days (ask the user to confirm them or set them back to normal), disagreements on high concepts (tension candidates) and lens passes worth making for high concepts. In periodic audits, sample high-priority cards at twice the rate.
 10. **Hubs that have grown long.** Split: create narrower concept cards with `- broader::` pointing at the hub, move the relevant lines to them, and re-point the cards whose statement is specifically about the narrower concept.
 11. **Experiments registered or running for a long time; sources not yet integrated.** Ask the user, or finish the integration.
+12. **Mined cards with newer evidence.** Run `python3 tools/mesh.py discover --recheck` and take the changes to the user (`brain-mesh-discover` section 8). The housekeeping signals of `discover` (`links`, `implied:data`, `genealogy:held`) can be done without asking; everything else from the miners is proposed, never written unasked.
 
 Finish with `build`, then `python3 tools/mesh.py log "housekeeping: <what was done>"`.
 

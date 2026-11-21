@@ -15,7 +15,7 @@ A brain mesh is a second brain for one research topic. Claude builds it from pap
 2. **Human first, codes second.** Each card opens with the science in plain prose that a person can read on its own. A `## Codes` section underneath repeats it in structured form: the id, typed links, values, conditions and provenance. People read the top; Claude and the tooling read Codes. The two must always agree.
 3. **Concept cards are the hubs.** Every card links the concepts it involves. Concept cards are the one exception to one statement per card: they are living articles that grow with every paper, and they are the main surface the user browses.
 4. **Links are typed, reasoned and two-way.** A link names the relation and, across papers, says why. It is written once; the tooling mirrors it onto the target card.
-5. **Layers cite only downward.** Sources, then evidence, then findings, tensions and gaps, then hypotheses and experiments. This keeps methods, results, authors' claims and the brain's own conclusions separate.
+5. **Layers cite only downward.** Sources, then evidence, then findings, tensions and gaps, then hypotheses and experiments, then the discovery cards (theories, analogies, seeds). This keeps methods, results, authors' claims, the brain's own conclusions and its speculation separate.
 6. **Importance is never judged at extraction.** Everything of each type is carded. What matters emerges later from what gets linked and used.
 7. **The source PDF is the ground truth.** Every evidence card points to an exact place on the page, and every other card reaches the PDF through the evidence it cites. The original file is never changed and its checksum is recorded. The tooling keeps a marked copy in which each card appears as a highlight on the page.
 
@@ -33,6 +33,7 @@ These instructions and the tooling live in the GitHub repository `tcpearce/brain
 | Add many papers at once, with agents working in parallel | `brain-mesh-batch` |
 | Find knowledge gaps, hunt papers that fill them, maintain the research-gaps document | `brain-mesh-gaps` |
 | Hypotheses, experiment design, registered predictions, judging outcomes | `brain-mesh-experiment` |
+| Mine the brain for new hypotheses and links with the user; theory, analogy and seed cards; recheck them as sources arrive | `brain-mesh-discover` |
 | Health checks, merges, corrections, retractions, periodic audits | `brain-mesh-housekeeping` |
 
 ## Finding the vault
@@ -74,8 +75,9 @@ findings/K###-<slug>.md   tensions/X###-...   gaps/G###-...
 hypotheses/H###-...       experiments/E###-...
 data-sets/D###-<slug>.md  data-set cards: every data set a study uses
 code/C###-<slug>.md       code cards: every repository or software package a study uses
+theories/T###-...         analogies/A###-...       seeds/S###-...   discovery cards (brain-mesh-discover)
 gaps/RESEARCH-GAPS.md     generated research-gaps document
-ledger/                   CHANGELOG.md, lenses.md, reading-queue.md (with a generated list of what to read next), checksums.txt, removed.md (deleted ids, never reused)
+ledger/                   CHANGELOG.md, lenses.md, reading-queue.md (with a generated list of what to read next), checksums.txt, removed.md (deleted ids, never reused), signals.md (rejected discovery signals), proposals.md (proposals awaiting the user)
 index/                    generated lookup tables (cards.tsv, edges.tsv, coverage.tsv, marks.json ...)
 tools/mesh.py             the tooling (a copy; the repository holds the source of truth)
 .brain-mesh/              hidden: an offline copy of these instructions and the tooling version
@@ -84,10 +86,10 @@ notes/                    optional: the user's own free-form notes, ignored by t
 
 ## Ids and names
 
-- The id is the code at the start of the file name: `P012` (a source), `P012-007` (its seventh evidence card), `K003`, `X001`, `G004`, `H002`, `E001`, `D003` (a data set), `C002` (code), `R0042` (a cited work), and `P012-claims` for a source's claims card. A concept card's id is its slug: `binding-capacity`.
+- The id is the code at the start of the file name: `P012` (a source), `P012-007` (its seventh evidence card), `K003`, `X001`, `G004`, `H002`, `E001`, `D003` (a data set), `C002` (code), `T001` (a theory), `A001` (an analogy), `S001` (a seed), `R0042` (a cited work), and `P012-claims` for a source's claims card. A concept card's id is its slug: `binding-capacity`.
 - File name = id plus a short meaningful slug, lower case with hyphens, two to six words: `P012-007-capacity-falls-at-45c.md`. The slug is frozen when the card is created; refine the title inside the card instead of renaming the file. A source card's slug starts with a letter, usually the first author: `P012-smith-2021-film-temperature.md`.
 - Ids are never changed or reused. A card that is wrong or merged is retired by adding `- retired:: <reason and a link to its replacement>` to its Codes. It is never deleted, so nothing that cites it breaks.
-- Get the next free id from `python3 tools/mesh.py id P` (also `K`, `X`, `G`, `H`, `E`, `D`, `C`, `L`), or `id P012` for that source's next card.
+- Get the next free id from `python3 tools/mesh.py id P` (also `K`, `X`, `G`, `H`, `E`, `D`, `C`, `T`, `A`, `S`, `R`, `L`), or `id P012` for that source's next card.
 - When writing a link, a bare id is enough: `[[P012-007]]` or `[[P012-007|readable text]]`. `build` expands every link to the full file name so Obsidian resolves it. In prose always give readable display text.
 
 ## Card anatomy
@@ -260,6 +262,10 @@ Written by Claude across sources. One proposition, disagreement or unknown per c
 
 Hypothesis `H` and experiment `E`: see `brain-mesh-experiment`.
 
+### Discovery cards
+
+Theory `T` (a rival account, judged against every finding with `explains::` and `conflicts_with::`), analogy `A` (a mapping between two systems, `maps:: [[base]] = [[target]] — role`) and seed `S` (an idea the user judged worth a card, not yet a hypothesis or gap). Claude proposes them from the miners and reading passes, and writes only what the user accepts. A card that came from a miner carries a `- mined::` stamp, so `discover --recheck` can tell, after new sources, whether its signal stands, grew, weakened or dissolved. See `brain-mesh-discover`.
+
 ### Reference cards: what the sources cite
 
 Every work cited by a source in the brain has one reference card in `references/`, `R0042-keller-2017-predicting-human-olfactory.md`, shared by every source that cites it. It is bibliographic, not evidence: it says what the work is, who cites it and where, and gives its BibTeX. The tooling makes and maintains them (`refs` and `cite` in `brain-mesh-add-paper`); edit only their Codes and the `## Notes` section.
@@ -303,7 +309,7 @@ Links live in Codes as `- relation:: [[target]] — reason`.
 
 | `uses_data`, `uses_code` | this card rests on that data set or code |
 
-Synthesis and workbench cards use `support`, `against`, `sides`, `explained_by`, `resolved_by`, `from`, `closed_by`, `explains`, `rivals`, `tests`, `addresses`, `uses` and `results`; data-set and code cards `used_by`, `derived_from`, `uses_data` and `depends_on`; claims cards `main_claim` and `sub_claim`. Any card may carry `cites::` (a reference card or a source in the brain) and `see_also::` (any card), each with a reason. `python3 tools/mesh.py schema` prints every allowed key and status.
+Synthesis, workbench and discovery cards use `support`, `against`, `sides`, `explained_by`, `resolved_by`, `from`, `closed_by`, `explains`, `rivals`, `tests`, `addresses`, `uses`, `results`, `conflicts_with`, `includes`, `maps`, `promoted_to` and `answered_by`; data-set and code cards `used_by`, `derived_from`, `uses_data` and `depends_on`; claims cards `main_claim` and `sub_claim`. Any card may carry `cites::` (a reference card or a source in the brain) and `see_also::` (any card), each with a reason. `python3 tools/mesh.py schema` prints every allowed key and status.
 
 - A link to a card from another source must carry a reason of a few words after ` — `. The reason is what makes the link worth following later, and `build` rejects a cross-source link without one.
 - Write each link once, on the newer card. `build` mirrors it onto the target under `## Linked from`, in inverse wording with the same reason, so both cards show the connection and nobody maintains two ends.

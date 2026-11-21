@@ -67,7 +67,7 @@ Launch a new agent with the same brief plus "Resume: run `progress P012` first a
 3. **Data sets and code.** From the agents' notes, make one data-set or code card per data set or code base (several papers often share one), with a `used_by::` line per paper, and add the `uses_data::` and `uses_code::` links to the evidence cards.
 4. **Build.** `python3 tools/mesh.py build` must end with 0 errors. This also marks every new PDF and rebuilds the reading queue.
 5. **Links across papers.** For each new paper run `python3 tools/mesh.py neighbours P012`. Candidates are ranked by the concepts two cards share, rare concepts weighing most. Read both cards and link with a reason, or decide they are unrelated. Add the links the agents suggested in their reports.
-6. **Integrate.** Do add-paper step 8 for each paper: update the findings, decide on the gaps, tensions and hypotheses each bears on, link the findings into its claims card, update the concept hubs, and set each source to `integrated`.
+6. **Integrate.** Do add-paper step 8 for each paper: update the findings, decide on the gaps, tensions and hypotheses each bears on, link the findings into its claims card, update the concept hubs, and set each source to `integrated`. Then run `python3 tools/mesh.py discover --recheck` once for the whole batch and take the changes to the user (`brain-mesh-discover` section 8).
 7. **Verify.** Do the spot checks of add-paper step 7 on a sample of each paper's cards. For a vault that decisions will rest on, a fresh agent that did not write the cards does the checking.
 8. **Close.** `python3 tools/mesh.py log "..."`, `gapsdoc`, then `python3 tools/mesh.py sync "<batch>"`. Report the works now cited by several papers in the brain and the ★ works in the reading queue.
 

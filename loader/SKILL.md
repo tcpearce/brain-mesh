@@ -26,6 +26,7 @@ Always read `skills/brain-mesh/SKILL.md` first. It is the map: card formats, ids
 | Add many papers at once, with agents in parallel | `skills/brain-mesh-batch/SKILL.md` |
 | Knowledge gaps, papers to read next, the research-gaps document | `skills/brain-mesh-gaps/SKILL.md` |
 | Hypotheses, experiment design, registered predictions, judging outcomes | `skills/brain-mesh-experiment/SKILL.md` |
+| New hypotheses and links: mining the ontology, theories, analogies, seeds, rechecks | `skills/brain-mesh-discover/SKILL.md` |
 | Health checks, merges, corrections, retractions, audits | `skills/brain-mesh-housekeeping/SKILL.md` |
 
 Follow those documents as this skill's own instructions. Where one of them names a `brain-mesh-...` skill, read the matching file under `skills/`.

@@ -1,6 +1,7 @@
 ---
 type: gap
 status: closed
+priority: high
 updated: 2026-11-20
 ---
 # Is the loss of binding capacity on heating in water reversible on cooling?
@@ -20,10 +21,10 @@ The authors raise the question themselves ([[P001-011-reversibility-on-cooling-u
 A heat-then-cool cycle on the same films with capacity read at each step.
 
 ## Codes
+- prioritised:: 2026-11-21 high — converted from gap priority 1
 - graded:: 2026-11-20 closed — status when the grading history began
 - id:: G001
 - kind:: open-question
-- priority:: 1
 - searched:: 2026-11-20
 - closed_by:: [[P003-003-capacity-recovers-on-cooling]]
 - from:: [[P001-011-reversibility-on-cooling-unknown]], [[K001-capacity-falls-on-heating-in-water]]

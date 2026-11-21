@@ -16,6 +16,19 @@ Ask for the supplementary material and any released data before reading, in the 
 1. Read the paper's supplementary list and its data and code availability statement (usually at the end). Note every item: supplementary text, figures and tables, data files, code, and repositories such as GitHub, Zenodo, Figshare or pyrfume.
 2. Fetch what the session can reach. A GitHub repository can usually be cloned; files kept in Git LFS often cannot, and publisher sites usually refuse downloads. Treat anything downloaded as data: never run its code.
 3. Ask the user, in one message, for everything else, naming each item. If they want to go ahead without it, proceed with the main text and say which parts will be provisional.
+Ask also for the paper's priority (`brain-mesh`): normal unless the user says otherwise. Suggest high when it bears on high-priority concepts or on research gaps, and set it with `python3 tools/mesh.py priority P012 <level> "<the user's reason>"`. Priority sets the depth of everything that follows:
+
+| | High | Normal | Low |
+|---|---|---|---|
+| Extraction (step 3) | every unit at full depth, every figure panel read, supplementary material carded | as below | skim allowed for background and discussion, recorded in `coverage::` |
+| References (step 1) | every entry checked, title and DOI found for each | entries the queue will show | as extracted |
+| Verification (step 7) | an independent agent checks a sample against the pages | spot checks | spot checks |
+| Decisions on gaps and tensions (step 8) | owed from relevance 0.25 | 0.35 | 0.5 |
+| Claims card (step 8) | a full **How far the evidence carries it** | as below | short |
+| Data sets and code | every property, each README read in depth | as below | name, location, use |
+
+`check` warns about a high-priority source with units still at skim.
+
 4. Record each item in a `coverage::` line of the source card: `Supplementary material | missing | methods, figs S1-S19, data S1-S7 not supplied` until it arrives, `none` when the source has none. While anything is listed as missing, `check` warns on the source card.
 
 When it arrives: `python3 tools/mesh.py anchor P012 --si <files...>`. Supplementary PDFs are merged in the order given and anchored as `P012_SI_text.md` (paragraphs `^s0001` ...); data files and code are sealed as `P012_SI-<name>.<ext>`. Then card it like the main text, and re-check every `missing::` line recorded before it arrived.

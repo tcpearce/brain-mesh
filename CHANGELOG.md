@@ -2,6 +2,20 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.7.0 (2026-11-21)
+
+Priority across the ontology, as planned in the doc "Brain mesh: priority across the ontology".
+
+- **Priority on every card:** `priority: high | normal | low` in front matter (absent means normal) and a `prioritised:: <date> <level> — <why>` line per change. New command `priority <id> <level> "<why>" [--sync]`; bare, it lists high and low cards and what each lifts. `build` records a priority set by hand (in Obsidian) and `check` asks for its reason; unknown values are errors.
+- **Effective priority:** a normal card one link from a high card is elevated. A high paper lifts its own cards, the references it cites and the data and code it uses; a high concept lifts every card naming it; any high card lifts the cards linked to it either way. Explicit levels win; low never spreads. `index/priority.tsv`; a **Focus** line opens `MAP.md`.
+- **Reading queue:** one score per work, from the pages it bears on (weighted by their priority), the sources citing it (weighted by theirs and by paragraphs), multi-source citation, the data sets citing it, and its own priority. New lists: **Marked high by you** and **◆ From high-priority sources** (works a high paper cites in two or more paragraphs or in its methods or results). ◆ names the high cards lifting a work; low references bearing on nothing high leave the queue.
+- **Thresholds:** review decisions on gaps and tensions owed from relevance 0.25 (high), 0.3 (elevated), 0.35, 0.5 (low); the neighbour floor drops to 0.15 for high and elevated cards; high concepts weigh 1.5 times in ranking; high hubs list 12 key references; gap searches go stale after 90, 180 or 365 days.
+- **Concepts:** `gaps` lists, for high concepts, every untested combination of their variable, and hub relationships and open questions with no card behind them. `health` lists disagreements on high concepts (tension candidates) and lens passes worth making.
+- **Checks:** a high source with units at skim; a high hub citing nothing; a high gap unsearched or stale; a claim on a high concept feeding nothing; a high card unchanged for 90 days; a priority without a reason.
+- **Order:** `health` opens with the focus and orders its queues by priority; `gaps` and `gapsdoc` list high first.
+- **Migration:** gap priorities 1, 2, 3 in Codes become high, normal, low, each with a `prioritised::` line.
+- Skills: priority in the main skill; who sets it in `brain-mesh-access`; the depth table in add-paper; order and verifiers in batch; the wider scan and staleness in gaps; high first in experiment; focus and hygiene in housekeeping; the Obsidian property, colour group and Git auto-sync in setup.
+
 ## 1.6.0 (2026-11-21)
 
 Claims, data sets, code, citations in cards, decisions on gaps and tensions after each paper, and rules for any agent working in a vault.

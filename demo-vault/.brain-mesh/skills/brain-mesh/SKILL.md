@@ -270,6 +270,23 @@ Every work cited by a source in the brain has one reference card in `references/
 - A source card lists its references by number; `P012_refs.bib` and `references/library.bib` are rebuilt on every `build`.
 - `ledger/reading-queue.md` gets a generated list, rebuilt on every `build`: works cited where research gaps rest (★, read first), works cited where open gaps and tensions rest, works cited near cards that share concepts with a gap or tension, and works cited by more than one source. Mark progress on the reference card's status, never in the generated list.
 
+## Priority: where the brain spends its effort
+
+Every card has a priority: `high`, `normal` (the default) or `low`. **Priority is attention, never evidence.** It decides how much effort the brain spends around a card; grades, statuses and scopes stay governed by evidence alone.
+
+- **Recorded** in front matter as `priority: high` (absent means normal), with one `- prioritised:: <date> <level> — <why>` line in Codes per change, like `graded::`. `build` records a change made by hand (in Obsidian's Properties panel, say) as "set without a reason", and `check` asks for the reason.
+- **Set** by the user: in Obsidian, or with `python3 tools/mesh.py priority <id> <high|normal|low> "<why>" [--sync]`, or by asking an agent, which runs that command with the user's reason. Claude never sets priority on its own; it may suggest a change with a reason. `priority` with no arguments lists the high and low cards.
+- **Spreads one link.** A normal card one link from a card the user set high is *elevated*:
+  - a high paper lifts its own evidence, claims card, the reference cards it cites, and the data sets and code it uses;
+  - a high concept lifts every card that names it;
+  - any high card lifts the cards it links to and that link to it.
+  Nothing spreads further, an explicit level always beats an inherited one, and low never spreads. `index/priority.tsv` lists every card's effective level and what lifted it; `MAP.md` opens with the **Focus**.
+- **What it changes:**
+  - **High:** full-depth extraction and a verifying agent for a paper; more of its citations queued; a wider gap scan, an extended agreement test and more key references for a concept; earlier re-grading for a finding; settling sought for a tension; searches kept fresh (90 days) for a gap; first place in `health`, `gaps`, `gapsdoc` and the reading queue.
+  - **Elevated:** queue weight, and lower thresholds for review decisions and cross-paper links; not full-depth extraction.
+  - **Low:** a lighter touch (skim allowed) and a lower rank everywhere; nothing is ever hidden.
+- **Hygiene:** a card high for 90 days with no change is flagged for the user to confirm. High should stay rare.
+
 ## Links
 
 Links live in Codes as `- relation:: [[target]] — reason`.

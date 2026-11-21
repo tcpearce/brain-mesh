@@ -27,11 +27,11 @@ Agents multiply token use. One unplanned fan-out of agents has already used up a
 
 ## Phase 1: prepare
 
-1. **Gather.** List the papers. For each, do add-paper step 0: find its supplementary material and released data. Ask the user once for everything missing across all papers, naming each item.
+1. **Gather.** List the papers. For each, do add-paper step 0: find its supplementary material and released data. Ask the user once for everything missing across all papers, naming each item, and for any paper they want treated as high or low priority (suggest high for papers rich in high-priority concepts or bearing on research gaps).
 2. **Register.** Allocate source ids here and nowhere else, in order (`python3 tools/mesh.py id P`), so no two agents take the same id. Anchor each paper (`anchor P012 file.pdf`, and `anchor P012 --si <files>` for its supplementary material). Write a minimal source card for each: title, authors, year, venue, DOI and a `coverage::` line per unit, including the supplementary material.
-3. **Seed the vocabulary.** Read every abstract, and the introduction of the two or three most central papers. Create the concept cards that will recur across papers: the main variables (with units), methods, materials, phenomena and categorical variables, each with its aliases. A shared starting vocabulary is what stops ten agents inventing ten names for one thing.
+3. **Seed the vocabulary.** Start from the high-priority concepts. Read every abstract, and the introduction of the two or three most central papers. Create the concept cards that will recur across papers: the main variables (with units), methods, materials, phenomena and categorical variables, each with its aliases. A shared starting vocabulary is what stops ten agents inventing ten names for one thing.
 4. **Build and commit.** `python3 tools/mesh.py build` must end with 0 errors. If the vault is a git repository, commit, so each agent starts from the same state.
-5. **Write one brief per agent** from the template below.
+5. **Write one brief per agent** from the template below, and run the papers in priority order: each high-priority paper gets its own agent and, once it reports, an independent verifying agent that checks a sample of its cards against the pages; low-priority papers may share an agent with a brief that allows skimming background and discussion.
 
 ## Phase 2: extract
 

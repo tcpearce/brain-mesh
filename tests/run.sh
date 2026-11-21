@@ -273,7 +273,7 @@ echo "$out" | grep -q "P001-002.*matches no row" && fail "a correct figure value
 echo "$out" | grep -q "P001-005: value" && fail "a value in a supplementary data file was not found" || pass "a value is checked against a supplementary data file"
 (python3 tools/mesh.py check || true) | grep -q "ERROR P001-003: broken link \[\[novel-thing\]\]" && pass "a staged concept is an error in a full check, until merged" || fail "staged concept in full check"
 python3 tools/mesh.py staged | grep -q "^novel-thing  (from P001)" && pass "staged lists proposed concepts" || fail "staged"
-python3 tools/mesh.py progress P001 | grep -q "supplementary material: anchored" && pass "progress reports a source's state" || fail "progress"
+python3 tools/mesh.py progress P001 > prog.txt; grep -q "supplementary material: anchored" prog.txt && pass "progress reports a source's state" || fail "progress"
 sed -i.bak 's/= 0.55 ± 0.01/= 0.70 ± 0.01/; s/is 0.55 ± 0.01/is 0.70 ± 0.01/' sources/P001/P001-002-response-b-from-figure.md
 (python3 tools/mesh.py check P001 || true) | grep -q "P001-002: value 0.70 matches no row of P001-F1.csv" && pass "a figure value that is not in the figure is caught" || fail "wrong figure value not caught"
 python3 tools/mesh.py neighbours P001 | tail -1 | grep -q "candidate links to judge" && pass "neighbours runs" || fail "neighbours"
@@ -582,4 +582,46 @@ if command -v git > /dev/null; then
   echo "- [stated] a note" > notes.md; python3 tools/mesh.py sync "test sync" > sync.txt && grep -q "and pushed" sync.txt && [ "$(git -C "$T/remote.git" log main -1 --format=%s)" = "test sync" ] && pass "sync builds, commits and pushes" || { cat sync.txt; fail "sync"; }
   python3 tools/mesh.py sync > sync.txt; grep -q "up to date" sync.txt && pass "sync with nothing new does nothing" || { cat sync.txt; fail "sync idle"; }
 fi
+# 11. priority: high, normal, low; history; spreading; the reading queue; concepts (1.7.0)
+cp -r "$ROOT/demo-vault" "$T/q"; cd "$T/q"; cp "$MESH" tools/mesh.py
+S1=$(ls -d sources/P001*)
+python3 tools/mesh.py build > build.txt; grep -q "check: 0 errors, 0 warnings" build.txt && pass "the demo vault builds clean under 1.7.0" || { cat build.txt; fail "demo 1.7.0"; }
+g1=$(ls gaps/G001-*.md); g2=$(ls gaps/G002-*.md)
+grep -q "^priority: high$" $g1 && grep -q "^- prioritised:: .* high — converted from gap priority 1" $g1 && ! grep -q "^- priority::" $g1 && ! grep -q "^priority:" $g2 && grep -q "^- prioritised:: .* normal — converted from gap priority 2" $g2 && pass "gap priorities 1 and 2 become high and normal" || fail "gap migration"
+python3 tools/mesh.py priority P001 high > p.txt 2>&1 && fail "priority without a reason was accepted" || pass "priority needs a reason"
+python3 tools/mesh.py priority P001 high "the founding study of this brain" > p.txt && grep -q "^priority: high$" $S1/P001-smith-*.md && grep -q "^- prioritised:: .* high — the founding study of this brain" $S1/P001-smith-*.md && pass "priority sets the property and records why" || { cat p.txt; fail "priority set"; }
+python3 tools/mesh.py build > build.txt; grep -q "check: 0 errors, 0 warnings" build.txt && pass "a vault with priorities builds clean" || { cat build.txt; fail "build priority"; }
+grep -q "^P001-003	normal	elevated	P001$" index/priority.tsv && grep -q "^P001-claims	normal	elevated	P001$" index/priority.tsv && pass "a high paper lifts its own cards to elevated" || { cat index/priority.tsv; fail "elevated"; }
+grep -q "^\*\*Focus\*\* (high priority, set by you): .*P001" MAP.md && pass "MAP.md shows the focus" || fail "MAP focus"
+python3 tools/mesh.py priority > p.txt; grep -q "^## high (2)" p.txt && grep -q "P001 .* lifts [0-9]* cards" p.txt && pass "priority lists the high cards and what they lift" || { cat p.txt; fail "priority list"; }
+k=$(ls findings/K001-*.md); sed -i 's/^status: probable$/status: probable\npriority: low/' $k
+python3 tools/mesh.py build > build.txt; grep -q "^- prioritised:: .* low — set without a reason" $k && grep -q "K001: priority low needs a reason" build.txt && pass "a priority set by hand is recorded, and its reason asked for" || { cat build.txt; fail "hand priority"; }
+sed -i 's/^priority: low$/priority: urgent/' $k; (python3 tools/mesh.py check || true) | grep -q "K001: priority 'urgent' not in" && pass "an unknown priority is an error" || fail "bad priority"
+sed -i 's/^priority: urgent$/priority: low/' $k
+cat >> $S1/P001_text.md <<'TXT'
+
+Swelling of such films was described before (1). ^b0006
+
+Others reported the same effect (1, 2). ^b0007
+
+References ^b0008
+
+1. Lee, K. & Park, J. Hydrogel swelling scales with temperature. J. Appl. Polym. Sci. 98, 101–109 (2015). ^b0009
+
+2. Novak, P. Thermal ageing of imprinted polymers. Eur. Polym. J. 41, 230–238 (2005). ^b0010
+TXT
+python3 tools/mesh.py refs P001 > /dev/null && python3 tools/mesh.py cite P001 > /dev/null && python3 tools/mesh.py build > /dev/null
+q=ledger/reading-queue.md
+sed -n '/^### ◆ From high-priority sources/,/^### Cited where/p' $q | grep -q "R0001-lee-2015.* ◆ P001 (score" && pass "a high paper queues a work it cites in two paragraphs" || { cat $q; fail "queue high source"; }
+sed -n '/^### ◆ From high-priority sources/,/^### Cited where/p' $q | grep -q "R0002-novak" && fail "a work cited once in passing was queued from the high paper" || pass "a work cited once in passing is not lifted by the high paper"
+python3 tools/mesh.py priority R0002 high "the user wants this read first" > /dev/null && python3 tools/mesh.py build > /dev/null
+sed -n '/^### Marked high by you/,/^### ★/p' $q | grep -q "R0002-novak" && pass "a reference card marked high goes to the top of the queue" || { cat $q; fail "queue mine"; }
+python3 tools/mesh.py priority R0002 low "not relevant after all" > /dev/null && python3 tools/mesh.py build > /dev/null
+grep -q "R0002-novak" $q && fail "a low reference bearing on nothing high is still queued" || pass "a low reference that bears on nothing high leaves the queue"
+python3 tools/mesh.py priority swelling high "the mechanism the brain is about" > /dev/null; python3 tools/mesh.py build > build.txt
+grep -q "swelling: a high-priority hub cites no work in its text" build.txt && pass "a high hub must cite its key works" || { cat build.txt; fail "high hub"; }
+python3 tools/mesh.py gaps > gaps.txt; grep -q "^# High-priority concepts: swelling" gaps.txt && grep -q "Open questions on high-priority hubs" gaps.txt && pass "the gap scan reaches further for high concepts" || { cat gaps.txt | tail -20; fail "gaps high"; }
+python3 tools/mesh.py health > health.txt; grep -q "^## Focus: cards you set to high priority (3)" health.txt && pass "health opens with the focus list" || { head -20 health.txt; fail "health focus"; }
+sed -i 's/^\(- prioritised:: \)[0-9-]*\( high — the founding study\)/\12025-01-01\2/; s/^updated: .*/updated: 2025-01-01/' $S1/P001-smith-*.md
+(python3 tools/mesh.py check || true) | grep -q "P001: high priority since 2025-01-01 with no change since" && pass "a long-unchanged high priority is flagged for review" || fail "priority hygiene"
 echo "ALL TESTS PASSED"

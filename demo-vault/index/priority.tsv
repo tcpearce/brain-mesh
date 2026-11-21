@@ -1,0 +1,6 @@
+id	explicit	effective	lifted_by
+P001-011	normal	elevated	G001
+P003-003	normal	elevated	G001
+K001	normal	elevated	G001
+G001	high	high	
+E001	normal	elevated	G001

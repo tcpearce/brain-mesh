@@ -38,6 +38,8 @@ Skipping a rung is the main way this goes wrong: proposing an experiment that pa
 
 For each sparse pair the scan names, run `python3 tools/mesh.py matrix <variable> <variable>` to see exactly which combinations nobody has measured. Read the **Open questions** and **Relationships** sections of the main concept hubs too: a relationship stated with no finding behind it is a gap. The marked PDFs help with rung 1: passages with no highlight were never carded.
 
+**High-priority concepts get a wider scan.** For each concept set to high, `gaps` also lists every untested combination of its variable with the others (not only the sparsest), each line under the hub's **Relationships** with no finding, tension or gap behind it, and each **Open question** not yet a gap card. Take each up as a candidate, or note on the hub why it is not one.
+
 ## 2. Choose the key gaps
 
 Most signals are not worth a card. Keep a gap when the answer would matter, judged on three things:
@@ -46,7 +48,7 @@ Most signals are not worth a card. Keep a gap when the answer would matter, judg
 - **Decision value.** Would the answer change a finding's status, separate rival hypotheses, or change what the user does next?
 - **Tractability.** Could a paper or a feasible experiment answer it?
 
-Set `priority` to 1 (the brain's conclusions turn on it), 2 (it would sharpen them) or 3 (worth recording).
+Give it a priority, the same scale every card uses (`brain-mesh`): `high` when the brain's conclusions turn on it, `normal` (the default) when it would sharpen them, `low` when it is worth recording and no more. Set it with `python3 tools/mesh.py priority G004 high "<why>"`, which records the reason; the old 1/2/3 in Codes is converted by `build`.
 
 Search existing gap cards first (`python3 tools/mesh.py find <words> --type gap`). The same unknown reached from two directions is one gap; add the new origin to its `from::` line.
 
@@ -56,6 +58,7 @@ Search existing gap cards first (`python3 tools/mesh.py find <words> --type gap`
 ---
 type: gap
 status: open
+priority: high
 updated: 2026-11-20
 ---
 # Film thickness has never been measured in acetonitrile, so swelling is not ruled in or out there
@@ -77,7 +80,7 @@ The observation, paper or experiment that would answer it.
 ## Codes
 - id:: G002
 - kind:: unmeasured
-- priority:: 2
+- prioritised:: 2026-11-20 high — whether swelling explains the loss turns on it
 - from:: [[P001-005]], [[X001]]
 - concepts:: [[film-thickness]], [[acetonitrile]], [[swelling]]
 ```
@@ -95,7 +98,7 @@ Record every step in the card's **Search log**, dated. The log is what makes an 
 **Rung 2: is it in the literature?**
 
 - Build queries from the gap's concept cards. Their names and `aliases` are ready-made synonym lists; combine the variable, the system and the condition.
-- Use whatever search this session offers: literature connectors, a literature-search skill, web search. Use at least two independent routes for a priority 1 gap.
+- Use whatever search this session offers: literature connectors, a literature-search skill, web search. Use at least two independent routes for a high-priority gap.
 - Follow citations as well as keywords. Start with the works the brain's own sources cite in the passages this gap rests on: the gap's entries in the generated part of `ledger/reading-queue.md`, or the reference cards whose "Cited by" names the gap's evidence cards. Then the most-cited references (`index/frontier.tsv`) and the papers that cite the brain's key sources.
 - Screen each hit against the gap as stated: does it measure this variable, in this system, under these conditions? A paper on the general topic does not fill a specific gap.
 - Log the date, where you searched, the exact queries, the number of hits, how many were screened, and a one-line verdict on each serious candidate.
@@ -107,13 +110,13 @@ Then:
 
 **Rung 3: a research gap.** A confirmed gap goes into the research-gaps document and is offered to `brain-mesh-experiment`. From then on the reading queue stars (★) every work cited where it rests: read those before designing anything, since one of them may answer it after all. When an experiment is registered against it, set status `planned`. When results answer it, `closed`.
 
-A search goes stale. Repeat it before an experiment is designed on a confirmed gap, and whenever `python3 tools/mesh.py health` reports the search as old.
+A search goes stale: after 90 days for a high-priority gap, 180 for normal and 365 for low. Repeat it before an experiment is designed on a confirmed gap, and whenever `python3 tools/mesh.py health` reports it as stale; `check` warns about a high-priority gap whose search is stale or not yet made.
 
 ## 5. The research-gaps document
 
 `python3 tools/mesh.py gapsdoc` assembles `gaps/RESEARCH-GAPS.md` from the gap cards:
 
-- a summary table of confirmed and planned gaps in priority order, with the date last searched and any experiment addressing each;
+- a summary table of confirmed and planned gaps, high priority first, with the date last searched and any experiment addressing each;
 - the full human-readable part of each of those gaps, including its search log;
 - gaps that papers may fill, and gaps not yet searched, as short lists;
 - the sources cited.
@@ -126,4 +129,4 @@ To share it outside Obsidian, produce it in whatever document format the user as
 
 - Add each key gap to **Open questions** on the concept hubs it concerns, with a link.
 - Run `python3 tools/mesh.py build`, then `gapsdoc`, then `python3 tools/mesh.py log "gaps: <n> new, <n> fillable, <n> confirmed, <n> closed"`.
-- Report to the user: how many candidates were extraction gaps, brain gaps and research gaps; the reading list in priority order; and the top research gaps, each with one line on what would close it.
+- Report to the user: how many candidates were extraction gaps, brain gaps and research gaps; the reading list in score order; and the top research gaps, each with one line on what would close it.

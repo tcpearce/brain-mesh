@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.6.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.7.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -18,7 +18,12 @@ REF_FIELDS = ("authors", "year", "title", "journal", "booktitle", "series", "vol
 REF_STATUS = ["not-held", "queued", "held", "skip"]  # a cited work: not in the brain, asked for, in the brain, decided against
 MISSING = ["method", "basis", "data", "statistics", "sample-size", "definition"]  # what a source can fail to give: `- missing:: method — ...`
 EVIDENCE_RELS = ["obtained_by", "based_on", "qualifies", "underlies", "supports", "contradicts", "replicates", "extends", "uses_data", "uses_code"]
-ACCESS = ["open", "on-request", "restricted", "unavailable", "unknown"]  # status of a data-set or code card: can it be had?
+ACCESS = ["open", "on-request", "restricted", "unavailable", "unknown"]
+PRIORITY = ["high", "normal", "low"]  # attention, never evidence: front matter `priority:`, absent = normal
+FOCUS_W = {"high": 2.0, "elevated": 1.5, "normal": 1.0, "low": 0.5}  # weight of a page a work bears on, by its effective priority
+SRC_W = {"high": 2.0, "elevated": 1.5, "normal": 1.0, "low": 0.25}  # weight of a citing source, by its effective priority
+REVIEW_THR = {"high": 0.25, "elevated": 0.3, "normal": 0.35, "low": 0.5}  # relevance at which a paper owes a gap or tension a decision
+STALE_DAYS = {"high": 90, "elevated": 180, "normal": 180, "low": 365}  # when a gap search goes stale  # status of a data-set or code card: can it be had?
 CLAIMS_STATUS = ["drafted", "checked"]
 CLAIM_KEYS = ["main_claim", "sub_claim"]
 UNIVERSAL = ["cites", "see_also"]  # link keys any card may carry: cites:: a reference card or source, see_also:: any card, each with a reason
@@ -385,6 +390,7 @@ class Card:
         t = re.search(r"^# (.+)$", s.human, re.M)
         s.title = t.group(1).strip() if t else ""
         s.type, s.status = str(s.fm.get("type", "")), str(s.fm.get("status", ""))
+        s.priority = str(s.fm.get("priority") or "normal")
     def get(s, k, d=""): return next((v for kk, v in s.codes if kk == k), d)
     def all(s, k): return [v for kk, v in s.codes if kk == k]
     def fields(s):
@@ -517,6 +523,29 @@ class Mesh:
     def sums(s):
         if not hasattr(s, "_sums"): s._sums = checksums(s.root)
         return s._sums
+    def focus(s):
+        """Effective priority of every card: (level, cause). Explicit high and low stand; a normal card one link from
+        an explicit high card is 'elevated': a high paper lifts its own cards, the references it cites and the data
+        and code it uses; a high concept lifts every card that names it; any high card lifts the cards it links to
+        and that link to it. Nothing spreads further, and low never spreads."""
+        if hasattr(s, "_focus"): return s._focus
+        out = {i: (c.priority if c.priority in ("high", "low") else "normal", "") for i, c in s.cards.items()}
+        nb = defaultdict(set)
+        for a, _k, b in s.edges(): nb[a].add(b); nb[b].add(a)
+        for i, c in sorted(s.cards.items()):
+            if c.priority != "high" or c.get("retired") or c.fam == "reference": continue
+            lift = set(nb[i])
+            if c.fam == "source":
+                lift |= {x for x in s.cards if x.startswith(i + "-")}
+                lift |= {r.id for r in s.cards.values() if r.fam == "reference" and any(pid == i for pid, _n, _b in ref_cites(r))}
+            if c.fam == "concept": lift |= {x.id for x in s.cards.values() if x.fam in ("evidence", "page", "claims") and i in s.terms(x)}
+            for x in sorted(lift):
+                if x in out and out[x][0] == "normal": out[x] = ("elevated", i)
+        for i, c in s.cards.items():  # a claims card follows its source
+            if c.fam == "claims" and c.id[:4] in out and out[c.id[:4]][0] != "normal" and out[i][0] == "normal": out[i] = (out[c.id[:4]][0] if out[c.id[:4]][0] != "low" else "normal", c.id[:4])
+        s._focus = out
+        return out
+    def level(s, i): return s.focus().get(i, ("normal", ""))[0]
     def evidence(s, pid=None): return [c for c in s.cards.values() if c.fam == "evidence" and not c.get("retired") and (not pid or c.id.startswith(pid + "-"))]
     def pages(s, pre): return [c for c in s.cards.values() if c.fam == "page" and c.id[0] in pre]
 
@@ -530,6 +559,15 @@ class Mesh:
             if not c.title: E.append(f"{i}: no '# Title' line")
             if c.fam != "reference" and len(squeeze(c.prose())) < 25: E.append(f"{i}: the human-readable part is missing or too thin")
             if c.name == i and c.fam not in ("concept", "claims"): W.append(f"{i}: file name has no meaningful slug")
+            if c.fm.get("priority") and c.priority not in PRIORITY: E.append(f"{i}: priority '{c.priority}' not in {PRIORITY}")
+            pl = c.all("prioritised")
+            if pl:
+                last = re.match(r"\s*(\d{4}-\d\d-\d\d)\s+(high|normal|low)\b", pl[-1])
+                if not last: W.append(f"{i}: 'prioritised::' lines read '<date> <high|normal|low> — <why>'")
+                elif last.group(2) != c.priority: W.append(f"{i}: priority is {c.priority} but its last 'prioritised::' line says {last.group(2)}; `build` records the change")
+                elif "set without a reason" in pl[-1] or len(reason(pl[-1]).split()) < 2: W.append(f"{i}: priority {c.priority} needs a reason: edit the last 'prioritised::' line, or run `mesh.py priority {i} {c.priority} \"<why>\"`")
+                elif c.priority == "high" and days_since(last.group(1)) > 90 and days_since(c.fm.get("updated")) > 90: W.append(f"{i}: high priority since {last.group(1)} with no change since; confirm it is still high, or set it back to normal")
+            elif c.priority != "normal": W.append(f"{i}: priority {c.priority} has no 'prioritised::' line; `build` adds one")
             for k, v in c.codes:
                 if k == "cites" and any(s.cards[t].fam not in ("reference", "source") for t in s.ids(v)[0]): E.append(f"{i}: 'cites::' links a reference card (R####) or a source in the brain, not {', '.join(t for t in s.ids(v)[0] if s.cards[t].fam not in ('reference', 'source'))}")
             if c.fam not in ("reference", "source"):
@@ -666,6 +704,8 @@ class Mesh:
                     if not any(s.cards[t].type in ("observation", "model") for t in own) and not (lab != "main claim" and any(s.cards[t].type == "claim" for t in own)):
                         W.append(f"{i}: {lab} links no observation or model of {pid} that it rests on")
                     syn = [t for t in ids_ if s.cards[t].fam == "page" and t[0] in "KXGH"]
+                    hot = sorted({t for e in own for t in s.terms(s.cards[e]) if s.cards[t].priority == "high"})
+                    if not syn and hot: W.append(f"{i}: {lab} involves the high-priority concept {', '.join(hot)} but feeds no finding, tension or gap: link one, or open a gap")
                     if not syn and "no finding yet" not in v: W.append(f"{i}: {lab} is linked to no finding, tension, gap or hypothesis: link the ones it feeds, or write 'no finding yet'")
                     for t in syn:
                         basis = {x for k in PAGES[t[0]][3] for vv in s.cards[t].all(k) for x in s.ids(vv)[0]}
@@ -681,6 +721,7 @@ class Mesh:
                 if c.status == "held" and not c.get("held"): W.append(f"{i}: status held needs '- held:: [[P###]]', the source in the brain")
             elif c.fam == "concept":
                 if c.type != "concept": E.append(f"{i}: type must be 'concept'")
+                if c.priority == "high" and not c.get("retired") and not c.all("cites"): W.append(f"{i}: a high-priority hub cites no work in its text: cite the closely relevant key references (and add cites:: lines)")
                 if "<!--AUTO:START" not in c.raw: W.append(f"{i}: no AUTO block, so its list of cards cannot be maintained")
                 if c.get("retired"): continue
                 if c.get("kind") not in CONCEPT_KINDS: E.append(f"{i}: kind '{c.get('kind')}' not in {CONCEPT_KINDS}")
@@ -736,11 +777,17 @@ class Mesh:
                     if i[0] == "C" and len(re.findall(r"[A-Za-z]{2,}", c.prose())) < 50: W.append(f"{i}: the summary is too thin: say what the code does, its inputs and outputs, and how the studies use it, as a README would")
                 if i[0] == "G":
                     if c.get("kind") not in GAP_KINDS: E.append(f"{i}: kind '{c.get('kind')}' not in {GAP_KINDS}")
-                    if c.get("priority") not in ("1", "2", "3"): W.append(f"{i}: '- priority::' should be 1, 2 or 3")
+                    if c.get("priority"): W.append(f"{i}: '- priority:: {c.get('priority')}' is the old gap priority; `build` converts it to the card's priority")
+                    st_ = STALE_DAYS[s.level(i)]
+                    if c.priority == "high" and c.status == "open": W.append(f"{i}: a high-priority gap not yet searched (brain-mesh-gaps rung 2)")
+                    if c.priority == "high" and c.status in ("fillable", "confirmed", "planned") and days_since(c.get("searched")) > st_: W.append(f"{i}: a high-priority gap last searched {c.get('searched')}, over {st_} days ago: search again")
                     if c.status in ("fillable", "confirmed", "planned") and not c.get("searched"): W.append(f"{i}: status {c.status} needs '- searched:: <date>'")
                 if i[0] == "E" and c.status in ("registered", "running", "done") and not c.get("registered"): E.append(f"{i}: status {c.status} needs '- registered:: <date>'")
                 if i[0] == "E" and c.status == "done" and not n("results"): W.append(f"{i}: done but no '- results::' source")
         for src in [c for c in s.cards.values() if c.fam == "source" and (not only or c.id == only)]:
+            if src.priority == "high":
+                thin = [v.split("|")[0].strip() for v in src.all("coverage") if [x.strip() for x in v.split("|")][1:2] == ["skim"] or ([x.strip() for x in v.split("|")][1:2] == ["none"] and not re.search(r"supplement|\bSI\b", v.split("|")[0], re.I))]
+                if thin: W.append(f"{src.id}: a high-priority source with units not read in full: {', '.join(thin[:8])}")
             if src.status == "integrated" and src.get("kind") in ("paper", "preprint", "thesis", "report") and src.id + "-claims" not in s.cards:
                 W.append(f"{src.id}: no claims card: write {src.id}-claims.md with the main claim and up to five sub-claims (`mesh.py claims {src.id}` starts it)")
         if not only:
@@ -955,6 +1002,9 @@ sources cite, with BibTeX (made by `mesh.py refs` and `cite`; `ledger/reading-qu
 they feed · `data-sets/D###-<slug>.md` and `code/C###-<slug>.md` the data and code studies use (`used_by:: [[P###]]`).
 
 **Every session** follows `.brain-mesh/skills/brain-mesh-access/SKILL.md`: `mesh.py sync` first and last.
+
+**Priority.** `priority: high | normal | low` in front matter (absent = normal), a `prioritised::` line per change. Attention,
+never evidence: a high card draws deeper treatment to everything one link away. Set it with `mesh.py priority`.
 
 **Layers.** Evidence cites its source; synthesis cites evidence; workbench cites synthesis. Never edit the PDF,
 the anchored text or an id. `index/` and AUTO blocks are generated by `mesh.py build`.
@@ -1679,7 +1729,7 @@ def seed_grades(m):
 
 def cmd_build(root):
     fixnames(root); fixfolders(root)
-    seed_grades(Mesh(root))
+    seed_grades(Mesh(root)); seed_priority(root)
     n = fixlinks(Mesh(root))
     m = Mesh(root)
     def fill(card, L):  # replace the AUTO block of a hub card
@@ -1749,7 +1799,7 @@ def cmd_build(root):
         if inbound.get(con.id): L += ["**Linked from other concepts**"] + mirror(inbound[con.id]) + [""]
         co = Counter(t for c in users for t in m.terms(c) if t != con.id)
         if co: L += ["**Appears alongside:** " + " · ".join(f"[[{t}]] ({n_})" for t, n_ in ranked(co, 15)), ""]
-        keyrefs = concept_refs(m, con, at0)
+        keyrefs = concept_refs(m, con, at0, 12 if con.priority == "high" else 6)
         if keyrefs:
             L += ["**Key references** (works cited where this concept's cards are anchored; cite the closely relevant ones in the text above, linking the reference card with the author and year as its label, and add a cites:: line)"]
             L += [f"- {lk(r, one(r.title, 100))}" + (f" · [doi](https://doi.org/{r.get('doi')})" if r.get("doi") else "") + f" — cited beside {', '.join(sorted(cs)[:4])}" + (" · **cited in this card**" if r.id in {t for v in con.all('cites') for t in m.ids(v)[0]} else "") for r, cs in keyrefs] + [""]
@@ -1814,6 +1864,8 @@ def cmd_build(root):
     live = [c for c in m.cards.values() if not c.get("retired")]
     wr(J(ix, "cards.tsv"), tsv([["id", "family", "type", "status", "concepts", "title", "path"]] + [[c.id, c.fam, c.type, c.status + (" null" if c.get("null") else ""), " ".join(sorted(m.terms(c))), c.title, relp(c.path, root)] for c in live]))
     wr(J(ix, "edges.tsv"), tsv([["from", "rel", "to"]] + m.edges()))
+    fo = m.focus()
+    wr(J(ix, "priority.tsv"), tsv([["id", "explicit", "effective", "lifted_by"]] + [[c.id, c.priority, fo[c.id][0], fo[c.id][1]] for c in live if c.priority != "normal" or fo[c.id][0] != "normal"]))
     wr(J(ix, "aliases.tsv"), tsv([["alias", "concept"]] + sorted(m.alias.items())))
     srcs = [c for c in m.cards.values() if c.fam == "source"]
     cov = [[c.id] + [x.strip() for x in v.split("|")] for c in srcs for v in c.all("coverage")]
@@ -1826,7 +1878,10 @@ def cmd_build(root):
         for t in m.terms(c): tc[t] += 1; tsrc[t].add(c.id[:4])
     concepts = [c for c in m.cards.values() if c.fam == "concept"]
     wr(J(ix, "stats.json"), json.dumps({"sources": len(srcs), "evidence": len(ev), "by_type": types, "concepts": len(concepts), "pages": Counter(c.id[0] for c in m.pages("KXGHE")), "errors": len(m.err), "warnings": len(m.warn)}, indent=1) + "\n")
-    L = [f"**Counts:** {len(srcs)} sources · {len(ev)} evidence cards ({', '.join(f'{k} {v}' for k, v in ranked(types))}) · {len(concepts)} concepts · " + " · ".join(f"{k} {len(m.pages(k))}" for k in PAGES), ""]
+    fo = m.focus(); highs = sorted((c for c in m.cards.values() if c.priority == "high" and not c.get("retired")), key=lambda c: c.id)
+    focus_line = ["**Focus** (high priority, set by you): " + (" · ".join(f"[[{c.name}|{c.id}]]" for c in highs) if highs else "none yet; `mesh.py priority <id> high \"<why>\"` sets one")
+                  + f". Elevated: {sum(1 for v in fo.values() if v[0] == 'elevated')} cards; low: {sum(1 for c in m.cards.values() if c.priority == 'low')}.", ""]
+    L = focus_line + [f"**Counts:** {len(srcs)} sources · {len(ev)} evidence cards ({', '.join(f'{k} {v}' for k, v in ranked(types))}) · {len(concepts)} concepts · " + " · ".join(f"{k} {len(m.pages(k))}" for k in PAGES), ""]
     def sect(title, cs, cap=40):
         if not cs: return
         L.append(f"**{title}**"); L.extend(f"- {lk(c)} · {c.status}" for c in cs[:cap])
@@ -1852,6 +1907,9 @@ def cmd_build(root):
     report(m, notes); print(f"{n} links expanded to full card names; index/, source-card lists and MAP.md rebuilt")
     print("PDF marking skipped: PyMuPDF is not installed (pip install pymupdf)" if marked is None else f"marked PDFs rewritten for: {' '.join(marked) or 'none (all up to date)'}")
 
+PRANK = {"high": 0, "elevated": 1, "normal": 2, "low": 3}
+
+
 def cmd_gaps(m):
     """Mechanical scan: signals to judge, not a list of gaps."""
     used = {t for c in m.pages("KXGHE") for t in m.ids(c.raw)[0]}
@@ -1864,7 +1922,7 @@ def cmd_gaps(m):
     sec("Open tensions", [row(c) for c in m.pages("X") if c.status == "open"])
     addressed = {t for c in m.pages("E") for v in c.all("addresses") for t in m.ids(v)[0]}
     for st, label in (("open", "Gaps not yet searched"), ("fillable", "Gaps with papers waiting to be added"), ("confirmed", "Confirmed research gaps with no experiment yet")):
-        sec(label, [f"{row(c)} [priority {c.get('priority', '?')}]" for c in m.pages("G") if c.status == st and not (st == "confirmed" and c.id in addressed)])
+        sec(label, [f"{row(c)} [priority {m.level(c.id)}]" for c in sorted(m.pages("G"), key=lambda c: (PRANK[m.level(c.id)], c.id)) if c.status == st and not (st == "confirmed" and c.id in addressed)])
     for typ, label in (("question", "Authors' open questions"), ("oddity", "Oddities"), ("assumption", "Assumptions"), ("limitation", "Limitations"), ("model", "Models")):
         sec(f"{label} not yet taken up by any synthesis or workbench card", [row(c) for c in m.evidence() if c.type == typ and c.id not in used])
     vals, measured = defaultdict(set), set()
@@ -1885,10 +1943,31 @@ def cmd_gaps(m):
         [f"{c.id} missing {one(v, 110)}" + (" [supplementary material unread: check there first]" if m.si_state(c.id[:4]) == "missing" else "") for c in m.evidence() for v in c.all("missing")], 40)
     sec("Source units not fully extracted (possible extraction gaps)", [f"{c.id} {v}" for c in m.cards.values() if c.fam == "source" for v in c.all("coverage") if [x.strip() for x in v.split("|")][1:2] != ["full"]])
     sec("Most-cited sources not in the brain (possible brain gaps)", [f"{k} (cited by {len(v)}: {' '.join(sorted(v))})" for k, v in frontier(m)], 15)
+    hot = sorted(c.id for c in m.cards.values() if c.fam == "concept" and c.priority == "high" and not c.get("retired"))
+    if hot:
+        print(f"\n# High-priority concepts: {', '.join(hot)}")
+        rows = []
+        for h in hot:
+            for other in sorted(k for k in vals if k and k != h and len(vals[k]) > 1):
+                if h not in vals: break
+                cells = {(o[h], o[other]) for o in obs if h in o and other in o}
+                full = len(vals[h]) * len(vals[other])
+                if len(cells) < full: rows.append(f"matrix {h} {other}: {len(cells)} of {full} combinations tested")
+        sec("Untested combinations involving a high-priority variable", rows, 40)
+        rel, oq = [], []
+        for h in hot:
+            hub = m.cards[h]; body = hub.prose()
+            for name, out_ in (("Relationships", rel), ("Open questions", oq)):
+                mo = re.search(r"^## " + name + r"\s*\n(.*?)(?=^## |\Z)", body, re.S | re.M)
+                for line in (mo.group(1).splitlines() if mo else []):
+                    if line.strip().startswith("-") and not any(m.cards[t].fam == "page" and t[0] in "KXG" for t in m.ids(line)[0]):
+                        out_.append(f"{h}: {one(line.strip('- '), 110)}")
+        sec("Relationships on high-priority hubs with no finding, tension or gap behind them (gap candidates)", rel, 40)
+        sec("Open questions on high-priority hubs not yet a gap card (gap candidates, or mark them not worth pursuing)", oq, 40)
 
 def cmd_gapsdoc(m):
     """Assemble gaps/RESEARCH-GAPS.md from the gap cards; text above the AUTO block is kept."""
-    G = sorted(m.pages("G"), key=lambda c: (c.get("priority", "9"), c.id))
+    G = sorted(m.pages("G"), key=lambda c: (PRANK[m.level(c.id)], c.id))
     exps = defaultdict(list)
     for e in m.pages("E"):
         for v in e.all("addresses"):
@@ -1896,12 +1975,12 @@ def cmd_gapsdoc(m):
     conf, cited = [g for g in G if g.status in ("confirmed", "planned")], set()
     L = ["_Assembled from the gap cards. Edit those cards, then re-run `mesh.py gapsdoc`._", "", "## Research gaps: no answer found in the literature searched", ""]
     if conf: L += ["| Gap | What is unknown | Kind | Priority | Last searched | Experiment |", "|---|---|---|---|---|---|"]
-    L += [f"| [[{g.name}\\|{g.id}]] | {one(g.title, 140)} | {g.get('kind')} | {g.get('priority', '?')} | {g.get('searched', 'never')} | {' '.join(f'[[{e.name}{chr(92)}|{e.id}]]' for e in exps[g.id]) or 'none yet'} |" for g in conf] or ["None confirmed yet."]
+    L += [f"| [[{g.name}\\|{g.id}]] | {one(g.title, 140)} | {g.get('kind')} | {m.level(g.id)} | {g.get('searched', 'never')} | {' '.join(f'[[{e.name}{chr(92)}|{e.id}]]' for e in exps[g.id]) or 'none yet'} |" for g in conf] or ["None confirmed yet."]
     for g in conf:
-        L += ["", f"### {g.id} · {g.title}", "", f"Kind: {g.get('kind')} · priority {g.get('priority', '?')} · status {g.status} · last searched {g.get('searched', 'never')} · card [[{g.name}|{g.id}]]", "", re.sub(r"^#+ ", "#### ", g.prose(), flags=re.M)]
+        L += ["", f"### {g.id} · {g.title}", "", f"Kind: {g.get('kind')} · priority {m.level(g.id)} · status {g.status} · last searched {g.get('searched', 'never')} · card [[{g.name}|{g.id}]]", "", re.sub(r"^#+ ", "#### ", g.prose(), flags=re.M)]
         cited |= {t[:4] for t in m.ids(g.raw)[0] if re.match(r"P\d{3}", t)}
     for st, title in (("fillable", "Gaps the literature may fill (papers found, not yet added)"), ("open", "Gaps not yet searched")):
-        rows = [f"- {lk(g)} · priority {g.get('priority', '?')}" for g in G if g.status == st]
+        rows = [f"- {lk(g)} · priority {m.level(g.id)}" for g in G if g.status == st]
         if rows: L += ["", f"## {title}", ""] + rows
     if cited:
         L += ["", "## Sources cited", ""]
@@ -1962,8 +2041,7 @@ def cmd_neighbours(m, target, top=5, floor=0.2):
     sources most worth linking, ranked by the concepts they share with the rarest counting most."""
     targets = m.evidence(target) if re.fullmatch(r"P\d{3}", target) else [need(m, target)]
     pool = [c for c in m.cards.values() if c.fam in ("evidence", "page") and not c.get("retired")]
-    df = Counter(t for c in pool for t in m.terms(c)); n_ = len(pool) + 1
-    w = lambda t: math.log(n_ / df[t]) if df[t] else 0.0  # a concept on every card weighs almost nothing
+    w = rarity(m)  # a concept on every card weighs almost nothing; a high-priority concept half as much again
     by_term = defaultdict(set)
     for c in pool:
         for t in m.terms(c): by_term[t].add(c.id)
@@ -1980,7 +2058,8 @@ def cmd_neighbours(m, target, top=5, floor=0.2):
         for b in sorted((m.cards[i] for i in cand if m.cards[i].fam == "evidence" and m.cards[i].id[:4] == a.id[:4]), key=lambda b: (-m.score(a, b), b.id)):
             if m.score(a, b) >= 0.8: out.append(f"   {m.score(a, b):.2f}  {b.id} [{b.type}] {one(b.title, 85)}\n         -> SAME SOURCE: probably a duplicate; merge into one card")
         ranked_ = sorted(((rel(a, m.cards[i]), m.cards[i]) for i in cand if not (m.cards[i].fam == "evidence" and m.cards[i].id[:4] == a.id[:4])), key=lambda r: (-r[0], r[1].id))
-        for sc, b in [r for r in ranked_ if r[0] >= floor][:top]:
+        fl = min(floor, 0.15) if m.level(a.id) in ("high", "elevated") else floor
+        for sc, b in [r for r in ranked_ if r[0] >= fl][:top]:
             shared = sorted(m.terms(a) & m.terms(b), key=lambda t: (-w(t), t))
             if b.fam == "page": act = "already linked" if b.id in m._adj[a.id] else "does this card support, oppose or change it? If so add it to that card"
             else: act = "already linked" if m.linked(a, b) else "OTHER SOURCE: link with a reason (replicates, contradicts, supports, extends, qualifies), or decide it is unrelated"
@@ -2002,7 +2081,15 @@ def cmd_health(m):
     for c in m.cards.values():
         if c.fam in ("evidence", "page") and not c.get("retired"):
             for t in m.terms(c): use[t].append(c)
-    con = [c for c in m.cards.values() if c.fam == "concept" and not c.get("retired")]
+    con = sorted((c for c in m.cards.values() if c.fam == "concept" and not c.get("retired")), key=lambda c: (PRANK[m.level(c.id)], c.id))
+    f = m.focus(); lifted = Counter(cause for lvl, cause in f.values() if lvl == "elevated")
+    sec("Focus: cards you set to high priority", [f"{row(c)} [{c.fam}; lifts {lifted[c.id]} cards]" for c in sorted(m.cards.values(), key=lambda c: c.id) if c.priority == "high"], 40)
+    sec("Priority hygiene: high for over 90 days with no change (confirm, or set back to normal)", [f"{row(c)} [{c.all('prioritised')[-1] if c.all('prioritised') else ''}]" for c in m.cards.values() if c.priority == "high" and c.all("prioritised") and days(re.match(r"\s*(\S+)", c.all("prioritised")[-1]).group(1)) > 90 and days(c.fm.get("updated")) > 90])
+    hotc = {c.id for c in con if c.priority == "high"}
+    if hotc:
+        meas = [e for e in m.evidence() if e.get("value") and (m.terms(e) & hotc)]
+        sec("Disagreements on high-priority concepts: same quantity, same conditions, beyond error (tension candidates)", [f"{a.id} ({va:g}) vs {b.id} ({vb:g})" + (" [same finding or tension already?]" if m.linked(a, b) else "") for a, b, va, vb in m.disagreements(meas)])
+        sec("Lens passes to consider: sources with cards on a high-priority concept and units only skimmed", [f"{src.id}: {', '.join(sorted({t for e in m.evidence(src.id) for t in m.terms(e)} & hotc))} · skimmed: {', '.join(v.split('|')[0].strip() for v in src.all('coverage') if [x.strip() for x in v.split('|')][1:2] == ['skim'])}" for src in m.cards.values() if src.fam == "source" and {t for e in m.evidence(src.id) for t in m.terms(e)} & hotc and any([x.strip() for x in v.split('|')][1:2] == ['skim'] for v in src.all('coverage'))])
     sec("Concept hubs older than the newest card that uses them (refresh 'What is known' and 'Relationships')", [f"{c.id} (hub {c.fm.get('updated', '?')}, newest card {max(str(u.fm.get('updated', '')) for u in use[c.id])})" for c in con if use[c.id] and str(c.fm.get("updated", "")) < max(str(u.fm.get("updated", "")) for u in use[c.id])])
     sec("Concept hubs that have grown long (split into narrower concepts)", [f"{c.id} ({len(c.prose().splitlines())} lines, {len(use[c.id])} cards)" for c in con if len(c.prose().splitlines()) > 120 or len(use[c.id]) > 300])
     sec("Concepts used by at most one card (merge into a broader concept, or wait for more sources)", [f"{c.id} ({len(use[c.id])})" for c in con if len(use[c.id]) <= 1])
@@ -2012,14 +2099,14 @@ def cmd_health(m):
         if k.status == "single-source" and n > 1: regrade.append(f"{row(k)} [single-source, but support now comes from {n} sources]")
         if k.status in ("established", "probable") and a: regrade.append(f"{row(k)} [{k.status}, but {a} cards now count against it]")
         if k.status != "single-source" and n <= 1: regrade.append(f"{row(k)} [{k.status}, but only one source supports it]")
-    sec("Findings whose status no longer matches their evidence", regrade)
-    sec("Research-gap searches older than 180 days (search again before relying on them)", [f"{row(g)} [searched {g.get('searched')}]" for g in m.pages("G") if g.status in ("confirmed", "planned", "fillable") and days(g.get("searched")) > 180])
+    sec("Findings whose status no longer matches their evidence", sorted(regrade, key=lambda r: (PRANK[m.level(r.split()[0])], r)))
+    sec("Research-gap searches gone stale (90 days for high priority, 180 normal, 365 low): search again before relying on them", [f"{row(g)} [{m.level(g.id)}; searched {g.get('searched')}]" for g in sorted(m.pages("G"), key=lambda c: (PRANK[m.level(c.id)], c.id)) if g.status in ("confirmed", "planned", "fillable") and days(g.get("searched")) > STALE_DAYS[m.level(g.id)]])
     sec("Experiments registered or running for over 90 days", [f"{row(e)} [{e.status} since {e.get('registered')}]" for e in m.pages("E") if e.status in ("registered", "running") and days(e.get("registered")) > 90])
-    sec("Claims, observations and models not yet cited by any finding, tension, gap, hypothesis or experiment", [row(c) for c in m.evidence() if c.type in ("claim", "observation", "model") and c.id not in cited], 15)
+    sec("Claims, observations and models not yet cited by any finding, tension, gap, hypothesis or experiment (low-priority sources left out)", [row(c) for c in sorted(m.evidence(), key=lambda c: (PRANK[m.level(c.id)], c.id)) if c.type in ("claim", "observation", "model") and c.id not in cited and m.level(c.id[:4]) != "low"], 15)
     sec("Cards flagged as doubtful at extraction", [f"{row(c)} [{c.get('flag')}]" for c in m.evidence() if c.get("flag")])
     rx = m.retracted(); W_ = []; m.retraction_warnings(W_)
     sec("Retracted sources and cards, with dependants not yet reviewed", [f"{x} {one(m.cards[x].title, 90)} [{m.cards[x].get('retracted')}; {sum(1 for w in W_ if f'rests on {x},' in w)} dependants to review]" for x in sorted(set(rx.values()))])
-    sec("Published corrections registered", [f"{c.id} {one(c.title, 80)} [{sum(1 for e in m.evidence(c.id) if e.get('corrected'))} cards marked corrected]" for c in m.cards.values() if c.fam == "source" and os.path.exists(J(m.root, "sources", c.id, c.id + "_correction.pdf"))])
+    sec("Published corrections registered", [f"{c.id} {one(c.title, 80)} [{sum(1 for e in m.evidence(c.id) if e.get('corrected'))} cards marked corrected]" for c in m.cards.values() if c.fam == "source" and os.path.exists(J(SRC(m.root, c.id), c.id + "_correction.pdf"))])
     rq = [r for r in m.cards.values() if r.fam == "reference" and r.status in ("not-held", "queued")]
     sec("Cited works to consider reading (see ledger/reading-queue.md)", [f"{r.id} {one(r.title, 90)} [{r.status}; cited by {len(r.all('cited_by'))} sources]" for r in sorted(rq, key=lambda r: (-len(r.all("cited_by")), r.id)) if len(r.all("cited_by")) > 1], 15)
     sec("Sources not yet integrated", [f"{row(c)} [{c.status}]" for c in m.cards.values() if c.fam == "source" and c.status != "integrated"])
@@ -2119,7 +2206,8 @@ def rarity(m):
     """Weight of each concept: rare concepts count for much, a concept on every card for almost nothing."""
     pool = [c for c in m.cards.values() if c.fam in ("evidence", "page") and not c.get("retired")]
     df = Counter(t for c in pool for t in m.terms(c)); n_ = len(pool) + 1
-    return lambda t: math.log(n_ / df[t]) if df[t] else 0.0
+    hot = {c.id for c in m.cards.values() if c.fam == "concept" and c.priority == "high"}
+    return lambda t: (math.log(n_ / df[t]) if df[t] else 0.0) * (1.5 if t in hot else 1.0)
 
 
 def relevance(m, a, b, w):
@@ -2171,7 +2259,9 @@ def cmd_place(m, target, top=4, floor=0.15):
         for p, _src, best, sc in due: print(f"  {p.id} {one(p.title, 80)} [{p.status}] — via {best.id} ({sc:.2f})")
     if unplaced:
         print(f"\n{len(unplaced)} observations, claims or models bear on no finding, tension, gap or hypothesis:")
-        for a in unplaced[:25]: print(f"   {a.id} [{a.type}] {one(a.title, 100)}")
+        hot = {c.id for c in m.cards.values() if c.fam == "concept" and c.priority == "high"}
+        unplaced.sort(key=lambda a: (not (m.terms(a) & hot), a.id))
+        for a in unplaced[:25]: print(f"   {a.id} [{a.type}] {one(a.title, 100)}" + (f"  ◆ {', '.join(sorted(m.terms(a) & hot))}" if m.terms(a) & hot else ""))
         print("Each may start a new finding if it passes the one-sentence test and is a result worth building on, or may stand alone.")
 
 
@@ -2325,54 +2415,142 @@ def ref_cites(r):
 
 
 def reading_queue(m):
-    """What to read next, from the reference cards. Four lists: works cited where the brain's research gaps rest
-    (marked ★); works cited where open gaps and tensions rest; works cited near cards that share concepts with a gap
-    or tension (weaker); works cited by more than one source in the brain."""
+    """What to read next, from the reference cards, each list sorted by one score: the works you marked high; works
+    cited where research gaps rest (★); works a high-priority source cites in two or more paragraphs or in its
+    methods or results (◆); works cited where open gaps, tensions and high findings rest; works cited near cards
+    sharing concepts with them; works cited by more than one source. Priority raises a work's score, never hides it."""
     refs = [r for r in m.cards.values() if r.fam == "reference" and not r.get("retired")]
     at = defaultdict(list)  # (source, paragraph) -> evidence cards anchored there
     for c in m.evidence():
         for a in m.anchors(c):
             if re.fullmatch(r"[bsc]\d{4}", a): at[(c.id[:4], a)].append(c)
-    pages, w = [p for p in m.pages("GX") if p.status not in ("closed", "dropped", "resolved")], rarity(m)
-    tiers = {"star": [], "direct": [], "near": [], "multi": []}
+    lv = m.level
+    pages = [p for p in m.pages("GX") if p.status not in ("closed", "dropped", "resolved")] + [k for k in m.pages("K") if lv(k.id) in ("high", "elevated")]
+    w = rarity(m)
+    dc_cites = defaultdict(list)  # reference -> high or elevated data-set and code cards citing it
+    for d in m.pages("DC"):
+        if lv(d.id) in ("high", "elevated"):
+            for v in d.all("cites"):
+                for t in m.ids(v)[0]: dc_cites[t].append(d)
+    tiers = {k: [] for k in ("mine", "star", "high", "direct", "near", "multi")}
     for r in refs:
         if r.status in ("held", "skip"): continue
         cites = ref_cites(r)
         cards = {c.id: c for pid, _n, bs in cites for b in bs for c in at.get((pid, b), [])}
-        star, direct, near = [], [], []
+        hits = []  # (page, via card, kind, how, weight)
         if cards:
             dep = m.dependants(set(cards))
             for p in pages:
                 basis = {t for k in PAGES[p.id[0]][3] for v in p.all(k) for t in m.ids(v)[0]}
                 via = [cid for cid in cards if cid in basis] or ([sorted(cards)[0]] if p.id in dep else [])
                 rg = p.id[0] == "G" and p.status in ("confirmed", "planned")
-                kind = "research gap" if rg else ("gap" if p.id[0] == "G" else "tension")
-                if via: (star if rg else direct).append((p, via[0], kind, "rests on"))
-                else:
+                kind = "research gap" if rg else {"G": "gap", "X": "tension", "K": "finding"}[p.id[0]]
+                if via: hits.append((p, via[0], kind, "rests on", 3 if rg else 2))
+                elif p.id[0] != "K":
                     best = max(cards, key=lambda c: relevance(m, cards[c], p, w)); sc = relevance(m, cards[best], p, w)
-                    if sc >= 0.35: (star if rg else near).append((p, best, kind, f"shares concepts ({sc:.2f}) with"))
-        n_par = sum(len(bs) for _p, _n, bs in cites)
+                    if sc >= 0.35: hits.append((p, best, kind, f"shares concepts ({sc:.2f}) with", 3 if rg else 1))
+        star = [h for h in hits if h[2] == "research gap"]
+        direct = [h for h in hits if h[3] == "rests on" and h[2] != "research gap"]
+        near = [h for h in hits if h[3] != "rests on" and h[2] != "research gap"]
+        n_src = len({pid for pid, _n, _b in cites})
+        score = sum(h[4] * FOCUS_W[lv(h[0].id)] for h in hits) + sum(SRC_W[lv(pid)] * (1 + math.log2(max(1, len(bs)))) for pid, _n, bs in cites)
+        score += 2 * (n_src > 1) + 3 * (r.priority == "high") + 1.5 * len(dc_cites.get(r.id, []))
+        if r.priority == "low" and not star and not any(lv(h[0].id) == "high" for h in hits): continue
+        why_high = [pid for pid, _n, bs in cites if lv(pid) == "high" and (len(bs) >= 2 or any(c.type in ("method", "observation", "model") for b in bs for c in at.get((pid, b), [])))]
+        marks = sorted(set(why_high + [h[0].id for h in hits if lv(h[0].id) == "high"] + [f.get(d.id, ("", d.id))[1] or d.id for d in dc_cites.get(r.id, []) for f in [m.focus()]] + ([r.id] if r.priority == "high" else [])))
         label = f"[[{r.name}|{one(r.title, 80)}]]" + (f" · [doi:{r.get('doi')}](https://doi.org/{r.get('doi')})" if r.get("doi") else (f" · [arXiv:{r.get('arxiv')}](https://arxiv.org/abs/{r.get('arxiv')})" if r.get("arxiv") else ""))
         by = ", ".join(f"{pid} ref {n} ({len(bs)}×)" if bs else f"{pid} ref {n}" for pid, n, bs in cites)
         box = "- [ ] " if r.status == "not-held" else "- [~] "
-        why = lambda hits: "; ".join(f"{kind} [[{p.name}|{p.id}]] ({how} [[{m.cards[c].name}|{c}]], where it is cited)" for p, c, kind, how in hits[:3])
-        key = (-len({pid for pid, _n, _b in cites}), -n_par, r.id)
-        if star: tiers["star"].append((key, f"{box}★ {label} — cited by {by}; bears on {why(star + direct)}"))
-        elif direct: tiers["direct"].append((key, f"{box}{label} — cited by {by}; bears on {why(direct)}"))
-        elif near:
-            top_ = -max(float(re.search(r"\((\d\.\d+)\)", h[3]).group(1)) for h in near)
-            tiers["near"].append(((top_, r.id), f"{box}{label} — cited by {by}; {why(near)}"))
-        if len({pid for pid, _n, _b in cites}) > 1: tiers["multi"].append((key, f"{box}{label} — cited by {by}"))
+        why = lambda hs: "; ".join(f"{kind} [[{p.name}|{p.id}]] ({how} [[{m.cards[c].name}|{c}]], where it is cited)" for p, c, kind, how, _w in hs[:3])
+        tail = (f" ◆ {' '.join(marks)}" if marks else "") + f" (score {score:.1f})"
+        key = (-score, r.id)
+        line_ = lambda pre, extra: f"{box}{pre}{label} — cited by {by}" + (f"; {extra}" if extra else "") + tail
+        if r.priority == "high": tiers["mine"].append((key, line_("", why(hits))))
+        elif star: tiers["star"].append((key, line_("★ ", "bears on " + why(star + direct))))
+        elif why_high: tiers["high"].append((key, line_("", ("bears on " + why(direct + near)) if hits else "")))
+        elif direct: tiers["direct"].append((key, line_("", "bears on " + why(direct))))
+        elif near: tiers["near"].append((key, line_("", why(near))))
+        if n_src > 1: tiers["multi"].append((key, line_("", "")))
     held = sum(1 for r in refs if r.status == "held")
-    L = [f"_Generated by `build` from {len(refs)} reference cards. Mark progress on the reference card: status `queued` once asked for, `held` once it is a source in the brain (with `- held:: [[P###]]`), `skip` to drop it. `[~]` means queued; `2×` means cited in two paragraphs._", ""]
-    for k, title, cap in (("star", "★ Bearing on research gaps (gaps/RESEARCH-GAPS.md): read these first", 50),
-                          ("direct", "Cited where the brain's open gaps and tensions rest", 50),
+    L = [f"_Generated by `build` from {len(refs)} reference cards. Mark progress on the reference card: status `queued` once asked for, `held` once it is a source in the brain (with `- held:: [[P###]]`), `skip` to drop it; `priority: high` on a reference card puts it at the top. `[~]` means queued; `2×` means cited in two paragraphs; ◆ names the high-priority cards that lift a work; each list is sorted by score._", ""]
+    for k, title, cap in (("mine", "Marked high by you: read these first", 50),
+                          ("star", "★ Bearing on research gaps (gaps/RESEARCH-GAPS.md)", 50),
+                          ("high", "◆ From high-priority sources: cited in two or more paragraphs, or in their methods or results", 50),
+                          ("direct", "Cited where the brain's open gaps, tensions and high-priority findings rest", 50),
                           ("near", "Cited near cards sharing concepts with a gap or tension (weaker; top 12)", 12),
                           ("multi", "Cited by more than one source in the brain", 50)):
         rows = [x[-1] for x in sorted(tiers[k])]
+        if k == "mine" and not rows: continue
         L += [f"### {title} ({len(rows)})"] + (rows[:cap] or ["None yet."]) + ([f"…and {len(rows) - cap} more"] if len(rows) > cap else []) + [""]
     L += [f"Already in the brain: {held} cited works. Research gaps are gap cards with status confirmed or planned; open gaps become research gaps once a literature search finds no answer."]
     return L
+
+
+def days_since(d):
+    return (datetime.date.today() - datetime.date.fromisoformat(str(d)[:10])).days if re.match(r"\d{4}-\d\d-\d\d", str(d or "")) else 10 ** 6
+
+
+def set_fm(raw, key, value):
+    """Set (or, with value None, remove) one front-matter property, leaving the rest of the card as it is."""
+    mo = re.match(r"---\n(.*?)\n---\n", raw, re.S)
+    if not mo: return raw if value is None else f"---\n{key}: {value}\n---\n" + raw
+    lines = [l for l in mo.group(1).split("\n") if not re.match(re.escape(key) + r"\s*:", l)]
+    if value is not None:
+        k = next((n + 1 for n, l in enumerate(lines) if re.match(r"status\s*:", l)), next((n + 1 for n, l in enumerate(lines) if re.match(r"type\s*:", l)), len(lines)))
+        lines.insert(k, f"{key}: {value}")
+    return "---\n" + "\n".join(lines) + "\n---\n" + raw[mo.end():]
+
+
+def add_code_line(raw, key, line):
+    """Put a Codes line after the card's last line with that key, or first in Codes."""
+    head, sep, tail = raw.partition("\n## Codes\n")
+    if not sep: return raw.rstrip("\n") + f"\n\n## Codes\n{line}\n"
+    lines = tail.split("\n")
+    k = max([n + 1 for n, l in enumerate(lines) if l.startswith(f"- {key}::")] or [0])
+    lines.insert(k, line)
+    return head + sep + "\n".join(lines)
+
+
+def seed_priority(root):
+    """Convert the old gap priority (1, 2, 3 in Codes) to the card priority, and record a history line for any priority
+    changed without one (in Obsidian's Properties panel, say), so `check` can ask for the reason."""
+    m, k = Mesh(root), 0
+    for c in m.cards.values():
+        raw = c.raw
+        if c.fam == "page" and c.id[0] == "G" and re.fullmatch(r"[123]", c.get("priority")):
+            n = c.get("priority"); lvl = {"1": "high", "2": "normal", "3": "low"}[n]
+            raw = re.sub(r"^- priority:: *[123] *\n", "", raw, count=1, flags=re.M)
+            raw = set_fm(raw, "priority", None if lvl == "normal" else lvl)
+            raw = add_code_line(raw, "prioritised", f"- prioritised:: {TODAY} {lvl} — converted from gap priority {n}")
+        pr = (re.search(r"^priority:\s*(\S+)", raw.split("\n---\n", 1)[0], re.M) or [None, "normal"])[1].strip("'\"")
+        pl = re.findall(r"^- prioritised::\s*\S+\s+(\w+)", raw, re.M)
+        if pr in PRIORITY and ((pl and pl[-1] != pr) or (not pl and pr != "normal")):
+            raw = add_code_line(raw, "prioritised", f"- prioritised:: {TODAY} {pr} — set without a reason (in Obsidian or by hand)")
+        if raw != c.raw: wr(c.path, raw); k += 1
+    if k: print(f"priority recorded or converted on {k} cards")
+
+
+def cmd_priority(m, args):
+    """Set a card's priority with its reason, or list the cards set to high and low."""
+    if not args:
+        f = m.focus(); lifted = Counter(cause for lvl, cause in f.values() if lvl == "elevated")
+        for lvl in ("high", "low"):
+            rows = [c for c in m.cards.values() if c.priority == lvl]
+            print(f"## {lvl} ({len(rows)})")
+            for c in sorted(rows, key=lambda c: c.id):
+                pl = c.all("prioritised")
+                print(f"  {c.id} {one(c.title, 80)}" + (f" — lifts {lifted[c.id]} cards" if lvl == "high" else "") + (f"\n      {pl[-1]}" if pl else ""))
+        print(f"elevated (one link from a high card): {sum(1 for v in f.values() if v[0] == 'elevated')} cards")
+        return
+    if len(args) < 2 or args[1] not in PRIORITY: sys.exit('priority: give <id> <high|normal|low> "<why>" [--sync], or nothing to list')
+    c = need(m, args[0]); lvl = args[1]; why = " ".join(a for a in args[2:] if a != "--sync").strip()
+    if len(why.split()) < 2: sys.exit("priority: say why, in a few words; the reason is kept on the card")
+    raw = set_fm(c.raw, "priority", None if lvl == "normal" else lvl)
+    raw = add_code_line(raw, "prioritised", f"- prioritised:: {TODAY} {lvl} — {why}")
+    wr(c.path, raw)
+    print(f"{c.id}: priority {c.priority} -> {lvl}")
+    if "--sync" in args: cmd_sync(m.root, f"priority {c.id} {lvl}: {why}")
+    else: print("Run `mesh.py sync` to send it to GitHub.")
 
 
 def review_due(m, only=None):
@@ -2388,7 +2566,7 @@ def review_due(m, only=None):
             linked = {t[:4] for k in PAGES[p.id[0]][3] + UNIVERSAL for v in p.all(k) for t in m.ids(v)[0]}
             if src.id in linked or any(re.search(r"\b" + src.id + r"\b", v) for v in p.all("reviewed") + p.all("graded")): continue
             best = max(cards, key=lambda c: relevance(m, c, p, w)); sc = relevance(m, best, p, w)
-            if sc >= 0.35: out.append((p, src, best, sc))
+            if sc >= min(REVIEW_THR[m.level(src.id)], REVIEW_THR[m.level(p.id)]): out.append((p, src, best, sc))
     return out
 
 
@@ -2633,6 +2811,7 @@ claims <P###>                 list a source's claim cards and start its claims c
 mentions <P###>               paragraphs naming data sets and code, with links, accessions and matching cards
 repoinfo <github-url>         description, language, licence and README of a repository, for a code card
 remove <id> [--force] [--why "<reason>"]  delete a card for good (retiring is the usual way); --force unlinks it everywhere
+priority [<id> <high|normal|low> "<why>" [--sync]]  set a card's priority with its reason, or list high and low cards
 sync ["<message>"]            pull from GitHub, build, commit and push: at the start and end of every session
 refs <P###> [--force]         extract a source's reference list into P###_refs.md, with where each reference is cited
 cite <P###>                   turn the checked reference list into reference cards (references/R####), one per cited work
@@ -2659,7 +2838,7 @@ def main():
     if c == "version": print(VERSION); return
     if c == "upgrade": return cmd_upgrade(a[0])
     if c == "schema":
-        print(json.dumps({"schema": SCHEMA, "evidence_types": EVIDENCE_TYPES, "evidence_status": EVIDENCE_STATUS, "origin (default authors)": ORIGIN, "via (default text)": VIA, "evidence_relations": EVIDENCE_RELS, "pages (folder, type, status, link keys)": PAGES, "gap_kinds": GAP_KINDS, "concept_kinds": CONCEPT_KINDS, "concept_relations": CONCEPT_RELS, "inverse_labels_in_linked_from": INVERSE, "source_status": SOURCE_STATUS, "coverage_depths": DEPTHS, "source_kinds": SOURCE_KINDS, "reference_status": REF_STATUS, "reference_fields": REF_FIELDS}, indent=1)); return
+        print(json.dumps({"schema": SCHEMA, "evidence_types": EVIDENCE_TYPES, "evidence_status": EVIDENCE_STATUS, "origin (default authors)": ORIGIN, "via (default text)": VIA, "evidence_relations": EVIDENCE_RELS, "pages (folder, type, status, link keys)": PAGES, "gap_kinds": GAP_KINDS, "concept_kinds": CONCEPT_KINDS, "concept_relations": CONCEPT_RELS, "inverse_labels_in_linked_from": INVERSE, "source_status": SOURCE_STATUS, "coverage_depths": DEPTHS, "source_kinds": SOURCE_KINDS, "reference_status": REF_STATUS, "reference_fields": REF_FIELDS, "priority": PRIORITY, "data_and_code_status": ACCESS, "claims_status": CLAIMS_STATUS}, indent=1)); return
     if c == "repoinfo": return cmd_repoinfo(a[0])
     root = find_root()
     if c == "build": return cmd_build(root)
@@ -2671,6 +2850,7 @@ def main():
     elif c == "place": cmd_place(m, a[0])
     elif c == "refs": cmd_refs(m, a[0], "--force" in a)
     elif c == "claims": cmd_claims(m, a[0])
+    elif c == "priority": cmd_priority(m, a)
     elif c == "mentions": cmd_mentions(m, a[0])
     elif c == "remove": cmd_remove(m, a[0], "--force" in a, a[a.index("--why") + 1] if "--why" in a else "")
     elif c == "cite": cmd_cite(m, a[0])

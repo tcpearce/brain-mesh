@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.12.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.12.1"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -2876,7 +2876,8 @@ def fixconcepts(root):
         aliases = list(dict.fromkeys([title] + aliases + ([b] if b != slug and b != title else [])))
         head = ["---", "type: concept", "aliases: " + json.dumps(aliases, ensure_ascii=False), f"updated: {TODAY}"] + keep + ["---"]
         wr(f, "\n".join(head) + "\n" + body.rstrip("\n") + "\n")
-        made.append(slug); print(f"concepts/{b}.md made by hand: now concept {slug} (kind {(re.search(r'^- kind:: *(\S+)', body, re.M) or [None, 'concept'])[1]}); scan the sources for it with `mesh.py scan {slug}`")
+        kind_ = (re.search(r"^- kind:: *(\S+)", body, re.M) or [None, "concept"])[1]  # outside the f-string: Python before 3.12 allows no backslash there (issue #10)
+        made.append(slug); print(f"concepts/{b}.md made by hand: now concept {slug} (kind {kind_}); scan the sources for it with `mesh.py scan {slug}`")
     return made
 
 
@@ -3426,6 +3427,14 @@ def cmd_sync(root, msg=None, push=True):
                 sys.exit(f"sync: the pull failed; nothing was pushed.\n{(r.stderr or r.stdout).strip()}\n"
                          "If it is a conflict: in generated files (index/, MAP.md, AUTO blocks, *.bib, reading-queue) take either side and rebuild; "
                          "in cards, keep both contributions. Then `git add -A && git rebase --continue` and sync again. Never force-push.")
+        # the pull may bring newer tooling: finish the sync with it, not with the copy already running (issue #11)
+        disk = J(root, "tools", "mesh.py")
+        newv = (re.search(r'^VERSION = "([^"]+)"', rd(disk), re.M) or [0, VERSION])[1] if os.path.exists(disk) else VERSION
+        if newv != VERSION and os.path.abspath(__file__) == os.path.abspath(disk) and not os.environ.get("MESH_SYNC_NEW_TOOLING"):
+            print(f"sync: the pull brought tooling {newv} (this run is {VERSION}); finishing the sync with it")
+            if kept: print(f"sync: your local edits to {len(kept)} files clashed with newer versions from GitHub ({', '.join(kept[:8])}). The GitHub versions are in place; your edits are kept in the git stash (`git stash show -p`; `git stash drop` once you are sure).")
+            res = subprocess.run([sys.executable, disk, "sync"] + ([msg] if msg else []) + ([] if push else ["--no-push"]), cwd=root, env=dict(os.environ, MESH_SYNC_NEW_TOOLING="1"))
+            sys.exit(res.returncode)
         cmd_build(root)
         m = Mesh(root); m.check()
         if m.err: sys.exit(f"sync: build has {len(m.err)} errors; fix them before syncing (nothing committed)")

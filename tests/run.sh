@@ -2,10 +2,29 @@
 # Tests for the brain-mesh tooling. Run from the repository root:  bash tests/run.sh
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"; MESH="$ROOT/tools/mesh.py"; T="$(mktemp -d)"
+export PYTHONUTF8=1  # the inline Python below opens files without an encoding; on Windows that would mean cp1252 (issue #10)
 pass() { echo "ok   $1"; }; fail() { echo "FAIL $1"; exit 1; }
 
 # 1. versions agree
 [ "$(python3 "$MESH" version)" = "$(tr -d '[:space:]' < "$ROOT/VERSION")" ] && pass "VERSION file matches tools/mesh.py" || fail "VERSION file and tools/mesh.py disagree"
+# Python before 3.12 rejects a backslash inside an f-string's {expression}; vaults run on 3.10 and 3.11 too (issue #10)
+bad=$(python3 - "$MESH" <<'PY'
+import re, sys
+for n, line in enumerate(open(sys.argv[1], encoding="utf-8"), 1):
+    for m in re.finditer(r"""\bf(['"])(.*?)(?<!\\)\1""", line):
+        s, i, depth, start = m.group(2), 0, 0, 0
+        while i < len(s):
+            if depth == 0 and s[i:i + 2] in ("{{", "}}"): i += 2; continue  # escaped braces are literal text
+            if s[i] == "{":
+                depth += 1
+                if depth == 1: start = i
+            elif s[i] == "}" and depth:
+                depth -= 1
+                if depth == 0 and "\\" in s[start:i]: print(n)
+            i += 1
+PY
+)
+[ -z "$bad" ] && pass "no backslash inside an f-string expression (runs on Python 3.10 and 3.11)" || fail "f-string expression with a backslash at lines: $bad"
 
 # 2. smoke test: a three-card vault from scratch
 python3 "$MESH" init "$T/v" "Smoke test" "tooling check" > /dev/null
@@ -594,6 +613,8 @@ if command -v git > /dev/null; then
   git clone -q -b main "$T/remote.git" "$T/other" && (cd "$T/other" && git config user.email o@o && git config user.name o && sed -i 's/^\*\*Definition\.\*\*/**Definition (revised).**/' concepts/water.md && git commit -qam "edit elsewhere" && git push -q)
   sed -i 's/^\*\*Definition\.\*\*/**Definition (local).**/' concepts/water.md; echo '{"stale": true}' > index/stats.json
   python3 tools/mesh.py sync "after a clash" > "$T/sync2.txt" 2>&1; grep -q "Definition (revised)" concepts/water.md && ! grep -q "<<<<<<<" concepts/water.md && grep -q "clashed with newer versions from GitHub (concepts/water.md)" "$T/sync2.txt" && git stash list | grep -q autostash && pass "sync keeps GitHub's version of a clashing file and parks the local edit in the stash" || { echo "--sync.txt:"; cat sync.txt; grep -n Definition concepts/water.md; git stash list; git status --short | head; fail "sync clash"; }
+  (cd "$T/other" && git pull -q --rebase && sed -i 's/^VERSION = "[^"]*"/VERSION = "9.9.9"/' tools/mesh.py && git commit -qam "newer tooling elsewhere" && git push -q)
+  python3 tools/mesh.py sync "after newer tooling" > "$T/sync3.txt" 2>&1; grep -q "the pull brought tooling 9.9.9" "$T/sync3.txt" && [ "$(python3 tools/mesh.py version)" = "9.9.9" ] && grep -q "and pushed\|up to date" "$T/sync3.txt" && pass "sync finishes with the newer tooling a pull brings" || { cat "$T/sync3.txt"; fail "sync new tooling"; }
 fi
 # 11. priority: high, normal, low; history; spreading; the reading queue; concepts (1.7.0)
 cp -r "$ROOT/demo-vault" "$T/q"; cd "$T/q"; cp "$MESH" tools/mesh.py
@@ -914,8 +935,8 @@ python3 tools/mesh.py build > build.txt
 grep -q "swelling: 1 line states facts from evidence without the works that evidence cites: P001-007 → R0001" build.txt && pass "a hub line resting on cited evidence must cite the work too" || { cat build.txt; fail "hub line citation"; }
 grep -q "P001-010-.*· cited · cites \[\[R0001-lee-2015-[a-z-]*|Lee & Park (2015)\]\]" concepts/swelling.md && pass "the hub's evidence list shows the works each card cites" || { grep "P001-010" concepts/swelling.md; fail "hub cites list"; }
 python3 - <<'PY'
-import glob
-r = glob.glob("references/R0001-*.md")[0].split("/")[-1][:-3]
+import glob, os
+r = os.path.basename(glob.glob("references/R0001-*.md")[0])[:-3]  # basename: glob gives backslashes on Windows
 for f in ("concepts/swelling.md", "concepts/binding-capacity.md"):
     head, sep, tail = open(f).read().partition("<!--AUTO:START")
     head = "\n".join(l + f" Hydrogels are known to swell more when warmer ([[{r}|Lee & Park 2015]])." if "P001-007" in l else l for l in head.split("\n"))

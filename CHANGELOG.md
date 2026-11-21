@@ -2,6 +2,11 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.12.1 (2026-11-21)
+
+- The tooling starts again on Python 3.10 and 3.11. 1.11.0 put a backslash inside an f-string expression, which only Python 3.12 accepts. A test now flags any such expression, and the test suite runs on Windows (UTF-8 mode, paths from glob) (issue #10).
+- `sync` finishes with the tooling a pull brings. Before, it built, committed and pushed with the old code still loaded in memory, so generated sections went out in the old format (issue #11).
+
 ## 1.12.0 (2026-11-21)
 
 Every link can be followed both ways.

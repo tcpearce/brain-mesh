@@ -21,6 +21,12 @@ folder and never runs `sync`, `build` or any command that writes shared files; t
 A vault rule below that asks for a shared change (a new concept, a priority) is met by proposing it in the paper's
 own files for that session to make.
 
+**New concepts are the user's call.** An agent proposes one (`python3 tools/mesh.py propose <slug> "<definition>"
+--from P012`) and links the proposed name; it becomes a card when the user adopts it (`adopt`), or when the user makes
+it by hand as a note in `concepts/`, which `build` turns into a card. An agent makes a concept card itself only on the
+user's word, or where a vault rule below tells it to. After a new concept, `python3 tools/mesh.py scan <concept>`
+finds it in the papers already in the brain.
+
 ## Never
 
 - Edit `sources/*/P*.pdf`, `*_text.md`, anything between `<!--AUTO:START-->` and `<!--AUTO:END-->`, `## Linked from`

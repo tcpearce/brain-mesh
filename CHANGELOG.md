@@ -2,6 +2,16 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.11.0 (2026-11-21)
+
+Every concept looked for in every paper; facts carry the citations the paper gives; new concepts are the user's call.
+
+- **`scan P012`** looks for every concept in the brain across a source's text (names and aliases, British or American spelling, plurals; word stems for high-priority concepts and sources; reference lists and the title block left out). It lists the passages no card of the source covers, with the sentence and the works the paper cites in it, numbered or author-year, and the source's cards whose passage cites works but which carry no `cites::` line. Writes `P012_scan.md`, where `decided::` lines record why a concept's remaining passages add nothing. `scan <concept>` does one concept across every source; `scan` alone summarises. `check` warns about a source with passages neither carded nor decided, so a new concept is flagged in every paper that names it.
+- **Citations behind facts.** `check` warns about an evidence card, other than a measured or derived result, whose anchored paragraph cites works and that has no `cites::` line; `cites:: none — <why>` answers it. A concept-hub line stating a fact from such a card must cite the works too. The hub's generated evidence list shows the works each card cites.
+- **Proposals.** `propose <slug> "<definition>" [--from P012]` writes a proposal (in the paper's `P012_concepts.md`, or `ledger/concept-proposals.md`). Cards may link proposed names: `check` warns, never refuses, so a vault with proposals waiting for the user still syncs. `adopt --all` makes cards of proposals that match nothing; `adopt <name> into <proposal>` folds without making a card; `reject <name> "<why>"` turns one down, turns its links into plain words and records the name so it is not proposed again. `concept` shows rejected names.
+- **Concepts made by hand.** A note the user makes in `concepts/` ("Mixture suppression.md", a sentence or more) becomes a concept card at the next `build`: front matter, definition, generated block, id, kind, `origin:: made by the user`, file renamed to the slug and links repointed.
+- New skill `brain-mesh-concept-scan`: scan chosen or all sources and card every fact with its citations. add-paper, batch, access, the main skill and the vault's `CLAUDE.md`: agents propose concepts and the user adopts them; extraction cites what the paper cites; every paper gets a concept scan.
+
 ## 1.10.0 (2026-11-21)
 
 - The reading queue puts recent work first (issue #7). Within each list a work's score halves with every 8 years of age (`queue_half_life` in `MESH.json`), unless the work is foundational. Foundational means cited by two or more sources in the brain, cited in two or more paragraphs where one source's methods, models or results rest, marked high, or carrying `foundational::` or a `cited_count::` of at least 500 (`queue_foundational_citations`). Foundational works keep full weight and, once older than the half-life, are marked ⌛. Each queue line now shows the work's year.

@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.10.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.11.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -414,6 +414,7 @@ class Card:
 class Mesh:
     def __init__(s, root):
         s.root, s.err, s.warn, s._blocks, s._terms = root, [], [], {}, {}
+        s._hits, s._crx, s._clinks, s._citedat, s._proposed = {}, {}, {}, None, None
         s.cfg = json.loads(rd(J(root, "MESH.json")))
         s.cards, s.byname, s.alias = {}, {}, {}
         def add(f, fam, cid):
@@ -486,9 +487,13 @@ class Mesh:
     def staged(s, pid=None):
         """Concepts proposed by extraction agents in sources/P###/P###_concepts.md, not yet merged into concepts/."""
         out = {}
-        for f in sorted(glob.glob(J(SRC(s.root, pid), pid + "_concepts.md")) if pid else glob.glob(J(s.root, "sources", "P[0-9][0-9][0-9]*", "P[0-9][0-9][0-9]_concepts.md"))):
-            for name in re.findall(r"^=== *(\S+?)(?:\.md)? *$", rd(f), re.M): out.setdefault(name, []).append(os.path.basename(f)[:4])
+        files = sorted(glob.glob(J(SRC(s.root, pid), pid + "_concepts.md")) if pid else glob.glob(J(s.root, "sources", "P[0-9][0-9][0-9]*", "P[0-9][0-9][0-9]_concepts.md")) + glob.glob(J(s.root, "ledger", "concept-proposals.md")))
+        for f in files:
+            for name in re.findall(r"^=== *(\S+?)(?:\.md)? *$", rd(f), re.M): out.setdefault(name, []).append("ledger" if f.endswith("concept-proposals.md") else os.path.basename(f)[:4])
         return out
+    def proposed(s):
+        if s._proposed is None: s._proposed = set(s.staged())
+        return s._proposed
     def terms(s, c):
         if c.id not in s._terms: s._terms[c.id] = {i for k, v in c.codes if k in ("concepts", "value", "when", "maps") for i in s.ids(v)[0] if s.cards[i].fam == "concept"}
         return s._terms[c.id]
@@ -564,6 +569,7 @@ class Mesh:
 
     def check(s, only=None):
         E, W, notes = s.err, s.warn, Counter()
+        plinks = defaultdict(set)
         for c in s.cards.values():
             i, pid = c.id, c.id[:4]
             if only and not (c.fam in ("evidence", "source", "claims") and pid == only): continue
@@ -590,13 +596,13 @@ class Mesh:
                     if r_ and s.cards[r_].fam == "reference" and r_ not in coded: W.append(f"{i}: cites {r_} in the prose but not in Codes: add '- cites:: [[{s.cards[r_].name}]] — what it supports here'"); coded.add(r_)
             for t, _a, _d in WIKI.findall(c.raw):
                 if not s.resolve(t) and not s.aux(t):
-                    if only and t.strip() in s.staged(only): W.append(f"{i}: links [[{t.strip()}]], a concept proposed in {only}_concepts.md and not yet merged")
+                    if t.strip() in s.proposed(): plinks[t.strip()].add(i)
                     else: E.append(f"{i}: broken link [[{t.strip()}]]")
             for k, v in c.codes:
-                if k in LINK_KEYS and not s.ids(v)[0] and v: E.append(f"{i}: '{k}::' has no card link")
+                if k in LINK_KEYS and not s.ids(v)[0] and v and not (k == "cites" and re.match(r"none\b", v, re.I)) and not any(t.strip() in s.proposed() for t, _a, _d in WIKI.findall(v)): E.append(f"{i}: '{k}::' has no card link")
             prose_terms = {r for t, _a, _d in WIKI.findall(c.human) for r in [s.resolve(t)] if r and s.cards[r].fam == "concept"}
             if c.fam in ("evidence", "page") and prose_terms - s.terms(c): W.append(f"{i}: concepts linked in the prose but absent from Codes: {' '.join(sorted(prose_terms - s.terms(c)))}")
-            if c.fam in ("evidence", "page") and not s.terms(c): E.append(f"{i}: Codes link no concept card (add '- concepts:: [[...]]')")
+            if c.fam in ("evidence", "page") and not s.terms(c) and not any(t.strip() in s.proposed() for _k, v in c.codes for t, _a, _d in WIKI.findall(v)): E.append(f"{i}: Codes link no concept card (add '- concepts:: [[...]]')")
             if c.fam == "evidence":
                 if c.get("retired"): continue
                 if c.type not in EVIDENCE_TYPES: E.append(f"{i}: type '{c.type}' not in {EVIDENCE_TYPES}")
@@ -604,6 +610,9 @@ class Mesh:
                 origin, via = c.get("origin", "authors"), c.get("via", "text")
                 if origin not in ORIGIN: E.append(f"{i}: origin '{origin}' not in {ORIGIN}")
                 if via not in VIA: E.append(f"{i}: via '{via}' not in {VIA}")
+                if c.status not in ("measured", "derived") and not c.all("cites"):
+                    ws = list(dict.fromkeys(r for a in s.anchors(c) if re.fullmatch(r"[bsc]\d{4}", a) for r in cited_at(s).get((pid, a), [])))
+                    if ws: W.append(f"{i}: its passage cites {', '.join(f'{r.id} {short_cite(r)}' for r in ws[:5])}{' …' if len(ws) > 5 else ''}; add '- cites:: [[R…]] — what it supports' for each work the statement rests on, or '- cites:: none — <why>' (`mesh.py scan {pid}` shows the works cited in its own sentence)")
                 for k, _v in c.codes:
                     if k in LINK_KEYS and k not in EVIDENCE_RELS + UNIVERSAL and not (k == "also_cited_by" and c.type == "cited"): E.append(f"{i}: '{k}::' is not an evidence relation {EVIDENCE_RELS}")
                 bl, src, has_block, an = s.blocks(pid), "", False, s.anchors(c)
@@ -622,9 +631,12 @@ class Mesh:
                             if f.lower().endswith((".csv", ".tsv", ".txt", ".md")): src += " " + rd(f)
                     elif not re.fullmatch(r"(F\d+[a-z]*|p\d+|eq[0-9a-z]+|SI\S*|CR-p\d+)", a): E.append(f"{i}: bad anchor '{a}'")
                 vals = [s.pair(v) for v in c.all("value")]
-                for var, _r in vals:
+                firstlink = lambda v: (WIKI.search(v).group(1).strip() if WIKI.search(v) else "")
+                for (var, _r), v_ in zip(vals, c.all("value")):
+                    if not var and firstlink(v_) in s.proposed(): continue
                     if not var or s.cards[var].fam != "concept": E.append(f"{i}: 'value::' must start with a [[variable]] concept link then ' = '")
                 for wv, val, is_term in s.whens(c):
+                    if not wv and any(firstlink(v_) in s.proposed() for v_ in c.all("when")): continue
                     if not wv or s.cards[wv].fam != "concept": E.append(f"{i}: 'when::' must start with a [[variable]] concept link then ' = '")
                     elif s.cards[wv].get("unit") == "categorical" and not is_term: E.append(f"{i}: when {wv} is categorical, so its value must be a concept link (got '{val}')")
                 if src and via in ("text", "table", "si"):
@@ -688,6 +700,9 @@ class Mesh:
                 for r in cov:
                     if len(r) < 2 or r[1] not in DEPTHS: E.append(f"{i}: coverage '{' | '.join(r)}' needs depth in {DEPTHS}")
                 if not s.blocks(i): W.append(f"{i}: no anchored {i}_text.md")
+                elif c.status in ("extracted", "integrated"):
+                    todo = scan_todo(s, i)
+                    if todo: W.append(f"{i}: {len(todo)} concept{'s are' if len(todo) > 1 else ' is'} named in passages no card of {i} covers, with no decision: " + ", ".join(f"{cid} ({len(u)})" for cid, u in todo[:8]) + (" …" if len(todo) > 8 else "") + f" — run `mesh.py scan {i}`, then card the facts (with cites:: for the works cited) or write a decided:: line in {i}_scan.md")
                 files = source_files(s.root, i)
                 if not [f for f in files if "_SI" not in os.path.basename(f)]: W.append(f"{i}: the source file itself is not in the vault, so page links are dead")
                 si, gaps_ = s.si_state(i), sum(1 for c_ in s.evidence(i) if c_.get("missing"))
@@ -739,6 +754,14 @@ class Mesh:
                 if c.get("retired"): continue
                 if c.get("kind") not in CONCEPT_KINDS: E.append(f"{i}: kind '{c.get('kind')}' not in {CONCEPT_KINDS}")
                 if c.get("kind") == "variable" and not c.get("unit"): W.append(f"{i}: variable has no '- unit::' (use 1 or categorical)")
+                if "(to write: one sentence" in c.prose(): W.append(f"{i}: made by hand without a definition: write one sentence after **Definition.**")
+                miss = []
+                for line in c.prose().split("\n"):
+                    ids_ = set(s.ids(line)[0])
+                    evs = [s.cards[t] for t in ids_ if s.cards[t].fam == "evidence" and works_cited(s, s.cards[t])]
+                    need = {w.id for e in evs for w in works_cited(s, e)}
+                    if need and not need & ids_: miss.append((sorted(e.id for e in evs), sorted(need)))
+                if miss: W.append(f"{i}: {len(miss)} line{'s' * (len(miss) > 1)} state{'' if len(miss) > 1 else 's'} facts from evidence without the works that evidence cites: " + "; ".join(f"{', '.join(e)} → {', '.join(n)}" for e, n in miss[:4]) + (" …" if len(miss) > 4 else "") + " — cite them in the line as [[R…|Author et al. (year)]], with a cites:: line")
                 for k, v in c.codes:
                     if k in UNIVERSAL: continue
                     if k in LINK_KEYS and k not in CONCEPT_RELS: E.append(f"{i}: '{k}::' is not a concept relation {CONCEPT_RELS}")
@@ -840,6 +863,8 @@ class Mesh:
                 rf = J(SRC(s.root, src.id), src.id + "_refs.md")
                 if os.path.exists(rf) and src.id not in cited: W.append(f"{src.id}: its references are extracted ({src.id}_refs.md) but not yet turned into reference cards: run `mesh.py cite {src.id}`")
                 elif not os.path.exists(rf) and src.get("kind") in ("paper", "preprint", "thesis", "report"): notes["papers whose reference list is not extracted"] += 1
+        for nm, ids_ in sorted(plinks.items()):
+            W.append(f"[[{nm}]] is a proposed concept ({', '.join(s.staged()[nm])}), not yet a card, linked by {len(ids_)} card{'s' * (len(ids_) > 1)} ({', '.join(sorted(ids_)[:4])}{' …' if len(ids_) > 4 else ''}): the user makes it a card (`adopt {nm}`), or fold it into a concept (`adopt {nm} into <concept>`), or turn it down (`reject {nm} \"<why>\"`)")
         return notes
 
     def figure_values(s, c, pid, an, vals, W):
@@ -1763,7 +1788,7 @@ def seed_grades(m):
 
 
 def cmd_build(root):
-    fixnames(root); fixfolders(root)
+    fixconcepts(root); fixnames(root); fixfolders(root)
     seed_grades(Mesh(root)); seed_priority(root)
     n = fixlinks(Mesh(root))
     m = Mesh(root)
@@ -1831,7 +1856,8 @@ def cmd_build(root):
             L.append(f"**Evidence: {len(ev)} cards from {len({c.id[:4] for c in ev})} sources** ({', '.join(f'{k} {v}' for k, v in ranked(Counter(c.type for c in ev)))})")
             ev.sort(key=lambda c: (rank.index(c.type) if c.type in rank else 99, c.id))
             rx = m.retracted()
-            L += [f"- {lk(c, one(c.title, 110))} · {c.type}" + (" · **retracted**" if c.id in rx else "") for c in ev[:30]]
+            ctail = lambda c: (" · cites " + ", ".join(f"[[{w.name}|{short_cite(w)}]]" for w in works_cited(m, c)[:3]) + (" …" if len(works_cited(m, c)) > 3 else "")) if works_cited(m, c) else ""
+            L += [f"- {lk(c, one(c.title, 110))} · {c.type}" + ctail(c) + (" · **retracted**" if c.id in rx else "") for c in ev[:30]]
             if len(ev) > 30: L.append(f"- … {len(ev) - 30} more: see this note's backlinks, or run `mesh.py show {con.id}`")
             L.append("")
         fromcon = [r for r in inbound.get(con.id, []) if r[1].fam == "concept"]
@@ -2081,8 +2107,10 @@ def cmd_concept(m, name):
         names = [nm.replace("-", " ")] + [" ".join(t.lower().split()) for _p, _f, _b, t, _a in props] + [" ".join(a.lower().split()) for _p, _f, _b, _t, al in props for a in al]
         if any((len(a) > 3 and (k in a or a in k)) or a == k or words & {w.rstrip("s") for w in a.split() if len(w) > 3} for a in names) or difflib.get_close_matches(k, names, n=1, cutoff=0.75):
             found.append(nm); print(f"[[{nm}]]\tPROPOSED by {', '.join(sorted({x[0] for x in props}))}, not yet a card\t{props[0][3]}\taliases={sorted({a for x in props for a in x[4]})}")
-    if found: print("A name proposed by another paper's agent: link to that same name and do not propose it again; the merging session adopts it.")
-    if not ids and not found: print(f"no existing or proposed concept resembles '{name}': propose it in your source's P###_concepts.md (agents) or create concepts/<slug>.md")
+    if found: print("A name already proposed: link to that same name and do not propose it again; it becomes a card when the user adopts it.")
+    rj = {nm: why for nm, why in rejected_concepts(m.root).items() if (len(nm) > 3 and (k.replace(" ", "-") in nm or nm in k.replace(" ", "-"))) or words & {w.rstrip("s") for w in nm.split("-") if len(w) > 3}}
+    for nm, why in rj.items(): print(f"{nm}\tREJECTED by the user ({why}): do not propose it again")
+    if not ids and not found: print(f'no existing or proposed concept resembles \'{name}\': propose it with `mesh.py propose <slug> "<definition>" --from P###`; the user makes it a card')
 
 def cmd_neighbours(m, target, top=5, floor=0.2):
     """For one card, or each evidence card of a source: likely duplicates in the same source, and the cards in other
@@ -2241,11 +2269,16 @@ def cmd_progress(m, pid):
     if os.path.exists(p): print("  progress note:\n" + "\n".join("    " + l for l in rd(p).strip().splitlines()[-12:]))
 
 
+def proposal_files(root):
+    return sorted(glob.glob(J(root, "sources", "P[0-9][0-9][0-9]*", "P[0-9][0-9][0-9]_concepts.md"))) + glob.glob(J(root, "ledger", "concept-proposals.md"))
+
+
 def staged_blocks(m):
-    """Concept proposals in every source's P###_concepts.md: {name: [(source id, file, block text, title, aliases)]}."""
+    """Concept proposals in every source's P###_concepts.md and in ledger/concept-proposals.md: {name: [(source id or
+    'ledger', file, block text, title, aliases)]}."""
     out = defaultdict(list)
-    for f in sorted(glob.glob(J(m.root, "sources", "P[0-9][0-9][0-9]*", "P[0-9][0-9][0-9]_concepts.md"))):
-        pid, t = os.path.basename(f)[:4], rd(f)
+    for f in proposal_files(m.root):
+        pid, t = ("ledger" if f.endswith("concept-proposals.md") else os.path.basename(f)[:4]), rd(f)
         for name, body in zip(*[iter(re.split(r"^=== *(\S+?)(?:\.md)? *$", t, flags=re.M)[1:])] * 2):
             title = (re.search(r"^# (.+)$", body, re.M) or [None, name.replace("-", " ")])[1].strip()
             al = re.search(r"^aliases:\s*\[(.*?)\]", body, re.M)
@@ -2259,7 +2292,7 @@ def relink(m, old, new):
     Returns the number of files changed."""
     pat = re.compile(r"\[\[" + re.escape(old) + r"(#[^\]|]*)?(\|[^\]]*)?\]\]")
     n = 0
-    files = [c.path for c in m.cards.values()] + sorted(glob.glob(J(m.root, "sources", "P[0-9][0-9][0-9]*", "P[0-9][0-9][0-9]_concepts.md")))
+    files = [c.path for c in m.cards.values()] + proposal_files(m.root)
     for path in files:
         t = rd(path)
         if f"[[{old}" not in t: continue
@@ -2288,7 +2321,9 @@ def add_aliases(raw, names):
     fm = mo.group(1) if mo else ""
     cur = re.search(r"^aliases:\s*\[(.*?)\]\s*$", fm, re.M)
     have = [x.strip().strip("'\"") for x in cur.group(1).split(",") if x.strip()] if cur else []
-    add = [x for x in dict.fromkeys(names) if x and x.lower() not in {h.lower() for h in have}]
+    seen_, add = {h.lower() for h in have}, []
+    for x in names:
+        if x and x.lower() not in seen_: add.append(x); seen_.add(x.lower())
     if not add: return raw
     line = "aliases: [" + ", ".join(json.dumps(x, ensure_ascii=False) for x in have + add) + "]"
     if cur: fm = fm[:cur.start()] + line + fm[cur.end():]
@@ -2296,23 +2331,52 @@ def add_aliases(raw, names):
     return "---\n" + fm + "\n---\n" + (raw[mo.end():] if mo else raw)
 
 
+def proposal_matches(m, names):
+    """{proposal: (existing concepts it resembles, other proposals that look like its twins)}."""
+    out, cw = {}, (lambda x: {w for w in x.split("-") if len(w) >= 4 and w not in STOP})
+    for nm in names:
+        k = nm.replace("-", " "); words = {x.rstrip("s") for x in k.split() if len(x) > 3}
+        like = [a for a in m.alias if (len(a) > 3 and (k in a or a in k)) or words & {x.rstrip("s") for x in a.split() if len(x) > 3}] + difflib.get_close_matches(k, list(m.alias), n=4, cutoff=0.75)
+        twins = [o for o in names if o != nm and (difflib.SequenceMatcher(None, o, nm).ratio() > 0.75 or cw(o) & cw(nm))]
+        out[nm] = (list(dict.fromkeys(m.alias[a] for a in like)), twins)
+    return out
+
+
 def cmd_adopt(m, args):
-    """Settle a concept an extraction agent proposed. `adopt <name>` makes it a concept card from the fullest
-    proposal, adding every proposing paper's aliases. `adopt <name> into <concept>` makes it an alias of an existing
-    concept, or of another proposal (adopted first), and points every link at that concept. Either way the proposal
-    leaves every P###_concepts.md."""
-    if not args: sys.exit("adopt: give <proposed name> [into <concept>]")
-    name, target = args[0], (args[2] if len(args) > 2 and args[1] == "into" else None)
+    """Settle a proposed concept. `adopt <name>` makes it a concept card from the fullest proposal, with every
+    proposing paper's names as aliases; an agent runs it only on the user's word, or where a vault rule tells it to.
+    `adopt <name> into <concept>` folds it into an existing concept, or into another proposal (which stays a
+    proposal), adding its names as aliases and pointing every link at the target. `adopt --all` makes a card of each
+    proposal that has no twin and resembles no existing concept, and lists the rest for a decision."""
+    if not args: sys.exit("adopt: give <proposed name> [into <concept or proposal>], or --all")
     st = staged_blocks(m)
+    if args[0] == "--all":
+        if not st: print("adopt: no proposals"); return
+        mt = proposal_matches(m, sorted(st)); left = []
+        for nm in sorted(st):
+            k = nm.replace("-", " ")
+            like = list(dict.fromkeys(m.alias[a] for a in m.alias if (len(a) > 3 and (k in a or a in k)) or difflib.SequenceMatcher(None, a, k).ratio() > 0.8))
+            twins = mt[nm][1]
+            if like or twins: left.append(f"{nm}: " + "; ".join(x for x in ((f"resembles {', '.join(like)}" if like else ""), (f"twin of {', '.join(twins)}" if twins else "")) if x)); continue
+            cmd_adopt(Mesh(m.root), [nm])
+        if left: print("left for a decision (`adopt <name>`, `adopt <name> into <concept>` or `reject <name> \"<why>\"`):\n  " + "\n  ".join(left))
+        return
+    name, target = args[0], (args[2] if len(args) > 2 and args[1] == "into" else None)
     if name not in st: sys.exit(f"adopt: no proposal named '{name}' (see `mesh.py staged`)")
     props = st[name]
+    names = [name.replace("-", " ")] + [t for _p, _f, _b, t, _a in props] + [a for _p, _f, _b, _t, al in props for a in al]
     if target:
-        if target not in m.cards and target in st:
-            cmd_adopt(m, [target]); m = Mesh(m.root)
         tid = m.resolve(target) or m.alias.get(" ".join(target.lower().split()))
-        if not tid or m.cards[tid].fam != "concept": sys.exit(f"adopt: '{target}' is neither a concept nor a proposal")
+        if (not tid or m.cards[tid].fam != "concept") and target in st and target != name:
+            f = max(st[target], key=lambda x: (len(x[2]), x[0]))[1]
+            edit_block(f, target, lambda body: add_aliases(body, names))
+            n = relink(m, name, target)
+            for _pid, f_, _b, _t, _a in props: drop_proposal(f_, name)
+            print(f"adopt: '{name}' folded into the proposal '{target}', which stays a proposal until it is adopted; links rewritten in {n} files")
+            return
+        if not tid or m.cards[tid].fam != "concept": sys.exit(f"adopt: '{target}' is neither a concept nor another proposal")
         tc = m.cards[tid]
-        wr(tc.path, add_aliases(rd(tc.path), [name.replace("-", " ")] + [t for _p, _f, _b, t, _a in props] + [a for _p, _f, _b, _t, al in props for a in al]))
+        wr(tc.path, add_aliases(rd(tc.path), names))
         n = relink(m, name, tc.name)
         for _pid, f, _b, _t, _a in props: drop_proposal(f, name)
         print(f"adopt: '{name}' (proposed by {', '.join(sorted({x[0] for x in props}))}) is now an alias of {tid}; links rewritten in {n} files")
@@ -2321,27 +2385,432 @@ def cmd_adopt(m, args):
     if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", name) or re.fullmatch(r"[pkxghelcdrtas]\d{3}.*", name): sys.exit(f"adopt: '{name}' is not a valid concept slug")
     best = max(props, key=lambda x: (len(x[2]), x[0]))[2]
     raw = best if best.startswith("---") else f"---\ntype: concept\nupdated: {TODAY}\n---\n" + best
+    if not re.search(r"^type:\s*concept\s*$", raw.split("\n---\n", 1)[0], re.M): raw = set_fm(raw, "type", "concept")
     raw = add_aliases(raw, [t for _p, _f, _b, t, _a in props] + [a for _p, _f, _b, _t, al in props for a in al])
     if "\n## Codes" not in raw: raw = raw.rstrip("\n") + "\n\n## Codes\n"
     if not re.search(r"^- id::", raw, re.M): raw = raw.replace("\n## Codes\n", f"\n## Codes\n- id:: {name}\n", 1)
-    wr(J(m.root, "concepts", name + ".md"), raw.rstrip("\n") + "\n")
+    raw = raw.rstrip("\n") + f"\n- adopted:: {TODAY}\n"
+    wr(J(m.root, "concepts", name + ".md"), raw)
     for _pid, f, _b, _t, _a in props: drop_proposal(f, name)
     print(f"adopt: concept {name} created from the proposal of {max(props, key=lambda x: (len(x[2]), x[0]))[0]}" + (f", with the aliases of {len(props) - 1} other proposals" if len(props) > 1 else "")
-          + (" (proposed as low priority; `build` records it)" if re.search(r"^priority:\s*low", raw, re.M) else ""))
+          + (" (proposed as low priority; `build` records it)" if re.search(r"^priority:\s*low", raw, re.M) else "") + f". Look for it in the sources already in the brain: `mesh.py scan {name}`")
 
 
 def cmd_staged(m):
-    """Concepts proposed by extraction agents: which sources propose each, and the existing concepts they resemble."""
+    """Proposed concepts: which sources propose each, the existing concepts they resemble and their likely twins."""
     st = m.staged()
-    if not st: print("no staged concepts"); return
-    names = sorted(st)
+    if not st: print("no proposed concepts"); return
+    names = sorted(st); mt = proposal_matches(m, names)
     for nm in names:
-        k = nm.replace("-", " "); words = {x.rstrip("s") for x in k.split() if len(x) > 3}
-        like = [a for a in m.alias if (len(a) > 3 and (k in a or a in k)) or words & {x.rstrip("s") for x in a.split() if len(x) > 3}] + difflib.get_close_matches(k, list(m.alias), n=4, cutoff=0.75)
-        cw = lambda x: {w for w in x.split("-") if len(w) >= 4 and w not in STOP}
-        twins = [o for o in names if o != nm and (difflib.SequenceMatcher(None, o, nm).ratio() > 0.75 or cw(o) & cw(nm))]
-        print(f"{nm}  (from {', '.join(st[nm])})" + (f"\n   existing: {', '.join(dict.fromkeys(m.alias[a] for a in like))}" if like else "") + (f"\n   staged twins: {', '.join(twins)}" if twins else ""))
-    print(f"{len(names)} staged concepts. Settle each with one command: `adopt <name>` creates it, `adopt <name> into <concept or other proposal>` folds it in and rewrites every link.")
+        like, twins = mt[nm]
+        print(f"{nm}  (from {', '.join(st[nm])})" + (f"\n   existing: {', '.join(like)}" if like else "") + (f"\n   staged twins: {', '.join(twins)}" if twins else ""))
+    print(f"{len(names)} proposed concepts. Fold a twin or a near match with `adopt <name> into <concept or other proposal>` (rewrites every link); the user makes the rest cards with `adopt <name>` (or `adopt --all` for those with no match), or turns one down with `reject <name> \"<why>\"`.")
+
+
+# ---- 1.11.0: concept scan, proposals, hand-made concepts, citations behind facts ----
+
+def concept_rx(con, deep=False):
+    """One regular expression for a concept: its slug, title and aliases, allowing British and American spelling
+    (odour, odor; -ise, -ize), hyphens or spaces between words, and plurals. Acronyms (POM, GNN, gLMS) match in
+    their own case. deep: word stems too (glomerul- finds glomerular), for high-priority concepts and sources.
+    Returns (regex or None, prefilter keys)."""
+    names = [con.id.replace("-", " "), con.title] + [str(a) for a in (con.fm.get("aliases") or [])]
+    ci, cs, keys = set(), set(), set()
+    def word(w, last):
+        s_ = re.sub(r"(?<=[a-z]{2})([iy])[sz](?=(?:e|ed|es|ing|ation|ations|er|ers)$)", lambda mo: mo.group(1) + "\x01", w)
+        s_ = s_.replace("our", "\x02").replace("or", "\x02")
+        suf = ""
+        if deep and len(w) >= 7: s_, suf = s_[:max(5, len(s_) - 3)], "[a-z]*"
+        elif last: s_, suf = (s_[:-1], "(?:y|ies)") if s_.endswith("y") else (s_, "(?:es)?" if s_.endswith("s") else "(?:s|es)?")
+        return s_.replace("\x01", "[sz]").replace("\x02", "ou?r") + suf
+    for nm in names:
+        nm = str(nm)
+        for part in [re.sub(r"\([^)]*\)", " ", nm)] + re.findall(r"\(([^)]+)\)", nm):
+            part = " ".join(part.split())
+            if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9\-]{1,9}", part) and sum(ch.isupper() for ch in part) >= 2:
+                cs.add(re.escape(part).replace(r"\-", "[-‐–\\s]?")); keys.add(part.lower()[:3]); continue
+            words = re.findall(r"[a-z0-9]+", ascii_fold(part).lower())
+            if not words or (len(words) == 1 and (len(words[0]) < 4 or words[0].isdigit())): continue
+            ci.add(r"[\s\-‐‑–/]+".join(word(w, k == len(words) - 1) for k, w in enumerate(words))); keys.add(words[0][:3])
+    if not ci and not cs: return None, set()
+    alts = ([f"(?i:{'|'.join(sorted(ci, key=len, reverse=True))})"] if ci else []) + sorted(cs, key=len, reverse=True)
+    return re.compile(r"(?<![A-Za-z0-9])(?:" + "|".join(alts) + r")(?![A-Za-z0-9])"), keys
+
+
+def ref_paras(blocks):
+    """Paragraphs the concept scan leaves out: the reference list (`ref_region`, and a list whose heading runs into its
+    first entry, as author-year lists often do: 'References Abraham, Michael H., ... 2012.'), and the title block
+    before an Abstract heading."""
+    out, ids = {b for b, _t in ref_region(blocks)}, list(blocks)
+    st = next((k for k, b in enumerate(ids) if k > len(ids) * 0.4 and re.match(r"\s*(References|REFERENCES|Bibliography|BIBLIOGRAPHY|Literature Cited|LITERATURE CITED)\b", blocks[b][1])), None)
+    for b in (ids[st:] if st is not None else []):
+        if re.match(r"\s*(ACKNOWLEDG|Acknowledg|AUTHOR CONTRIBUTIONS|Author contributions|SUPPLEMENTARY MATERIALS|Supplementary (Materials|Information|Figures)\s*$)", blocks[b][1]): break
+        out.add(b)
+    ab = next((k for k, b in enumerate(ids[:8]) if re.match(r"\s*(Abstract|ABSTRACT|Summary|SUMMARY)\b", blocks[b][1])), None)
+    return out | set(ids[:ab] if ab else [])  # the title block before an Abstract heading: title, authors, journal
+
+
+def concept_hits(m, pid, only=None):
+    """{concept id: {paragraph: [(start, end)]}}: where each live concept is named in a source's text, main and
+    supplementary, leaving out reference lists."""
+    if only is None and pid in m._hits: return m._hits[pid]
+    blocks = m.blocks(pid)
+    skip = {b for part in "bsc" for b in ref_paras({k: v for k, v in blocks.items() if k[0] == part})}
+    low = {b: t.lower() for b, (_pg, t) in blocks.items() if b not in skip}
+    deep_src = pid in m.cards and m.cards[pid].priority == "high"
+    out = {}
+    for con in [c for c in m.cards.values() if c.fam == "concept" and not c.get("retired") and (only is None or c.id == only)]:
+        key = (con.id, deep_src or con.priority == "high")
+        if key not in m._crx: m._crx[key] = concept_rx(con, key[1])
+        rx, keys = m._crx[key]
+        if rx is None: continue
+        h = {}
+        for b, tl in low.items():
+            if keys and not any(k in tl for k in keys): continue
+            sp = [mo.span() for mo in rx.finditer(blocks[b][1])]
+            if sp: h[b] = sp
+        if h: out[con.id] = h
+    if only is None: m._hits[pid] = out
+    return out
+
+
+def concept_links(m, c):
+    """Concepts a card links anywhere, prose or Codes."""
+    if c.id not in m._clinks:
+        txt = c.prose() + "\n" + "\n".join(v for _k, v in c.codes)
+        m._clinks[c.id] = {r for t, _a, _d in WIKI.findall(txt) for r in [m.resolve(t)] if r and m.cards[r].fam == "concept"}
+    return m._clinks[c.id]
+
+
+def scan_decisions(m, pid):
+    """Decisions recorded in P###_scan.md: {concept id: why there is nothing new}."""
+    p = J(SRC(m.root, pid), pid + "_scan.md")
+    out, cur = {}, None
+    for line in (rd(p).splitlines() if os.path.exists(p) else []):
+        h = re.match(r"###\s*\[\[([^\]|#]+)", line)
+        if h: cur = m.resolve(h.group(1)) or h.group(1).strip(); continue
+        d = re.match(r"- decided::\s*(.*)$", line)
+        if d and d.group(1).strip():
+            lk_ = re.match(r"\[\[([^\]|#]+)[^\]]*\]\]\s*—?\s*(.*)$", d.group(1).strip())
+            if lk_: out[m.resolve(lk_.group(1)) or lk_.group(1).strip()] = lk_.group(2).strip() or "decided"
+            elif cur: out[cur] = d.group(1).strip()
+    return out
+
+
+def scan_state(m, pid):
+    """For each concept named in the source: (paragraphs naming it, paragraphs no card of the source covers). A
+    paragraph is covered when one of the source's evidence cards anchored there links the concept."""
+    at = defaultdict(list)
+    for c in m.evidence(pid):
+        for a in m.anchors(c):
+            if re.fullmatch(r"[bsc]\d{4}", a): at[a].append(c)
+    out = {}
+    for cid, h in concept_hits(m, pid).items():
+        out[cid] = (sorted(h), [b for b in sorted(h) if not any(cid in concept_links(m, c) for c in at.get(b, []))])
+    return out
+
+
+def scan_todo(m, pid):
+    """Concepts the source names in passages no card of it covers, with no decision: [(concept id, [paragraphs])].
+    Low-priority concepts are left out."""
+    dec = scan_decisions(m, pid)
+    return [(cid, unc) for cid, (_h, unc) in sorted(scan_state(m, pid).items()) if unc and cid not in dec and m.cards[cid].priority != "low"]
+
+
+def cited_at(m):
+    """{(source, paragraph): [reference cards cited there]} from the reference cards' cited_by:: lines."""
+    if m._citedat is None:
+        m._citedat = defaultdict(list)
+        for r in m.cards.values():
+            if r.fam != "reference" or r.get("retired"): continue
+            for pid, _n, bs in ref_cites(r):
+                for b in bs:
+                    if r not in m._citedat[(pid, b)]: m._citedat[(pid, b)].append(r)
+    return m._citedat
+
+
+def norm2raw(t, p):
+    """Index in t of the p-th letter or digit (the coordinates `cite_places` matches in)."""
+    k = 0
+    for i, ch in enumerate(t):
+        n = len(re.sub(r"[^a-z0-9]", "", ch.lower()))
+        if n and k >= p: return i
+        k += n
+    return len(t)
+
+
+def sentences(t):
+    """[(start, end)] of the sentences of a paragraph, keeping a citation number set after the full stop with its
+    sentence."""
+    out, st = [], 0
+    for mo in re.finditer(r"(?<=[.!?])(\d{1,3}(?:[,–\-]\d{1,3})*)?\s+(?=[A-Z(\[“\"])", t):
+        out.append((st, mo.start() + len(mo.group(1) or ""))); st = mo.end()
+    return out + [(st, len(t))]
+
+
+def cite_marks(m, pid):
+    """{paragraph: [(position, {reference numbers})]}: where in each paragraph the source cites its references, and
+    {reference number: [reference cards]}."""
+    num = defaultdict(list)
+    for r in m.cards.values():
+        if r.fam == "reference" and not r.get("retired"):
+            for p_, n, _bs in ref_cites(r):
+                if p_ == pid: num[int(n)].append(r)
+    if not num: return {}, num
+    pos = defaultdict(list)
+    cite_places(m, pid, m.blocks(pid), max(num), pos)
+    return pos, num
+
+
+def short_cite(c):
+    """'Sato et al. (1994)' for a reference card or a source in the brain."""
+    if c.fam == "reference":
+        mo = re.match(r"(.+?\((?:\d{4}[a-z]?|n\.d\.)\))", c.title)
+        return mo.group(1) if mo else one(c.title, 40)
+    au = [a.strip() for a in (c.get("authors") or "").split(";") if a.strip()]
+    sur = re.split(r"[ ,]", au[0])[0] if au else c.id
+    return f"{sur}{' et al.' if len(au) > 2 else (' & ' + re.split(r'[ ,]', au[1])[0] if len(au) == 2 else '')} ({c.get('year') or 'n.d.'})"
+
+
+def works_cited(m, c):
+    """Reference cards and sources a card cites in Codes."""
+    return [m.cards[t] for v in c.all("cites") for t in m.ids(v)[0] if m.cards[t].fam in ("reference", "source")]
+
+
+def cmd_scan(m, args):
+    """Look for every concept in the brain across a source's text (`scan P012`), or for one concept across every
+    source (`scan <concept>`). Lists the passages naming a concept that no card of the source covers, with the works
+    the paper cites in that sentence, and the source's cards that state facts its passage backs with citations but
+    carry no cites:: line. Writes P###_scan.md, where decisions are kept. `scan` alone summarises every source."""
+    srcs = sorted(c.id for c in m.cards.values() if c.fam == "source" and m.blocks(c.id))
+    if not args:
+        for pid in srcs:
+            st, todo, unc = m.cards[pid].status, scan_todo(m, pid), 0
+            print(f"{pid} ({st}): " + (f"{len(todo)} concepts to card or decide, in {sum(len(u) for _c, u in todo)} passages: " + ", ".join(c for c, _u in todo[:10]) + (" …" if len(todo) > 10 else "") if todo else "nothing to do"))
+        return
+    t = args[0]
+    if re.fullmatch(r"P\d{3}", t):
+        if t not in m.cards and not os.path.isdir(SRC(m.root, t)): sys.exit(f"scan: no source {t}")
+        if not m.blocks(t): sys.exit(f"scan: {t} has no anchored text; run `mesh.py anchor {t} <file>` first")
+        scan_report(m, t, write=True); return
+    cid = m.resolve(t) or m.alias.get(" ".join(t.lower().replace("-", " ").split())) or m.alias.get(" ".join(t.lower().split()))
+    if not cid or m.cards[cid].fam != "concept": sys.exit(f"scan: '{t}' is neither a source (P###) nor a concept")
+    found = 0
+    for pid in srcs:
+        st = scan_state(m, pid).get(cid)
+        if not st or not st[1]: continue
+        found += 1
+        scan_report(m, pid, write=True, only=cid)
+    if not found: print(f"{cid}: every passage naming it in the {len(srcs)} sources is covered by a card, or none names it")
+
+
+def scan_report(m, pid, write=True, only=None):
+    blocks, state, dec = m.blocks(pid), scan_state(m, pid), scan_decisions(m, pid)
+    marks, num = cite_marks(m, pid)
+    near = cited_at(m)
+    def works_in(b, span=None):
+        """Reference cards the paper cites in the sentence of span (or anywhere in paragraph b)."""
+        if span is None: return list(near.get((pid, b), []))
+        t = blocks[b][1]
+        s0, s1 = next(((a, z) for a, z in sentences(t) if a <= span[0] < z + 1), (0, len(t)))
+        sent = ascii_fold(t[s0:s1 + 1])
+        named = [r for r in near.get((pid, b), []) for sur in [ascii_fold(first_surname(r.get("authors"))).strip()]
+                 if len(sur) > 2 and re.search(r"\b" + re.escape(sur) + r"\b", sent) and (not r.get("year") or r.get("year")[:4] in sent)]  # author-year citations
+        return list(dict.fromkeys([r for p_, ns in marks.get(b, []) if s0 <= p_ <= s1 + 1 for n in sorted(ns) for r in num.get(n, [])] + named))
+    def snippet(b, span):
+        t = blocks[b][1]
+        s0, s1 = next(((a, z) for a, z in sentences(t) if a <= span[0] < z + 1), (0, len(t)))
+        a, z = max(s0, span[0] - 160), min(s1, span[1] + 160)
+        return ("…" if a > s0 else "") + t[a:span[0]] + "«" + t[span[0]:span[1]] + "»" + t[span[1]:z] + ("…" if z < s1 else "")
+    hits = concept_hits(m, pid)
+    todo = [(c, st) for c, st in sorted(state.items()) if st[1] and c not in dec and m.cards[c].priority != "low" and (only is None or c == only)]
+    print(f"{pid}: {len(state)} concepts named in the text; {len(todo)} named in passages no card of {pid} covers" + (f" (showing {only})" if only else ""))
+    for cid, (_h, unc) in todo:
+        print(f"\n[[{cid}]] — {len(unc)} passage{'s' * (len(unc) != 1)} with no card about it" + (" (high priority: word stems matched)" if m.cards[cid].priority == "high" else ""))
+        for b in unc[:12]:
+            for sp in hits[cid][b][:2]:
+                ws = works_in(b, sp)
+                print(f"  {b} p{blocks[b][0]}: {snippet(b, sp)}" + (f"\n      cited here: " + "; ".join(f"{r.id} {short_cite(r)}" for r in ws) if ws else ""))
+        if len(unc) > 12: print(f"  … {len(unc) - 12} more: {', '.join(unc[12:])}")
+    adds = []
+    for c in sorted(m.evidence(pid), key=lambda c: c.id):
+        if c.status in ("measured", "derived") or c.all("cites"): continue
+        bs = [a for a in m.anchors(c) if re.fullmatch(r"[bsc]\d{4}", a) and near.get((pid, a))]
+        if not bs: continue
+        loc = c.get("loc").strip("\"'“”")
+        sent = []
+        for b in bs:
+            mo = re.search(r"\s+".join(re.escape(w) for w in loc.split()), blocks[b][1], re.I) if loc else None
+            sent += works_in(b, mo.span()) if mo else []
+        para = list(dict.fromkeys(r for b in bs for r in near[(pid, b)]))
+        adds.append((c, list(dict.fromkeys(sent)), [r for r in para if r not in sent]))
+    if adds and only is None:
+        print(f"\nCards of {pid} whose passage cites works but which carry no cites:: line ({len(adds)}): add '- cites:: [[R…]] — what it supports' for each work the statement rests on, or '- cites:: none — <why>'")
+        for c, sent, rest in adds:
+            print(f"  {c.id} {one(c.title, 70)}" + (f"\n      its sentence cites: " + "; ".join(f"{r.id} {short_cite(r)}" for r in sent) if sent else "") + (f"\n      {'also ' if sent else ''}in the paragraph: " + "; ".join(f"{r.id} {short_cite(r)}" for r in rest[:8]) if rest else ""))
+    if not write: return
+    L = [f"# {pid} concept scan", "", f"Written by `mesh.py scan {pid}` on {TODAY}: every concept in the brain looked for in this source's text. A passage is covered when a card of {pid} anchored there links the concept. For each concept under **To do**, card the new facts the passages state about it (link the concept, anchor the passage, and add `cites::` for the works the paper cites for them), or write on its `decided::` line why there is nothing new. Then run `scan {pid}` again: carded passages move to covered, and decisions are kept.", ""]
+    rows = sorted(state.items())
+    td = [(c, st) for c, st in rows if st[1] and c not in dec and m.cards[c].priority != "low"]
+    dd = [(c, st) for c, st in rows if st[1] and c in dec and m.cards[c].priority != "low"]
+    cv = [(c, st) for c, st in rows if not st[1] and m.cards[c].priority != "low"]
+    lo = [(c, st) for c, st in rows if m.cards[c].priority == "low"]
+    def sect(cid, unc, d):
+        out = [f"### [[{cid}|{m.cards[cid].title or cid}]] — {len(unc)} passage{'s' * (len(unc) != 1)} not covered"]
+        for b in unc:
+            ws = list(dict.fromkeys(r for sp in hits[cid][b] for r in works_in(b, sp)))
+            out.append(f"- [[{pid}{part_of(b)}_text#^{b}|{b}]] p{blocks[b][0]}" + (" · cited here: " + ", ".join(f"[[{r.name}|{short_cite(r)}]]" for r in ws) if ws else ""))
+        return out + [f"- decided:: {d}", ""]
+    L += [f"## To do ({len(td)})", ""]
+    for cid, (_h, unc) in td: L += sect(cid, unc, "")
+    L += [f"## Decided ({len(dd)})", ""]
+    for cid, (_h, unc) in dd: L += sect(cid, unc, dec[cid])
+    L += [f"## Covered ({len(cv)})", "", " · ".join(f"[[{c}]] {len(st[0])}" for c, st in cv) or "none", ""]
+    L += [f"## Low priority, nothing required ({len(lo)})", "", " · ".join(f"[[{c}]] {len(st[0])}" for c, st in lo) or "none", ""]
+    if adds:
+        L += [f"## Citations to add ({len(adds)})", "", "Cards whose passage cites works but which carry no `cites::` line. Add `- cites:: [[R…]] — what it supports` for each work the statement rests on, or `- cites:: none — <why>`.", ""]
+        L += [f"- [[{c.name}|{c.id}]]" + (" · its sentence cites " + ", ".join(f"[[{r.name}|{short_cite(r)}]]" for r in sent) if sent else "") + (f" · {'also ' if sent else ''}in the paragraph: " + ", ".join(f"[[{r.name}|{short_cite(r)}]]" for r in rest[:8]) if rest else "") for c, sent, rest in adds]
+    wr(J(SRC(m.root, pid), pid + "_scan.md"), "\n".join(L).rstrip("\n") + "\n")
+    print(f"\nwritten: {relp(J(SRC(m.root, pid), pid + '_scan.md'), m.root)} ({len(td)} to do, {len(dd)} decided, {len(cv)} covered)")
+
+
+
+def rejected_concepts(root):
+    """{name: 'date — why'} from ledger/rejected-concepts.md."""
+    p = J(root, "ledger", "rejected-concepts.md")
+    return {mo.group(1): mo.group(2).strip() for mo in re.finditer(r"^- (\S+) — (.*)$", rd(p), re.M)} if os.path.exists(p) else {}
+
+
+def cmd_propose(m, args):
+    """Propose a concept card for the user to adopt: `propose <name> "<definition>" [--from P012] [--kind k]
+    [--unit u] [--title "T"] [--alias "a; b"] [--low "<why>"]`. Written to the source's P###_concepts.md, or to
+    ledger/concept-proposals.md without --from."""
+    if len(args) < 2: sys.exit('propose: give <name> "<one-sentence definition>" [--from P012] [--kind entity|variable|count|technique|concept] [--unit u] [--title "T"] [--alias "a; b"] [--low "<why>"]')
+    name, definition, rest, o, aliases, k = args[0], args[1], args[2:], {}, [], 0
+    while k < len(rest):
+        if rest[k] in ("--from", "--kind", "--unit", "--low", "--title") and k + 1 < len(rest): o[rest[k][2:]] = rest[k + 1]; k += 2
+        elif rest[k] == "--alias" and k + 1 < len(rest): aliases += [a.strip() for a in rest[k + 1].split(";") if a.strip()]; k += 2
+        else: sys.exit(f"propose: unknown option '{rest[k]}'")
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", name) or re.fullmatch(r"[pkxghelcdrtas]\d{3}.*", name): sys.exit(f"propose: '{name}' is not a concept slug (lower case, hyphens, not like an id)")
+    title = o.get("title") or name.replace("-", " ").capitalize()
+    for nm in [name, name.replace("-", " "), title] + aliases:
+        hit = m.alias.get(" ".join(nm.lower().split()))
+        if hit: sys.exit(f"propose: '{nm}' is already the concept [[{hit}]]: link it instead")
+    st = staged_blocks(m)
+    if name in st: sys.exit(f"propose: '{name}' is already proposed by {', '.join(sorted({x[0] for x in st[name]}))}: link [[{name}]] and do not propose it again")
+    rj = rejected_concepts(m.root)
+    if name in rj: sys.exit(f"propose: the user turned '{name}' down ({rj[name]}); link an existing concept instead")
+    kind = o.get("kind", "concept")
+    if kind not in CONCEPT_KINDS: sys.exit(f"propose: kind '{kind}' not in {CONCEPT_KINDS}")
+    if kind == "variable" and not o.get("unit"): sys.exit("propose: a variable needs --unit (a unit, 1, or categorical)")
+    pid = o.get("from")
+    if pid and not (re.fullmatch(r"P\d{3}", pid) and os.path.isdir(SRC(m.root, pid))): sys.exit(f"propose: no source folder for '{pid}'")
+    path = J(SRC(m.root, pid), pid + "_concepts.md") if pid else J(m.root, "ledger", "concept-proposals.md")
+    fm = ["---", "type: concept"] + (["priority: low"] if o.get("low") else []) + ["aliases: " + json.dumps([title] + aliases, ensure_ascii=False), f"updated: {TODAY}", "---"]
+    codes = [f"- kind:: {kind}"] + ([f"- unit:: {o['unit']}"] if o.get("unit") else []) + ([f"- prioritised:: {TODAY} low — {o['low']}"] if o.get("low") else []) + [f"- proposed:: {pid or 'ledger'} {TODAY}"]
+    block = [f"=== {name}"] + fm + [f"# {title}", "", f"**Definition.** {definition.strip()}", "", "## Where it appears", "<!--AUTO:START-->", "<!--AUTO:END-->", "", "## Codes"] + codes
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    old = rd(path).rstrip("\n") + "\n\n" if os.path.exists(path) else ""
+    wr(path, old + "\n".join(block) + "\n")
+    print(f"proposed [[{name}]] in {relp(path, m.root)}. Link it as [[{name}]] in the cards; it becomes a concept card when the user adopts it (`mesh.py adopt {name}`), or folds it into another (`adopt {name} into <concept>`)")
+
+
+def edit_block(f, name, fn):
+    """Apply fn to the text of proposal `name` in file f (the first such block)."""
+    t = rd(f)
+    parts = re.split(r"(^=== *\S+?(?:\.md)? *$)", t, flags=re.M)
+    for k in range(1, len(parts), 2):
+        if re.match(r"=== *(\S+?)(?:\.md)? *$", parts[k]).group(1) == name:
+            body = parts[k + 1]
+            lead = body[:len(body) - len(body.lstrip("\n"))]
+            parts[k + 1] = lead + fn(body.lstrip("\n")); wr(f, "".join(parts)); return True
+    return False
+
+
+def cmd_reject(m, args):
+    """Turn a proposed concept down: its proposals go, links to it become plain words in the prose and leave the
+    concepts:: lines, and the name is recorded so it is not proposed again. Refused while a value:: or when:: line
+    needs it as its variable: fold it into a concept with `adopt <name> into <concept>` instead."""
+    if len(args) < 2: sys.exit('reject: give <proposed name> "<why>"')
+    name, why = args[0], " ".join(args[1:])
+    st = staged_blocks(m)
+    if name not in st: sys.exit(f"reject: no proposal named '{name}' (see `mesh.py staged`)")
+    pat = re.compile(r"\[\[" + re.escape(name) + r"(#[^\]|]*)?(\|[^\]]*)?\]\]")
+    need = [c.id for c in m.cards.values() if any(k in ("value", "when") and pat.search(v) for k, v in c.codes)]
+    if need: sys.exit(f"reject: {', '.join(sorted(need))} use [[{name}]] as a variable in value:: or when:: lines; fold it into a concept instead: `mesh.py adopt {name} into <concept>`")
+    n = 0
+    for c in m.cards.values():
+        t = rd(c.path)
+        if f"[[{name}" not in t: continue
+        head, sep, tail = t.partition("\n## Codes")
+        head = pat.sub(lambda mo: (mo.group(2) or "|" + name.replace("-", " "))[1:], head)
+        lines = []
+        for line in tail.split("\n"):
+            if pat.search(line):
+                kv = re.match(r"^- ([a-z_]+)::\s*(.*)$", line)
+                if kv:
+                    rest_ = ", ".join(x.strip() for x in re.split(r",\s*(?=\[\[)", pat.sub("", kv.group(2))) if x.strip(" ,"))
+                    if not WIKI.search(rest_): continue
+                    line = f"- {kv.group(1)}:: {rest_}"
+                else: line = pat.sub(lambda mo: (mo.group(2) or "|" + name.replace("-", " "))[1:], line)
+            lines.append(line)
+        new = head + sep + "\n".join(lines)
+        if new != t: wr(c.path, new); n += 1
+    for _pid, f, _b, _t, _a in st[name]: drop_proposal(f, name)
+    p = J(m.root, "ledger", "rejected-concepts.md")
+    old = rd(p) if os.path.exists(p) else "# Concepts the user turned down\n\nProposals rejected with `mesh.py reject`; `propose` refuses these names.\n\n"
+    wr(p, old.rstrip("\n") + f"\n- {name} — {TODAY}: {why}\n")
+    print(f"reject: '{name}' (proposed by {', '.join(sorted({x[0] for x in st[name]}))}) turned down; links removed from {n} cards; recorded in ledger/rejected-concepts.md")
+
+
+def fixconcepts(root):
+    """Turn a note the user made by hand in concepts/ into a concept card: front matter, a title, a definition line
+    (their first paragraph), the generated block, and Codes with its id (the file name as a slug), kind concept unless
+    they gave one, and its origin. `fixnames` then renames the file to the slug and points every link at it."""
+    made = []
+    for f in sorted(glob.glob(J(root, "concepts", "*.md"))):
+        t = rd(f).replace("\r\n", "\n")
+        if re.search(r"^- id:: *\S", t, re.M): continue
+        b = os.path.basename(f)[:-3]
+        slug = re.sub(r"[^a-z0-9]+", "-", ascii_fold(b).lower()).strip("-")
+        if not slug or re.fullmatch(r"[pkxghelcdrtas]\d{3}.*", slug): print(f"concepts/{b}.md: no concept name can be made from this file name; rename the note"); continue
+        if slug != b and os.path.exists(J(root, "concepts", slug + ".md")): print(f"concepts/{b}.md: the concept {slug} already exists; add your text to concepts/{slug}.md, or give this note another name"); continue
+        mo = re.match(r"---\n(.*?)\n---\n?", t, re.S)
+        fm, body = (mo.group(1), t[mo.end():]) if mo else ("", t)
+        aliases, keep, inlist = [], [], False
+        for line in fm.splitlines():
+            if inlist and re.match(r"\s*-\s+", line): aliases.append(re.sub(r"^\s*-\s+", "", line).strip().strip("'\"")); continue
+            inlist = False
+            al = re.match(r"aliases:\s*(.*)$", line)
+            if al:
+                v = al.group(1).strip()
+                if v.startswith("["): aliases += [x.strip().strip("'\"") for x in v.strip("[]").split(",") if x.strip()]
+                elif v: aliases.append(v.strip("'\""))
+                else: inlist = True
+                continue
+            if re.match(r"(type|updated):", line): continue
+            keep.append(line)
+        tm = re.search(r"^# (.+)$", body, re.M)
+        title = tm.group(1).strip() if tm else (b if re.search(r"[A-Z ]", b) else b.replace("-", " ").capitalize())
+        if not tm: body = f"# {title}\n\n" + body.lstrip("\n")
+        if "**Definition.**" not in body:
+            parts = body.split("\n\n")
+            for k, p in enumerate(parts):
+                ps = p.strip()
+                if ps and not ps.startswith(("#", "-", "*", ">", "|", "<!--", "!", "=")): parts[k] = "**Definition.** " + ps; break
+            else: parts.insert(1, "**Definition.** (to write: one sentence saying what this is)")
+            body = "\n\n".join(parts)
+        if "<!--AUTO:START" not in body:
+            gen = "## Where it appears\n<!--AUTO:START-->\n<!--AUTO:END-->\n"
+            body = body.replace("\n## Codes", "\n" + gen + "\n## Codes", 1) if "\n## Codes" in body else body.rstrip("\n") + "\n\n" + gen
+        if "\n## Codes" not in body: body = body.rstrip("\n") + "\n\n## Codes\n"
+        add = [f"- id:: {slug}"] + ([] if re.search(r"^- kind::", body, re.M) else ["- kind:: concept"]) + [f"- origin:: made by the user, {TODAY}"]
+        body = re.sub(r"\n## Codes\n?", "\n## Codes\n" + "\n".join(add) + "\n", body, count=1)
+        aliases = list(dict.fromkeys([title] + aliases + ([b] if b != slug and b != title else [])))
+        head = ["---", "type: concept", "aliases: " + json.dumps(aliases, ensure_ascii=False), f"updated: {TODAY}"] + keep + ["---"]
+        wr(f, "\n".join(head) + "\n" + body.rstrip("\n") + "\n")
+        made.append(slug); print(f"concepts/{b}.md made by hand: now concept {slug} (kind {(re.search(r'^- kind:: *(\S+)', body, re.M) or [None, 'concept'])[1]}); scan the sources for it with `mesh.py scan {slug}`")
+    return made
 
 
 def rarity(m):
@@ -2432,7 +2901,7 @@ def cmd_refs(m, pid, force=False):
     if thin: print(f"  check by hand: references {', '.join(map(str, thin[:20]))} parsed without a year or authors")
 
 
-def cite_places(m, pid, main, top):
+def cite_places(m, pid, main, top, pos=None):
     """{reference number: paragraphs citing it}. From the PDF when there is one: superscript numbers (Nature, Cell) and
     italic numbers (Science) traced back to their paragraph, so that counts in brackets, '(13)', are not taken for
     citations. Without the PDF: every bracketed number, '(3)', '(4, 5)', '(6–9)', which overcounts."""
@@ -2464,13 +2933,18 @@ def cite_places(m, pid, main, top):
                                 rng = re.search(r"⟦(\d+)⟧\s*[–-]\s*$", before) if ita else None  # Science sets (7–9) as italic 7, roman –, italic 9
                                 if rng and nums: nums |= expand_nums(f"{rng.group(1)}-{min(nums)}", top)
                                 for n in nums: at[n].add(hit)
+                                if pos is not None and nums:
+                                    nt_ = next(nt for b, nt in bypage[pno] if b == hit)
+                                    pos[hit].append((norm2raw(main[hit][1], nt_.find(ctx) + len(ctx)), set(nums)))
                             before += "⟦" + t.strip() + "⟧" if ita else t
                         else: before += t
                     before += " "
         if at: return {n: {b for b in bs} for n, bs in at.items()}
     for b, (_pg, t) in main.items():
-        for grp in re.findall(r"\((\d{1,3}(?:\s*[,–-]\s*\d{1,3})*)\)", t):
-            for n in expand_nums(grp, top): at[n].add(b)
+        for mo in re.finditer(r"\((\d{1,3}(?:\s*[,–-]\s*\d{1,3})*)\)", t):
+            nums = expand_nums(mo.group(1), top)
+            for n in nums: at[n].add(b)
+            if pos is not None and nums: pos[b].append((mo.start(), set(nums)))
     return at
 
 
@@ -2929,6 +3403,12 @@ with the tooling in `tools/mesh.py`. The method lives in GitHub `tcpearce/brain-
 folder and never runs `sync`, `build` or any command that writes shared files; the session that launched it syncs.
 A vault rule below that asks for a shared change (a new concept, a priority) is met by proposing it in the paper's
 own files for that session to make.
+
+**New concepts are the user's call.** An agent proposes one (`python3 tools/mesh.py propose <slug> "<definition>"
+--from P012`) and links the proposed name; it becomes a card when the user adopts it (`adopt`), or when the user makes
+it by hand as a note in `concepts/`, which `build` turns into a card. An agent makes a concept card itself only on the
+user's word, or where a vault rule below tells it to. After a new concept, `python3 tools/mesh.py scan <concept>`
+finds it in the papers already in the brain.
 
 ## Never
 
@@ -3498,7 +3978,10 @@ place <P###|id>               where new evidence goes: findings, tensions, gaps 
 equations <P###> [--si]       displayed equations of a source, with boxes to crop (figure ... eq4) and transcribe into LaTeX
 latex <card id>               render a card's equation:: lines beside the cropped original, to check the transcription
 staged                        concepts proposed by extraction agents, with the existing concepts they resemble
-adopt <name> [into <concept>]  settle a proposed concept: create it, or fold it into a concept (or another proposal) and rewrite every link
+propose <slug> "<definition>" [--from P###] [--kind k] [--unit u] [--alias "a; b"] [--low "<why>"]  propose a concept card (agents never create concepts themselves)
+adopt <name> [into <concept>] | --all  make a proposed concept a card (the user's call), or fold it into a concept or another proposal and rewrite every link
+reject <name> "<why>"           turn a proposed concept down: links become plain words, and the name is not proposed again
+scan [P### ...|<concept>]       look for every concept across a source's text: passages no card covers, the works cited there, cards missing cites::; writes P###_scan.md
 related <P###>                synthesis and workbench cards, and sources, sharing concepts with a source
 neighbours <id|P###>          per card: likely duplicates, and cards in other sources to link, ranked by rare shared concepts
 health                        housekeeping queues: stale hubs, findings to re-grade, old searches, unused evidence
@@ -3542,6 +4025,12 @@ def main():
     elif c == "latex": cmd_latex(m, a[0])
     elif c == "staged": cmd_staged(m)
     elif c == "adopt": cmd_adopt(m, a)
+    elif c == "propose": cmd_propose(m, a)
+    elif c == "reject": cmd_reject(m, a)
+    elif c == "scan":
+        if len(a) > 1 and all(re.fullmatch(r"P\d{3}", x) for x in a):
+            for x in a: cmd_scan(Mesh(m.root), [x]); print()
+        else: cmd_scan(m, a)
     elif c == "id": cmd_id(m, a[0])
     elif c == "split": cmd_split(m, a[0], "--update" in a)
     elif c == "check": notes = m.check(a[0] if a else None); report(m, notes); sys.exit(1 if m.err else 0)

@@ -31,6 +31,7 @@ These instructions and the tooling live in the GitHub repository `tcpearce/brain
 | Start a vault, install or upgrade its tooling, open it in Obsidian | `brain-mesh-setup` |
 | Add a paper or an own result; re-read existing papers for a new question | `brain-mesh-add-paper` |
 | Add many papers at once, with agents working in parallel | `brain-mesh-batch` |
+| Look for every concept across some or all sources and card each new fact with the works the paper cites for it; backfill after a new concept | `brain-mesh-concept-scan` |
 | Find knowledge gaps, hunt papers that fill them, maintain the research-gaps document | `brain-mesh-gaps` |
 | Hypotheses, experiment design, registered predictions, judging outcomes | `brain-mesh-experiment` |
 | Mine the brain for new hypotheses and links with the user; theory, analogy and seed cards; recheck them as sources arrive | `brain-mesh-discover` |
@@ -170,7 +171,11 @@ updated: 2026-11-20
 - `kind` is `entity`, `variable`, `count`, `technique` or `concept`. A `count` is a variable that only says how many items a result rests on (`sample-size`). A variable needs `unit`: a unit, `1` for dimensionless, or `categorical` when its values are themselves concept cards (solvent = water).
 - Concept-to-concept relations in Codes: `broader` (is a kind of), `part_of`, `measured_by`, `affects`, `related`. Write the relation on the card of the concept that does the affecting or belonging, for example on the temperature card: `- affects:: [[binding-capacity]] — in water only, [[K001]]`. An `affects` line must cite the finding or evidence card it rests on, because it is a scientific claim and not vocabulary.
 - The block under **Where it appears** is generated: every finding, tension, gap, hypothesis and experiment that uses the concept, its evidence cards, relations pointing at it from other concepts, and the concepts it most often appears with. Keep the two AUTO marker lines in the card.
-- Before creating a concept run `python3 tools/mesh.py concept "<name>"`. If an existing concept covers it, add the new name to that card's `aliases` instead.
+- Before proposing a concept run `python3 tools/mesh.py concept "<name>"`. If an existing concept covers it, add the new name to that card's `aliases` instead. If another agent has proposed it, link that name.
+- **New concepts are the user's call.** They come into the brain in two ways:
+  - **An agent proposes one:** `python3 tools/mesh.py propose <slug> "<one-sentence definition>" --from P012 [--kind variable --unit 1] [--alias "other name"]` writes the proposal into the paper's `P012_concepts.md` (or `ledger/concept-proposals.md` without `--from`). The cards link the proposed name meanwhile; `check` warns, it does not refuse. The user makes it a card (`adopt <slug>`, or `adopt --all` for proposals that match nothing), folds it into an existing concept (`adopt <slug> into <concept>`, which rewrites every link), or turns it down (`reject <slug> "<why>"`; links become plain words and the name cannot be proposed again). An agent folds twins and near matches itself, and makes a card only on the user's word or where a vault rule tells it to.
+  - **The user makes one by hand:** a note in `concepts/`, named as they like ("Mixture suppression.md"), holding at least a sentence saying what it is. `build` turns it into a card: front matter, the first paragraph as its definition, the generated block, Codes with its id (the name as a slug, `mixture-suppression`), `kind:: concept` unless they gave one, and `origin:: made by the user`. The file is renamed to the slug and every link to the old name is pointed at it. Check its kind; a variable needs a unit.
+- **Every concept is looked for in every paper.** `python3 tools/mesh.py scan P012` searches a source's text for every concept in the brain (by name and alias, British or American spelling, plural or singular; word stems too for high-priority concepts and sources) and lists the passages no card of that source covers, with the works the paper cites in each sentence. `check` warns about a source with such passages and no decision. After a new concept, `scan <concept>` finds it across all sources. `brain-mesh-concept-scan` says how to work through the lists.
 
 ### Source cards
 
@@ -246,7 +251,11 @@ One per code repository or software package any study uses, in `code/`, `C002-<s
 
 ### Citations in cards
 
-Any card may cite works: a link in the prose to a reference card (`[[R0042-keller-2017-predicting-human-olfactory|Keller et al. 2017]]`) or to a source in the brain (`[[P001-lee-2023-principal-odor-map|Lee et al. 2023]]`), with the same work in Codes as `- cites:: [[R0042]] — what it supports here`. `check` warns about a reference cited in the prose and missing from Codes. Concept hubs should cite the closely relevant works in their text: `build` lists, under **Key references** in each concept's generated block, the works cited in the very paragraphs where that concept's evidence cards are anchored, strongest first, and marks those the card already cites. Each reference card lists the cards that cite it.
+Any card may cite works: a link in the prose to a reference card (`[[R0042-keller-2017-predicting-human-olfactory|Keller et al. 2017]]`) or to a source in the brain (`[[P001-lee-2023-principal-odor-map|Lee et al. 2023]]`), with the same work in Codes as `- cites:: [[R0042]] — what it supports here`. `check` warns about a reference cited in the prose and missing from Codes.
+
+**Facts carry the citations the paper gives for them.** An evidence card whose statement the paper backs with a citation lists each such work: `- cites:: [[R0042]] — what it supports`. The source's own measured or derived results need none. Where the paragraph's citations support a different sentence, write `- cites:: none — <why>`. `check` warns about a card that is not `measured` or `derived` whose anchored paragraph cites works and that has neither; `scan` names the works cited in the card's own sentence (numbered and author-year styles). On a concept hub, a line stating a fact from such a card cites the work too, `[[R0042-…|Keller et al. 2017]]`, with its `cites::` line, and `check` flags the lines that do not. The hub's generated evidence list shows the works each card cites.
+
+Concept hubs should cite the closely relevant works in their text: `build` lists, under **Key references** in each concept's generated block, the works cited in the very paragraphs where that concept's evidence cards are anchored, strongest first, and marks those the card already cites. Each reference card lists the cards that cite it.
 
 ### Synthesis cards
 
@@ -356,5 +365,6 @@ When answering:
 - After any change run `python3 tools/mesh.py build`. It expands links, mirrors them, refreshes the hub lists and `MAP.md`, re-marks the PDFs whose cards changed, rebuilds `index/` and runs every check. Fix all errors before finishing; treat each warning as work to do or to explain.
 - Record each completed operation with `python3 tools/mesh.py log "<what changed>"`.
 - Before creating any card, apply the duplicate rules in `brain-mesh-add-paper`.
+- Propose concepts; do not create them (above).
 - Keep prose and Codes in agreement on every card touched, and set its `updated` date.
 - If the vault is a git repository, every change ends up on GitHub: `python3 tools/mesh.py sync "<what changed>"` at the end of each completed operation, as `brain-mesh-access` says.

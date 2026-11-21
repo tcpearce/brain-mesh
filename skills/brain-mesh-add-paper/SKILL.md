@@ -69,6 +69,7 @@ Writing each card:
 - One card per finding-bearing statement or comparison, not one per table cell. Expect roughly 40 to 150 cards for a paper.
 - Keep the authors' strength of claim in `status`. A hedge is `speculated`; an interpretation is `inferred`; only what was measured is `measured`.
 - Say what the paper leaves out: no n, an unspecified uncertainty, a missing control. Absences are information for experiment design.
+- **Cite what the paper cites.** When the paper backs a statement with a citation, the card lists each such work: `- cites:: [[R0042]] — what it supports`, after the reference cards exist (step 1). A background statement (`cited`) always does. The paper's own measured or derived results need none. Where the paragraph's citations support a different sentence, write `- cites:: none — <why>`. If the cited work is itself a source in the brain, also link its own card. `check` warns about a card whose paragraph cites works and that has neither.
 - Write in your own words. The only copied text is the short `loc::` phrase.
 - Give every card a way back to the page. End the **Source:** line with `[[P012.pdf#page=5|open page]]`; `build` re-points it at the card's highlight in the marked PDF. Take the `loc::` phrase from the sentence that carries the statement, because that phrase is what gets highlighted.
 - Choose locator phrases made of plain words. Avoid stretches containing symbols or operators (=, <, ±, ~), citation numbers, and words the PDF breaks across lines with a hyphen: PDFs often encode these oddly, and the phrase then fails to match the page even though it reads correctly.
@@ -114,16 +115,23 @@ Every data set and every code base or software package the study uses gets a car
 
 ## 4. Concepts
 
-(Working as an extraction agent in a batch? `concept` also shows the names other agents have proposed; link to one that fits, and propose new concepts in `P012_concepts.md` instead of creating them, as `brain-mesh-batch` says.)
-
-For every material, variable, technique and mechanism a card mentions, run `python3 tools/mesh.py concept "<name>"`.
+For every material, variable, technique and mechanism a card mentions, run `python3 tools/mesh.py concept "<name>"`. It shows existing concepts, names already proposed (PROPOSED) and names the user has turned down (REJECTED).
 
 - An existing concept covers it: link that card. If the paper uses a new name for it, add the name to the concept's `aliases`.
-- Nothing covers it: create the concept card with a definition, kind and unit.
+- Already proposed: link that exact name.
+- Nothing covers it: propose it; never create the card yourself. `python3 tools/mesh.py propose <slug> "<one-sentence definition>" --from P012 --kind <entity|variable|count|technique|concept> [--unit 1] [--alias "other name"]`, then link the proposed name from the cards. New concepts are the user's call (`brain-mesh`, **Concept cards**): at the end you list the proposals for them to adopt. Exception: the user has told you to make it, or a vault rule in `CLAUDE.md` does; then `propose` and `adopt` it.
 - A variable whose values are things (solvent, strain, polymer) is `categorical`, and each value is its own concept card.
 - Record the system as conditions, not only in the prose: organism or species, preparation (in vivo, slice, culture, in silico), level of organisation (molecule, receptor, cell, circuit, behaviour) and stimulus class, as categorical `when::` lines wherever the paper states them. The discovery miners can only look across what is coded (`brain-mesh-discover`).
 
 Use the concept's canonical unit in `value::` and `when::` lines where the conversion is exact; otherwise keep the paper's unit and say so on the concept card.
+
+### Scan the paper for every concept in the brain
+
+The cards so far follow the paper's own argument. The brain also needs everything the paper says about the concepts it already holds, including things said in passing: a mechanism mentioned in the introduction, a property noted in the methods, a comparison in the discussion. Once the passes above are done:
+
+1. `python3 tools/mesh.py scan P012` looks for every concept in the brain across the paper's text and supplementary text (names and aliases; British or American spelling; singular or plural; word stems too for high-priority concepts and sources). For each concept it lists the passages no card of this paper covers, with the sentence and the works the paper cites in it, and writes the worklist to `P012_scan.md`. It also lists the paper's cards whose passage cites works but which carry no `cites::` line.
+2. Work through every concept under **To do**, passage by passage, as `brain-mesh-concept-scan` says: card each new fact (linking the concept, with `cites::` for the works cited there); add a passage that restates a fact already carded to that card's `anchor::`; or write on the concept's `decided::` line why there is nothing new.
+3. Run `scan P012` again until **To do** is empty. Low-priority concepts are listed but need nothing.
 
 ## 5. The new-card checker: no pointless duplication
 
@@ -245,14 +253,14 @@ This is what the user reads, so it is not optional. For every concept the source
 - add or revise lines under **Relationships**, and the matching relation in Codes (`affects`, `measured_by`, `part_of`, `broader`, `related`);
 - add to **Open questions**; extend **How it is measured** when the source uses a new method;
 - revise a line that the new source has overtaken, and do not leave contradictory lines standing;
-- cite the closely relevant works in the text. The hub's generated block lists, under **Key references**, the works cited where its evidence cards are anchored. Cite in the prose those that a point actually rests on, as `[[R0042-…|Keller et al. 2017]]` or `[[P001-…|Lee et al. 2023]]` for a source in the brain, and add the matching `- cites:: [[R0042]] — what it supports` line. Cite no work just because it is listed;
+- cite the works each point rests on. A line that states a fact from an evidence card cites the works that card cites, as `[[R0042-…|Keller et al. 2017]]` (or `[[P001-…|Lee et al. 2023]]` for a source in the brain), beside the evidence card, with the matching `- cites:: [[R0042]] — what it supports` line in Codes; `check` flags lines that leave them out. The generated block shows the works each evidence card cites and, under **Key references**, the works cited where its evidence cards are anchored. Cite no work just because it is listed;
 - set `updated` to today.
 
 ## 10. Close
 
 Set the source card's status to `integrated`. Rewrite the Overview in `MAP.md` if the picture has changed. Run `python3 tools/mesh.py build` until there are no errors (the decisions on gaps and tensions and the claims card are checked from here on), then `python3 tools/mesh.py log "add P012 <authors year> (<n> cards); <findings, tensions and gaps changed>"` and `python3 tools/mesh.py sync "add P012"`.
 
-Report to the user in a few lines: the paper's main claim and how far its evidence carries it; cards by type; findings added or re-graded; gaps closed or narrowed and tensions explained or resolved; new tensions and gaps; data sets and code carded; hubs updated; anything bearing on their hypotheses or experiments; what was not extracted and why; and the top of the reading queue: the ★ works bearing on research gaps, then works cited where open gaps and tensions rest, with their years and DOIs (the queue puts recent work first and marks foundational old works ⌛). If the session's files are temporary, hand back the vault archive.
+Report to the user in a few lines: the paper's main claim and how far its evidence carries it; cards by type; what the concept scan added (new facts by concept, citations added); the concepts proposed, for the user to adopt, fold or reject, one line each with its definition; findings added or re-graded; gaps closed or narrowed and tensions explained or resolved; new tensions and gaps; data sets and code carded; hubs updated; anything bearing on their hypotheses or experiments; what was not extracted and why; and the top of the reading queue: the ★ works bearing on research gaps, then works cited where open gaps and tensions rest, with their years and DOIs (the queue puts recent work first and marks foundational old works ⌛). If the session's files are temporary, hand back the vault archive.
 
 ## Lens pass: re-reading sources for a new question
 

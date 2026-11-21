@@ -19,7 +19,7 @@ In [[acetonitrile]], [[binding-capacity|binding capacity]] did not change signif
 - null:: true
 - obtained_by:: [[P002-001-capacity-measured-by-qcm]]
 - based_on:: [[P002-002-capacity-3-9-at-25c-acetonitrile]], [[P002-003-capacity-3-7-at-45c-acetonitrile]]
-- anchor:: [[P002_text#^b0003]]
+- anchor:: [[P002_text#^b0003]], [[P002_text#^b0002]]
 - loc:: "no significant change (p = 0.41)"
 
 ## Linked from

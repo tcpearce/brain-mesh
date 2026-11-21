@@ -269,10 +269,10 @@ out="$(python3 tools/mesh.py check P001 || true)"
 echo "$out" | grep -q "P001-003: the prose states result numbers" && pass "an observation with an uncoded number is flagged" || fail "uncoded number not flagged"
 echo "$out" | grep -q "P001-004: claim has no '- based_on::'" && pass "a claim without its basis is flagged on the card" || fail "missing basis not flagged"
 echo "$out" | grep -q "P001-001: observation has no" && fail "a recorded missing:: method was still flagged" || pass "missing:: method satisfies the check"
-echo "$out" | grep -q "proposed in P001_concepts.md" && pass "a staged concept is a warning when checking its own source" || fail "staged concept"
+echo "$out" | grep -q "\[\[novel-thing\]\] is a proposed concept (P001), not yet a card" && pass "a proposed concept is a warning when checking its own source" || { echo "$out"; fail "staged concept"; }
 echo "$out" | grep -q "P001-002.*matches no row" && fail "a correct figure value was flagged" || pass "a figure value within its reading error passes"
 echo "$out" | grep -q "P001-005: value" && fail "a value in a supplementary data file was not found" || pass "a value is checked against a supplementary data file"
-(python3 tools/mesh.py check || true) | grep -q "ERROR P001-003: broken link \[\[novel-thing\]\]" && pass "a staged concept is an error in a full check, until merged" || fail "staged concept in full check"
+(python3 tools/mesh.py check || true) > full.txt; grep -q "\[\[novel-thing\]\] is a proposed concept" full.txt && ! grep -q "broken link \[\[novel-thing\]\]" full.txt && pass "a proposed concept is a warning, not an error, in a full check: it waits for the user" || { cat full.txt; fail "staged concept in full check"; }
 python3 tools/mesh.py staged | grep -q "^novel-thing  (from P001)" && pass "staged lists proposed concepts" || fail "staged"
 python3 tools/mesh.py progress P001 > prog.txt; grep -q "supplementary material: anchored" prog.txt && pass "progress reports a source's state" || fail "progress"
 sed -i.bak 's/= 0.55 ± 0.01/= 0.70 ± 0.01/; s/is 0.55 ± 0.01/is 0.70 ± 0.01/' sources/P001/P001-002-response-b-from-figure.md
@@ -874,4 +874,70 @@ python3 tools/mesh.py adopt cavity-deformation into cavity-distortion > ad.txt &
 python3 tools/mesh.py adopt fitted-isotherm > ad.txt && grep -q "^priority: low$" concepts/fitted-isotherm.md && [ ! -f $S2/P002_concepts.md ] && pass "a proposal marked low keeps its priority when adopted" || { cat ad.txt; fail "adopt low"; }
 python3 tools/mesh.py build > build.txt; grep -q "check: 0 errors" build.txt && grep -q "^- prioritised:: .* low — " concepts/fitted-isotherm.md && pass "the vault builds clean after adoption" || { cat build.txt; fail "build after adopt"; }
 grep -q "exception: an extraction agent in a batch" CLAUDE.md && pass "CLAUDE.md exempts extraction agents from syncing" || fail "CLAUDE.md exception"
+# 14. concept scan, proposals for the user to adopt, concepts made by hand, the citations behind facts (1.11.0)
+cp -r "$ROOT/demo-vault" "$T/sc"; cd "$T/sc"; cp "$MESH" tools/mesh.py
+S1=$(ls -d sources/P001*)
+python3 tools/mesh.py build > build.txt; grep -q "check: 0 errors, 0 warnings" build.txt && pass "a vault whose concepts are all carded needs no scan decisions" || { cat build.txt; fail "scan clean"; }
+printf 'A cavity left in the polymer by the template molecule.\n' > "concepts/Imprinted cavity.md"
+python3 tools/mesh.py build > build.txt
+[ -f concepts/imprinted-cavity.md ] && [ ! -f "concepts/Imprinted cavity.md" ] && grep -q "^- id:: imprinted-cavity$" concepts/imprinted-cavity.md && grep -q "^- kind:: concept$" concepts/imprinted-cavity.md && grep -q "^\*\*Definition\.\*\* A cavity left" concepts/imprinted-cavity.md && grep -q '"Imprinted cavity"' concepts/imprinted-cavity.md && grep -q "^- origin:: made by the user" concepts/imprinted-cavity.md && pass "a concept note made by hand becomes a concept card" || { cat build.txt; cat concepts/imprinted-cavity.md; fail "hand-made concept"; }
+grep -q "check: 0 errors" build.txt && grep -q "P001: 1 concept is named in passages no card of P001 covers, with no decision: imprinted-cavity (1)" build.txt && pass "check finds a new concept named in a paper already in the brain" || { cat build.txt; fail "scan warning"; }
+python3 tools/mesh.py scan P001 > scan.txt
+grep -q "^\[\[imprinted-cavity\]\] — 1 passage with no card about it" scan.txt && grep -q "b0005 p2: .*distorts the «imprinted cavities»" scan.txt && grep -q "^### \[\[imprinted-cavity|Imprinted cavity\]\] — 1 passage not covered" $S1/P001_scan.md && pass "scan lists the passage and writes the worklist" || { cat scan.txt; cat $S1/P001_scan.md; fail "scan P001"; }
+S2=$(ls -d sources/P002*)
+python3 tools/mesh.py scan imprinted-cavity > scan.txt; grep -q "^P002: .*named in passages no card of P002 covers (showing imprinted-cavity)" scan.txt && [ -f $S2/P002_scan.md ] && pass "scan <concept> looks across every source and writes their worklists" || { cat scan.txt; fail "scan concept"; }
+sed -i 's/^- decided:: $/- decided:: nothing new — the passage restates a claim already carded/' $S1/P001_scan.md $S2/P002_scan.md
+python3 tools/mesh.py build > build.txt; grep -q "check: 0 errors, 0 warnings" build.txt && python3 tools/mesh.py scan P001 > /dev/null && grep -q "^- decided:: nothing new — the passage restates" $S1/P001_scan.md && grep -q "^## Decided (1)" $S1/P001_scan.md && pass "a decision clears the warning and survives a new scan" || { cat build.txt; fail "scan decision"; }
+cat > $S1/P001_refs.md <<'TXT'
+# P001 references
+
+## 1
+- authors:: Lee, K.; Park, J.
+- year:: 2015
+- title:: Hydrogel swelling scales with temperature
+- journal:: J. Appl. Polym. Sci.
+- volume:: 98
+- pages:: 101--109
+- kind:: article
+- cited_at:: b0005
+TXT
+python3 tools/mesh.py cite P001 > /dev/null; python3 tools/mesh.py build > build.txt
+grep -q "P001-010: its passage cites R0001 Lee & Park (2015); add '- cites::" build.txt && pass "check asks a cited card for the work behind it" || { cat build.txt; fail "cites warning"; }
+grep -q "P001-003: its passage cites" build.txt && fail "a measured result was asked for citations" || pass "a measured result needs no citation"
+python3 tools/mesh.py scan P001 > scan.txt
+grep -A1 "^  P001-010 " scan.txt | grep -q "its sentence cites: R0001 Lee & Park (2015)" && grep -A1 "^  P001-008 " scan.txt | grep -q "in the paragraph: R0001" && grep -q "^## Citations to add" $S1/P001_scan.md && pass "scan finds the work cited in the card's own sentence (author-year)" || { cat scan.txt; fail "sentence citations"; }
+for f in $S1/P001-008-*.md $S1/P001-009-*.md $S1/P001-011-*.md; do grep -q "b0005" $f && sed -i 's/^## Codes$/## Codes\n- cites:: none — the citation in this paragraph supports another sentence/' $f; done
+sed -i 's/^## Codes$/## Codes\n- cites:: [[R0001]] — swelling scales with temperature in hydrogels/' $S1/P001-010-*.md
+sed -i 's/^## Codes$/## Codes\n- cites:: [[R0001]] — hydrogels swell more as they warm, the mechanism proposed/' $S1/P001-007-*.md
+python3 tools/mesh.py build > build.txt
+! grep -q "its passage cites" build.txt && grep -q "check: 0 errors" build.txt && pass "cites:: none — <why> and a cites:: line both answer the check" || { cat build.txt; fail "cites answered"; }
+grep -q "swelling: 1 line states facts from evidence without the works that evidence cites: P001-007 → R0001" build.txt && pass "a hub line resting on cited evidence must cite the work too" || { cat build.txt; fail "hub line citation"; }
+grep -q "P001-010-.*· cited · cites \[\[R0001-lee-2015-[a-z-]*|Lee & Park (2015)\]\]" concepts/swelling.md && pass "the hub's evidence list shows the works each card cites" || { grep "P001-010" concepts/swelling.md; fail "hub cites list"; }
+python3 - <<'PY'
+import glob
+r = glob.glob("references/R0001-*.md")[0].split("/")[-1][:-3]
+for f in ("concepts/swelling.md", "concepts/binding-capacity.md"):
+    head, sep, tail = open(f).read().partition("<!--AUTO:START")
+    head = "\n".join(l + f" Hydrogels are known to swell more when warmer ([[{r}|Lee & Park 2015]])." if "P001-007" in l else l for l in head.split("\n"))
+    t = (head + sep + tail).replace("\n## Codes\n", f"\n## Codes\n- cites:: [[{r}]] — hydrogel swelling rises with temperature\n", 1)
+    open(f, "w").write(t)
+PY
+python3 tools/mesh.py build > build.txt; grep -q "check: 0 errors, 0 warnings" build.txt && pass "citing the work in the hub line clears it" || { cat build.txt; fail "hub line cleared"; }
+python3 tools/mesh.py propose cavity-collapse "Loss of the imprinted cavities' shape on heating." --from P001 --alias "collapsed cavities" > p.txt && grep -q "^=== cavity-collapse$" $S1/P001_concepts.md && grep -q '^aliases: \["Cavity collapse", "collapsed cavities"\]$' $S1/P001_concepts.md && grep -q "^- proposed:: P001 " $S1/P001_concepts.md && pass "propose writes a concept proposal in the paper's own folder" || { cat p.txt; fail "propose"; }
+python3 tools/mesh.py propose wet-swelling "dup" --alias "Swelling" > p.txt 2>&1 && fail "propose accepted an existing concept's name" || grep -q "already the concept \[\[swelling\]\]" p.txt && pass "propose refuses a name an existing concept has" || fail "propose existing"
+python3 tools/mesh.py propose cavity-shape-loss "Cavities lose their shape." > /dev/null && grep -q "^=== cavity-shape-loss" ledger/concept-proposals.md && pass "a proposal with no source goes to the ledger" || fail "ledger proposal"
+python3 tools/mesh.py adopt cavity-shape-loss into cavity-collapse > a.txt && grep -q "folded into the proposal 'cavity-collapse', which stays a proposal" a.txt && [ ! -f concepts/cavity-collapse.md ] && [ ! -f ledger/concept-proposals.md ] && grep -q '"cavity shape loss"' $S1/P001_concepts.md && pass "adopt into another proposal folds it without making a card" || { cat a.txt; fail "fold into proposal"; }
+sed -i 's/^\(- concepts:: .*\)$/\1, [[cavity-collapse]]/' $S1/P001-007-*.md
+python3 tools/mesh.py build > build.txt; grep -q "check: 0 errors" build.txt && grep -q "\[\[cavity-collapse\]\] is a proposed concept (P001), not yet a card, linked by 1 card (P001-007)" build.txt && pass "a card may link a proposal while it waits for the user" || { cat build.txt; fail "proposal pending"; }
+python3 tools/mesh.py propose heat-ageing "Slow loss of binding with time at temperature." --from P001 > /dev/null
+python3 - "$S1" <<'PY'
+import glob, sys
+f = glob.glob(sys.argv[1] + "/P001-011-*.md")[0]; t = open(f).read()
+t = t.replace("\n## Codes", "\nIt may also be [[heat-ageing]].\n\n## Codes", 1).replace("- concepts:: ", "- concepts:: [[heat-ageing]], ", 1); open(f, "w").write(t)
+PY
+python3 tools/mesh.py reject heat-ageing "outside this vault's scope" > r.txt && ! grep -q "heat-ageing" $S1/P001-011-*.md && grep -q "It may also be heat ageing\." $S1/P001-011-*.md && grep -q "^- heat-ageing — .*outside this vault's scope" ledger/rejected-concepts.md && pass "reject turns the links into plain words and records the name" || { cat r.txt; cat $S1/P001-011-*.md; fail "reject"; }
+python3 tools/mesh.py propose heat-ageing "again" > p.txt 2>&1 && fail "a rejected name was proposed again" || grep -q "the user turned 'heat-ageing' down" p.txt && pass "propose refuses a name the user turned down" || fail "propose rejected"
+python3 tools/mesh.py adopt --all > a.txt && [ -f concepts/cavity-collapse.md ] && grep -q "^- adopted:: " concepts/cavity-collapse.md && grep -q '"collapsed cavities"' concepts/cavity-collapse.md && pass "adopt --all makes cards of proposals that match nothing" || { cat a.txt; fail "adopt --all"; }
+python3 tools/mesh.py build > build.txt; grep -q "check: 0 errors" build.txt && pass "the vault builds after adoption" || { cat build.txt; fail "build after 1.11.0"; }
+grep -q "New concepts are the user's call" CLAUDE.md && pass "CLAUDE.md says new concepts are the user's call" || fail "CLAUDE.md concepts"
 echo "ALL TESTS PASSED"

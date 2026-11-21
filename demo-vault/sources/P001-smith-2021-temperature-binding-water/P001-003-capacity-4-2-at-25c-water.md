@@ -17,7 +17,7 @@ At 25 °C in [[water]], the [[binding-capacity|binding capacity]] of the [[impri
 - when:: [[solvent]] = [[water]]
 - concepts:: [[imprinted-polymer-film]], [[analyte-x]]
 - obtained_by:: [[P001-002-batch-rebinding-uv-254]]
-- anchor:: [[P001_text#^b0004]]
+- anchor:: [[P001_text#^b0004]], [[P001_text#^b0002]]
 - loc:: "At 25 °C the binding capacity was 4.2"
 
 ## Linked from

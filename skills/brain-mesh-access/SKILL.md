@@ -75,6 +75,7 @@ Choose the home by what the material is. Everything that enters keeps its proven
 | The user's own results, lab notes, data | A source with `kind:: own-result` (add-paper, **Own results**) |
 | A talk, conversation, email or something the user knows from experience | A source with `kind:: other`. Write it as a short dated text file saying who said what and when, anchor it (`anchor P021 note.txt`), and card it like a paper. Never put an unsourced statement on an evidence card. |
 | A data set or code base | A data-set card (`data-sets/`) or code card (`code/`); see `brain-mesh` |
+| A new concept | The user's call. An agent proposes it (`propose <slug> "<definition>" --from P012`) and links the proposed name; the user adopts it (`adopt`), folds it into another (`adopt <slug> into <concept>`) or rejects it. The user can also make one by hand: a note in `concepts/` with a sentence saying what it is, which `build` turns into a card. Either way, then run `scan <slug>` and card what the papers say about it (`brain-mesh-concept-scan`). |
 | An idea that would explain something | A hypothesis (`brain-mesh-experiment`) |
 | Something nobody knows | A gap (`brain-mesh-gaps`) |
 | A paper to read | Set its reference card's status to `queued`, or add a row to the table in `ledger/reading-queue.md` |
@@ -82,6 +83,10 @@ Choose the home by what the material is. Everything that enters keeps its proven
 | A correction to a card | Edit the card (section 4), or follow housekeeping for published corrections |
 
 Get new ids from `python3 tools/mesh.py id <kind>`, never by guessing. Before creating any card, search for an existing one (`find`, `concept`); the duplicate rules are in add-paper.
+
+A concept card is made only by the user, by hand or with `adopt`, or by an agent on the user's word or where a vault rule in `CLAUDE.md` tells it to. When the user asks for a concept ("add a concept for mixture suppression"), that is their word: `propose` it, then `adopt` it.
+
+Every fact entered from a source carries the works the source cites for it (`cites::`), and a hub line stating it cites them too (`brain-mesh`, **Citations in cards**).
 
 ## 4. Changing cards
 

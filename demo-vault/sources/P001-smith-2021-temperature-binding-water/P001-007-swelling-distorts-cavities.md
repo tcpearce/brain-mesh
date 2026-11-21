@@ -14,7 +14,7 @@ The authors propose that [[swelling]] of the polymer network distorts the imprin
 - id:: P001-007
 - concepts:: [[swelling]], [[binding-capacity]], [[temperature]], [[imprinted-polymer-film]]
 - based_on:: [[P001-003-capacity-4-2-at-25c-water]], [[P001-004-capacity-1-3-at-45c-water]], [[P001-005-film-thickens-18-percent]]
-- anchor:: [[P001_text#^b0005]]
+- anchor:: [[P001_text#^b0005]], [[P001_text#^b0002]]
 - loc:: "swelling of the polymer network distorts the imprinted cavities"
 
 ## Linked from

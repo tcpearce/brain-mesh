@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.14.6"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.14.7"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -671,7 +671,7 @@ class Mesh:
                 if os.path.exists(J(SRC(s.root, pid), pid + ".pdf")):
                     if not re.search(r"\[\[" + pid + r"(_SI|_correction)?(_marked)?\.pdf", c.human): W.append(f"{i}: the prose has no link to the PDF; add '[[{pid}.pdf#page=N|open page]]' to its Source line")
                     ks = [k for pt in PARTS for k in [s.marks().get(pid + pt, {}).get("cards", {}).get(i)] if k]  # a card anchored in the main text and the supplement is marked in both; its loc is in one (issue #18)
-                    if ks and has_block and not any(k["how"] == "highlight" for k in ks):
+                    if ks and has_block and c.get("loc").strip("\"'“” ") and not any(k["how"] == "highlight" for k in ks):  # a card with no loc phrase (a table, a figure) has none to miss
                         what = "its anchored paragraph" if any(k["how"] == "paragraph" for k in ks) else "a figure or table label" if any(k["how"] == "label" for k in ks) else "a page-level marker"
                         W.append(f"{i}: its loc phrase could not be found in the source's PDFs, so it is marked by {what} only; correct the loc or the anchor")
                 rels = {k for k, _v in c.codes}

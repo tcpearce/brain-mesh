@@ -22,3 +22,6 @@ updated: 2026-11-20
 ## Codes
 - id:: quartz-crystal-microbalance
 - kind:: technique
+
+## Linked from
+- mentioned_in:: [[P002-garcia-2023-binding-retained-acetonitrile|Garcia & Chen (2023) Imprinted polymer films retain analyte X binding at elevated tempera…]]

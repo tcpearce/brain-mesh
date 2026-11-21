@@ -63,3 +63,9 @@ updated: 2026-11-20
 - kind:: variable
 - unit:: 1
 - measured_by:: [[batch-rebinding-assay]], [[quartz-crystal-microbalance]]
+
+## Linked from
+- mentioned_in:: [[P001-smith-2021-temperature-binding-water|Smith & Jones (2021) Temperature dependence of analyte X binding by an imprinted polymer …]]
+- mentioned_in:: [[P001-claims|P001 claims: heating in water lowers binding capacity because the film swells]]
+- mentioned_in:: [[P002-garcia-2023-binding-retained-acetonitrile|Garcia & Chen (2023) Imprinted polymer films retain analyte X binding at elevated tempera…]]
+- mentioned_in:: [[P002-claims|P002 claims: temperature alone does not degrade the imprinted cavities]]

@@ -48,3 +48,7 @@ updated: 2026-11-20
 - coverage:: Discussion | full | interpretation, limits
 - coverage:: Supplementary material | none | none published
 - pass:: 2026-11-20 | full | 8 cards | verified 8 of 8
+
+## Linked from
+- also_cites:: [[P001-010-hydrogel-swelling-scales-with-temperature|Swelling is said to scale with temperature in hydrogels (Lee 2015)]]
+- mentioned_in:: [[G002-no-thickness-data-in-acetonitrile|Film thickness has never been measured in acetonitrile, so swelling is not ruled in or ou…]]

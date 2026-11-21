@@ -16,4 +16,5 @@ The authors state that it remains unknown whether the loss of [[binding-capacity
 - loc:: "reversible on cooling remains unknown"
 
 ## Linked from
+- in_source:: [[P001-smith-2021-temperature-binding-water|Smith & Jones (2021) Temperature dependence of analyte X binding by an imprinted polymer …]]
 - raises:: [[G001-is-capacity-loss-reversible-on-cooling|Is the loss of binding capacity on heating in water reversible on cooling?]]

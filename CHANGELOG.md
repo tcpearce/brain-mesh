@@ -2,6 +2,16 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.12.0 (2026-11-21)
+
+Every link can be followed both ways.
+
+- `build` gives every card, of every kind (sources, claims, concepts and references too, not only evidence and synthesis cards), a generated `## Linked from` section: each card that links to it and that it does not already link back to. Prose links come back as `mentioned_in`; evidence and claims cards link their source card (`in_source`); data and code cards the source lists, `used_in_source`; reference cards, the concepts listing them as key references (`key_reference_for`); evidence cards, the works cited in their paragraph (`cited_in_its_paragraph`).
+- Concept hubs no longer stop at 30 evidence cards or 40 synthesis, discovery, data or code cards: the rest are linked by id. "Appears alongside" is symmetric.
+- `check` warns about any link with no link back; `build` writes it. In the odour-coding vault this closed 1,007 one-way links of 16 kinds.
+- A `- key::` line written below `## Linked from` (an append to the end of the file) is read as Codes and moved up by `build`, instead of being dropped.
+- The reference card's "Cited in the brain's cards" list counts only hand-written links.
+
 ## 1.11.0 (2026-11-21)
 
 Every concept looked for in every paper; facts carry the citations the paper gives; new concepts are the user's call.

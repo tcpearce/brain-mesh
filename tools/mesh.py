@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.11.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.12.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -64,6 +64,8 @@ INVERSE = {"obtained_by": "used_to_obtain", "based_on": "basis_for", "qualifies"
            "uses_data": "data_for", "uses_code": "code_for", "used_by": "uses", "derived_from": "source_of", "depends_on": "dependency_of",
            "cites": "cited_in", "see_also": "see_also", "main_claim": "main_claim_of", "sub_claim": "sub_claim_of",
            "resolved_by": "resolves", "explained_by": "explains_tension"}
+BACKLABELS = set(INVERSE.values()) | {"mentioned_in", "in_source", "used_in_source", "cited_in_its_paragraph", "key_reference_for", "listed_in", "cited_as"}
+is_backlabel = lambda k: k in BACKLABELS or k.endswith("_of")  # labels of generated back-links; any other '- key::' line below '## Linked from' was written by hand
 STOP = set("a an the of in on at to for by with and or is are was were be as it its this that from into than not no does do did between about".split())
 MARK_COLOURS = {"method": (0.55, 0.75, 1.0), "observation": (1.0, 0.9, 0.2), "model": (0.55, 0.9, 0.9), "claim": (0.6, 0.9, 0.5), "assumption": (1.0, 0.7, 0.4),
                 "limitation": (1.0, 0.7, 0.4), "question": (0.8, 0.7, 1.0), "oddity": (1.0, 0.6, 0.8), "definition": (0.85, 0.85, 0.85), "cited": (0.85, 0.85, 0.85)}
@@ -400,6 +402,8 @@ class Card:
         s.human, sep, tail = ("\n" + body.split("\n## Linked from")[0]).partition("\n## Codes")
         s.has_codes = bool(sep)
         s.codes = [(k, v.strip()) for k, v in re.findall(r"^- ([a-z_]+)::[ \t]*(.*)$", tail, re.M)]
+        lf = body.split("\n## Linked from", 1)[1] if "\n## Linked from" in body else ""
+        s.codes += [(k, v.strip()) for k, v in re.findall(r"^- ([a-z_]+)::[ \t]*(.*)$", lf, re.M) if not is_backlabel(k)]  # Codes lines added below the back-links: `build` moves them up
         t = re.search(r"^# (.+)$", s.human, re.M)
         s.title = t.group(1).strip() if t else ""
         s.type, s.status = str(s.fm.get("type", "")), str(s.fm.get("status", ""))
@@ -863,6 +867,10 @@ class Mesh:
                 rf = J(SRC(s.root, src.id), src.id + "_refs.md")
                 if os.path.exists(rf) and src.id not in cited: W.append(f"{src.id}: its references are extracted ({src.id}_refs.md) but not yet turned into reference cards: run `mesh.py cite {src.id}`")
                 elif not os.path.exists(rf) and src.get("kind") in ("paper", "preprint", "thesis", "report"): notes["papers whose reference list is not extracted"] += 1
+        if not only:
+            lk_ = {c.id: set(s.ids(c.raw)[0]) - {c.id} for c in s.cards.values()}
+            oneway = sorted((a, b) for a, ts in lk_.items() if not s.cards[a].get("retired") for b in ts if a not in lk_[b])
+            if oneway: W.append(f"{len(oneway)} link{'s have' if len(oneway) > 1 else ' has'} no link back, e.g. " + ", ".join(f"{a} → {b}" for a, b in oneway[:5]) + ": `mesh.py build` writes the missing back-links")
         for nm, ids_ in sorted(plinks.items()):
             W.append(f"[[{nm}]] is a proposed concept ({', '.join(s.staged()[nm])}), not yet a card, linked by {len(ids_)} card{'s' * (len(ids_) > 1)} ({', '.join(sorted(ids_)[:4])}{' …' if len(ids_) > 4 else ''}): the user makes it a card (`adopt {nm}`), or fold it into a concept (`adopt {nm} into <concept>`), or turn it down (`reject {nm} \"<why>\"`)")
         return notes
@@ -1787,6 +1795,65 @@ def seed_grades(m):
     if k: print(f"grading history started on {k} cards")
 
 
+def card_parts(c):
+    """(hand-written text, generated text) of a card. Its '## Linked from' section, which holds the back-links, is in
+    neither."""
+    raw = c.raw.split("\n## Linked from")[0]
+    return re.sub(r"<!--AUTO:START.*?<!--AUTO:END-->", "", raw, flags=re.S), "\n".join(re.findall(r"<!--AUTO:START.*?<!--AUTO:END-->", raw, re.S))
+
+
+BACK_CODES = {"held": "cited_as"}  # back-link labels for link-bearing Codes keys that are not typed links
+
+
+def backlinks(m):
+    """Every link in the vault seen from its target: {target: [(label, linking card, reason)]}. Typed links in Codes
+    take their inverse label; a link in the prose reads 'mentioned_in'; a link in a generated list reads as what the
+    list is ('in_source', 'cited_in_its_paragraph', 'key_reference_for', ...)."""
+    out = defaultdict(dict)
+    for c in m.cards.values():
+        if c.get("retired"): continue
+        hand, gen = card_parts(c)
+        prose, _sep, codes = hand.partition("\n## Codes")
+        rows = []
+        for k, v in c.codes:
+            for t in m.ids(v)[0]:
+                if k in LINK_KEYS:
+                    if k in CONCEPT_RELS and m.cards[t].fam != "concept": continue
+                    rows.append((t, INVERSE.get(k, k), one(v.split(" — ")[0], 120) if k in CLAIM_KEYS else reason(v), True))
+                else: rows.append((t, BACK_CODES.get(k, k + "_of"), "", False))
+        rows += [(t, "mentioned_in", "", False) for t in m.ids(prose)[0]]
+        for t in m.ids(gen)[0]:
+            tf = m.cards[t].fam
+            lab = {("source", "evidence"): "in_source", ("source", "claims"): "in_source", ("source", "page"): "used_in_source",
+                   ("reference", "evidence"): "cited_in_its_paragraph", ("concept", "reference"): "key_reference_for"}.get((c.fam, tf), "listed_in")
+            rows.append((t, lab, "", False))
+        for t, lab, why, typed in rows:
+            if t == c.id: continue
+            key = (lab, c.id) if typed else ("~", c.id)
+            if typed or not any(k_[1] == c.id for k_ in out[t]): out[t][key] = (lab, c, why, typed)
+            if typed: out[t].pop(("~", c.id), None)
+    return {t: list(v.values()) for t, v in out.items()}
+
+
+def write_backlinks(m):
+    """Give every card a generated '## Linked from' section listing the cards that link to it and that it does not
+    already link back to in its own text or generated lists, so every link can be followed both ways. Evidence and
+    synthesis cards list every typed link to them, as before."""
+    bl = backlinks(m)
+    for c in m.cards.values():
+        hand, gen = card_parts(c)
+        own = set(m.ids(hand + "\n" + gen)[0])
+        rows = [(lab, src, why) for lab, src, why, typed in bl.get(c.id, [])
+                if (typed and c.fam in ("evidence", "page")) or src.id not in own]
+        base = c.raw.split("\n## Linked from")[0].rstrip("\n") + "\n"
+        lf = c.raw.split("\n## Linked from", 1)[1] if "\n## Linked from" in c.raw else ""
+        stray = [l for l in lf.split("\n") if re.match(r"- ([a-z_]+)::", l) and not is_backlabel(re.match(r"- ([a-z_]+)::", l).group(1))]
+        if stray: base += "\n".join(stray) + "\n"; print(f"{c.id}: moved {len(stray)} Codes line{'s' * (len(stray) > 1)} written below '## Linked from' up into its Codes")
+        body = [f"- {lab}:: {lk(src, one(src.title, 90))}" + (f" — {why}" if why else "") for lab, src, why in sorted(rows, key=lambda r: (r[0], r[1].id))]
+        new = base + ("\n## Linked from\n" + "\n".join(body) + "\n" if body else "")
+        if new != c.raw: wr(c.path, new)
+
+
 def cmd_build(root):
     fixconcepts(root); fixnames(root); fixfolders(root)
     seed_grades(Mesh(root)); seed_priority(root)
@@ -1829,11 +1896,6 @@ def cmd_build(root):
                 if k in CONCEPT_RELS and m.cards[t].fam != "concept": continue
                 inbound[t].append((INVERSE.get(k, k), c, one(v.split(" — ")[0], 120) if k in CLAIM_KEYS else reason(v)))
     mirror = lambda rows: [f"- {lab}:: {lk(src, one(src.title, 90))}" + (f" — {r}" if r else "") for lab, src, r in sorted(rows, key=lambda r: (r[0], r[1].id))]
-    for c in m.cards.values():  # evidence, synthesis and workbench cards carry a generated '## Linked from' section
-        if c.fam not in ("evidence", "page"): continue
-        base = c.raw.split("\n## Linked from")[0].rstrip("\n") + "\n"
-        new = base + ("\n## Linked from\n" + "\n".join(mirror(inbound[c.id])) + "\n" if inbound.get(c.id) else "")
-        if new != c.raw: wr(c.path, new)
     at0 = defaultdict(list)  # (source, paragraph) -> evidence cards anchored there
     for c in m.evidence():
         for a in m.anchors(c):
@@ -1843,27 +1905,31 @@ def cmd_build(root):
         if c.fam in ("evidence", "page") and not c.get("retired"):
             for t in m.terms(c): use[t].append(c)
     rank = ["observation", "claim", "model", "method", "limitation", "assumption", "question", "oddity", "definition", "cited"]
+    more = lambda rest: [f"- … and {len(rest)} more: " + " · ".join(f"[[{c.name}|{c.id}]]" for c in rest)] if rest else []  # every card is linked, the rest by id only
+    cooc = {con.id: Counter(t for c in use.get(con.id, []) for t in m.terms(c) if t != con.id) for con in m.cards.values() if con.fam == "concept"}
+    top15 = {k: [t for t, _n in ranked(v, 15)] for k, v in cooc.items()}
     for con in [c for c in m.cards.values() if c.fam == "concept"]:  # each concept card lists what uses it
         users, L = use.get(con.id, []), []
         pg, ev = sorted((c for c in users if c.fam == "page"), key=lambda c: c.id), [c for c in users if c.fam == "evidence"]
         dc = [c for c in pg if c.id[0] in "DC"]
         disc = [c for c in pg if c.id[0] in "TAS"]
         pg = [c for c in pg if c.id[0] not in "DCTAS"]
-        if pg: L += [f"**Findings, tensions, gaps, hypotheses and experiments ({len(pg)})**"] + [f"- {lk(c)} · {c.status}" for c in pg[:40]] + [""]
-        if disc: L += [f"**Theories, analogies and seeds ({len(disc)})**"] + [f"- {lk(c)} · {c.status}" for c in disc[:40]] + [""]
-        if dc: L += [f"**Data sets and code ({len(dc)})**"] + [f"- {lk(c, c.get('name') or one(c.title, 100))} · {c.status}" for c in dc[:40]] + [""]
+        if pg: L += [f"**Findings, tensions, gaps, hypotheses and experiments ({len(pg)})**"] + [f"- {lk(c)} · {c.status}" for c in pg[:40]] + more(pg[40:]) + [""]
+        if disc: L += [f"**Theories, analogies and seeds ({len(disc)})**"] + [f"- {lk(c)} · {c.status}" for c in disc[:40]] + more(disc[40:]) + [""]
+        if dc: L += [f"**Data sets and code ({len(dc)})**"] + [f"- {lk(c, c.get('name') or one(c.title, 100))} · {c.status}" for c in dc[:40]] + more(dc[40:]) + [""]
         if ev:
             L.append(f"**Evidence: {len(ev)} cards from {len({c.id[:4] for c in ev})} sources** ({', '.join(f'{k} {v}' for k, v in ranked(Counter(c.type for c in ev)))})")
             ev.sort(key=lambda c: (rank.index(c.type) if c.type in rank else 99, c.id))
             rx = m.retracted()
             ctail = lambda c: (" · cites " + ", ".join(f"[[{w.name}|{short_cite(w)}]]" for w in works_cited(m, c)[:3]) + (" …" if len(works_cited(m, c)) > 3 else "")) if works_cited(m, c) else ""
             L += [f"- {lk(c, one(c.title, 110))} · {c.type}" + ctail(c) + (" · **retracted**" if c.id in rx else "") for c in ev[:30]]
-            if len(ev) > 30: L.append(f"- … {len(ev) - 30} more: see this note's backlinks, or run `mesh.py show {con.id}`")
+            L += more(ev[30:])
             L.append("")
         fromcon = [r for r in inbound.get(con.id, []) if r[1].fam == "concept"]
         if fromcon: L += ["**Linked from other concepts**"] + mirror(fromcon) + [""]
-        co = Counter(t for c in users for t in m.terms(c) if t != con.id)
-        if co: L += ["**Appears alongside:** " + " · ".join(f"[[{t}]] ({n_})" for t, n_ in ranked(co, 15)), ""]
+        co = cooc[con.id]  # a concept appears alongside another on both their cards, whichever ranks it lower
+        al = [t for t, _n in ranked(Counter({t: co[t] for t in set(top15[con.id]) | {x for x, tops in top15.items() if con.id in tops}}))]
+        if al: L += ["**Appears alongside:** " + " · ".join(f"[[{t}]] ({co[t]})" for t in al), ""]
         keyrefs = concept_refs(m, con, at0, 12 if con.priority == "high" else 6)
         if keyrefs:
             L += ["**Key references** (works cited where this concept's cards are anchored; cite the closely relevant ones in the text above, linking the reference card with the author and year as its label, and add a cites:: line)"]
@@ -1906,7 +1972,7 @@ def cmd_build(root):
             cards = sorted({c.id: c for b in bs for c in at.get((pid, b), [])}.values(), key=lambda c: c.id)
             L.append(f"- {lk(src) if src else pid} as ref {rn}" + (f", cited at {where}" if where else ""))
             L += [f"  - where {lk(c, one(c.title, 90))} says this" for c in cards[:6]]
-        inb_ = sorted((c for c in m.cards.values() if c.fam not in ("reference", "source") and not c.get("retired") and r.id in {m.resolve(t) for t, _a, _d in WIKI.findall(c.raw.split("<!--AUTO:START")[0] + c.raw.split("<!--AUTO:END-->")[-1])}), key=lambda c: c.id)
+        inb_ = sorted((c for c in m.cards.values() if c.fam not in ("reference", "source") and not c.get("retired") and r.id in {m.resolve(t) for t, _a, _d in WIKI.findall(card_parts(c)[0])}), key=lambda c: c.id)
         if inb_: L += ["", "**Cited in the brain's cards**"] + [f"- {lk(c, one(c.title, 90))}" + next((f" — {reason(v)}" for v in c.all("cites") if r.id in m.ids(v)[0] and reason(v)), "") for c in inb_]
         L += ["", "**BibTeX**", "```bibtex", bibtex(f, keys[r.id]), "```"]
         new = r.raw[:r.raw.find("\n", r.raw.find("<!--AUTO:START")) + 1] + "\n".join(L) + "\n" + r.raw[r.raw.find("<!--AUTO:END-->"):] if "<!--AUTO:START" in r.raw else r.raw
@@ -1923,6 +1989,7 @@ def cmd_build(root):
         a, b = t.find("<!--AUTO:START"), t.find("<!--AUTO:END-->")
         new = t[:t.find("\n", a) + 1] + "\n".join(reading_queue(Mesh(root))) + "\n" + t[b:]
         if new != t: wr(q, new)
+    write_backlinks(Mesh(root))
     marked = mark(Mesh(root))
     m = Mesh(root); notes, ix = m.check(), J(root, "index")
     tsv = lambda rows: "\n".join("\t".join(" ".join(str(c).split()) for c in r) for r in rows) + "\n"

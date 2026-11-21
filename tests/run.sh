@@ -940,4 +940,19 @@ python3 tools/mesh.py propose heat-ageing "again" > p.txt 2>&1 && fail "a reject
 python3 tools/mesh.py adopt --all > a.txt && [ -f concepts/cavity-collapse.md ] && grep -q "^- adopted:: " concepts/cavity-collapse.md && grep -q '"collapsed cavities"' concepts/cavity-collapse.md && pass "adopt --all makes cards of proposals that match nothing" || { cat a.txt; fail "adopt --all"; }
 python3 tools/mesh.py build > build.txt; grep -q "check: 0 errors" build.txt && pass "the vault builds after adoption" || { cat build.txt; fail "build after 1.11.0"; }
 grep -q "New concepts are the user's call" CLAUDE.md && pass "CLAUDE.md says new concepts are the user's call" || fail "CLAUDE.md concepts"
+# 15. every link can be followed both ways (1.12.0)
+cp -r "$ROOT/demo-vault" "$T/bl"; cd "$T/bl"; cp "$MESH" tools/mesh.py
+S1=$(ls -d sources/P001*)
+python3 tools/mesh.py build > build.txt; grep -q "check: 0 errors, 0 warnings" build.txt && pass "the demo vault has no one-way links" || { cat build.txt; fail "one-way links"; }
+grep -q "^- in_source:: \[\[P001-smith-2021-" $S1/P001-003-*.md && grep -q "^- in_source:: \[\[P001-smith-2021-" $S1/P001-claims.md && pass "evidence and claims cards link back to their source card" || fail "in_source"
+python3 - <<'PY'
+import glob
+f = glob.glob("findings/K001-*.md")[0]; t = open(f).read()
+t = t.replace("\n## Codes", "\nSee also the oddity [[P001-006]].\n\n## Codes", 1); open(f, "w").write(t)
+PY
+(python3 tools/mesh.py check || true) | grep -q "1 link has no link back, e.g. K001 → P001-006" && pass "check finds a link with no way back" || fail "check one-way"
+python3 tools/mesh.py build > build.txt; grep -q "check: 0 errors, 0 warnings" build.txt && grep -q "^- mentioned_in:: \[\[K001-" $S1/P001-006-*.md && pass "build mirrors a link written in the prose" || { cat build.txt; fail "prose mirror"; }
+printf -- '- see_also_note:: written at the very end\n- cites:: none — no work behind it\n' >> $S1/P001-006-*.md
+python3 tools/mesh.py build > build.txt; sed -n '/^## Codes/,/^## Linked from/p' $S1/P001-006-*.md | grep -q "^- cites:: none — no work behind it" && grep -q "moved 2 Codes lines" build.txt && pass "Codes lines written below the back-links are moved up, not lost" || { cat $S1/P001-006-*.md; fail "stray codes"; }
+grep -q "^- key_reference_for::\|^- mentioned_in::\|^- in_source::" concepts/*.md references/*.md 2>/dev/null; python3 tools/mesh.py build > /dev/null; cp -r . ../bl2; python3 tools/mesh.py build > /dev/null; diff -r -q . ../bl2 -x index > /dev/null && pass "back-links are stable from one build to the next" || { diff -r -q . ../bl2 | head; fail "back-links not idempotent"; }
 echo "ALL TESTS PASSED"

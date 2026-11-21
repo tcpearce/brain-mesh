@@ -22,6 +22,7 @@ At 25 °C in [[water]], the [[binding-capacity|binding capacity]] of the [[impri
 
 ## Linked from
 - basis_for:: [[P001-007-swelling-distorts-cavities|Swelling of the polymer network distorts the cavities and lowers binding capacity]]
+- in_source:: [[P001-smith-2021-temperature-binding-water|Smith & Jones (2021) Temperature dependence of analyte X binding by an imprinted polymer …]]
 - replicated_by:: [[P003-001-capacity-4-0-at-25c-water|Own films: binding capacity is 4.0 at 25 °C in water]] — same solvent, temperature and assay; values agree within error
 - rests_on:: [[P001-009-equilibrium-assumed-within-60-min|The assay assumes binding reaches equilibrium within 60 minutes]]
 - sub_claim_of:: [[P001-claims|P001 claims: heating in water lowers binding capacity because the film swells]] — Binding capacity falls from 4.2 at 25 °C to 1.3 at 45 °C in water

@@ -62,7 +62,7 @@ Next step: add the first sources with `brain-mesh-add-paper`.
 Tell the user, briefly:
 
 - Open the vault folder with "Open folder as vault". Start at `MAP`, then follow a concept hub.
-- Every link is a normal Obsidian link. The backlinks pane of a concept card lists every card that mentions it, and each card's `## Linked from` section shows what points at it and why.
+- Every link is a normal Obsidian link. The backlinks pane of a concept card lists every card that mentions it, and each card's `## Linked from` section shows every card that links to it and why, so any link can be followed back from inside the card.
 - The graph view is most readable with colour groups by folder: `path:concepts`, `path:sources`, `path:findings`, `path:tensions`, `path:gaps`, `path:hypotheses`, `path:experiments`, `path:data-sets`, `path:code`, `path:references`. A paper's claims card (`P012-claims`) is the quickest way into it. Add a colour group for `[priority:high]` so the focus stands out.
 - Priority is the `priority` property in each card's Properties panel: type `high`, `normal` or `low` (Obsidian has no fixed dropdown, but it suggests the values already used). Remove the property for normal.
 - So that edits made in Obsidian, priorities included, reach GitHub: in the Obsidian Git plugin set **Auto commit-and-sync interval** to a few minutes (with auto-pull already on). Without it, the next `sync` from any Claude session commits them.

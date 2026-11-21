@@ -22,6 +22,7 @@ The [[film-thickness|thickness]] of the [[imprinted-polymer-film|imprinted polym
 
 ## Linked from
 - basis_for:: [[P001-007-swelling-distorts-cavities|Swelling of the polymer network distorts the cavities and lowers binding capacity]]
+- in_source:: [[P001-smith-2021-temperature-binding-water|Smith & Jones (2021) Temperature dependence of analyte X binding by an imprinted polymer …]]
 - main_claim_of:: [[P001-claims|P001 claims: heating in water lowers binding capacity because the film swells]] — Heating in water lowers binding capacity because swelling distorts the imprinted cavities
 - raises:: [[G002-no-thickness-data-in-acetonitrile|Film thickness has never been measured in acetonitrile, so swelling is not ruled in or ou…]]
 - sub_claim_of:: [[P001-claims|P001 claims: heating in water lowers binding capacity because the film swells]] — The film thickens by 18% between 25 and 45 °C, the swelling the main claim invokes

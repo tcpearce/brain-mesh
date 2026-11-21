@@ -25,4 +25,5 @@ Capacity falls with an 18% thickening in water ([[K001-capacity-falls-on-heating
 - concepts:: [[binding-capacity]], [[swelling]], [[temperature]], [[water]]
 
 ## Linked from
+- mentioned_in:: [[G002-no-thickness-data-in-acetonitrile|Film thickness has never been measured in acetonitrile, so swelling is not ruled in or ou…]]
 - tested_by:: [[E001-heat-cool-cycle-two-solvents|Heat-then-cool cycle in water and acetonitrile with one assay]]

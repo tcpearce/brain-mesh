@@ -36,3 +36,6 @@ updated: 2026-11-20
 - id:: swelling
 - kind:: concept
 - affects:: [[binding-capacity]] — proposed, not tested, [[P001-007-swelling-distorts-cavities]]
+
+## Linked from
+- mentioned_in:: [[P001-claims|P001 claims: heating in water lowers binding capacity because the film swells]]

@@ -34,3 +34,8 @@ updated: 2026-11-20
 ## Codes
 - id:: water
 - kind:: entity
+
+## Linked from
+- mentioned_in:: [[P001-smith-2021-temperature-binding-water|Smith & Jones (2021) Temperature dependence of analyte X binding by an imprinted polymer …]]
+- mentioned_in:: [[P001-claims|P001 claims: heating in water lowers binding capacity because the film swells]]
+- mentioned_in:: [[P002-claims|P002 claims: temperature alone does not degrade the imprinted cavities]]

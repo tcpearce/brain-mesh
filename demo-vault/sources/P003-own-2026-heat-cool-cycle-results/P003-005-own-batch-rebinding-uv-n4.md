@@ -17,6 +17,7 @@ Experiment E001 measured the [[binding-capacity|binding capacity]] of batch 7 [[
 - loc:: "batch rebinding assay with UV detection"
 
 ## Linked from
+- in_source:: [[P003-own-2026-heat-cool-cycle-results|Own result (2026) Heat-then-cool cycle in water and acetonitrile, experiment E001]]
 - used_to_obtain:: [[P003-001-capacity-4-0-at-25c-water|Own films: binding capacity is 4.0 at 25 °C in water]]
 - used_to_obtain:: [[P003-002-capacity-1-4-at-45c-water|Own films: binding capacity falls to 1.4 at 45 °C in water]]
 - used_to_obtain:: [[P003-003-capacity-recovers-on-cooling|Own films: binding capacity recovers to 3.8 after cooling back to 25 °C in water]]

@@ -26,3 +26,6 @@ updated: 2026-11-21
 - main_claim:: Heating in water lowers binding capacity because swelling distorts the imprinted cavities — [[P001-007-swelling-distorts-cavities]] states it; rests on [[P001-004-capacity-1-3-at-45c-water]], [[P001-005-film-thickens-18-percent]]; feeds [[K001-capacity-falls-on-heating-in-water]], [[X001-does-heat-or-solvent-uptake-lower-capacity]]
 - sub_claim:: Binding capacity falls from 4.2 at 25 °C to 1.3 at 45 °C in water — [[P001-003-capacity-4-2-at-25c-water]], [[P001-004-capacity-1-3-at-45c-water]]; feeds [[K001-capacity-falls-on-heating-in-water]]
 - sub_claim:: The film thickens by 18% between 25 and 45 °C, the swelling the main claim invokes — [[P001-005-film-thickens-18-percent]]; feeds [[G002-no-thickness-data-in-acetonitrile]]
+
+## Linked from
+- in_source:: [[P001-smith-2021-temperature-binding-water|Smith & Jones (2021) Temperature dependence of analyte X binding by an imprinted polymer …]]

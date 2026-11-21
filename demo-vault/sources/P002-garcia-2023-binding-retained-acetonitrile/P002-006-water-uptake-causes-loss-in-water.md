@@ -18,4 +18,5 @@ The authors suggest that the loss of [[binding-capacity|binding capacity]] repor
 - loc:: "arises from water uptake by the film rather than from heating"
 
 ## Linked from
+- in_source:: [[P002-garcia-2023-binding-retained-acetonitrile|Garcia & Chen (2023) Imprinted polymer films retain analyte X binding at elevated tempera…]]
 - sub_claim_of:: [[P002-claims|P002 claims: temperature alone does not degrade the imprinted cavities]] — The loss reported in water comes from water uptake rather than heating

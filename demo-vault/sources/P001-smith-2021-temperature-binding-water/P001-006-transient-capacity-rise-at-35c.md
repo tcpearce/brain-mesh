@@ -16,3 +16,6 @@ One [[imprinted-polymer-film|film]] at 35 °C in [[water]] showed a transient in
 - concepts:: [[binding-capacity]], [[imprinted-polymer-film]]
 - anchor:: [[P001_text#^b0004]]
 - loc:: "transient increase in capacity during the first 5 minutes"
+
+## Linked from
+- in_source:: [[P001-smith-2021-temperature-binding-water|Smith & Jones (2021) Temperature dependence of analyte X binding by an imprinted polymer …]]

@@ -14,3 +14,6 @@ The [[imprinted-polymer-film|imprinted polymer films]] were prepared by spin coa
 - concepts:: [[imprinted-polymer-film]]
 - anchor:: [[P001_text#^b0003]]
 - loc:: "spin coating at 2000 rpm and cured for 12 h"
+
+## Linked from
+- in_source:: [[P001-smith-2021-temperature-binding-water|Smith & Jones (2021) Temperature dependence of analyte X binding by an imprinted polymer …]]

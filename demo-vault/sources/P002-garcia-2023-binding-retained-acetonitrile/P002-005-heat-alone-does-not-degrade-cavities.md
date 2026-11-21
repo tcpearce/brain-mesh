@@ -19,6 +19,7 @@ The authors conclude that [[temperature]] by itself does not degrade the imprint
 - loc:: "Temperature alone does not degrade the imprinted cavities"
 
 ## Linked from
+- in_source:: [[P002-garcia-2023-binding-retained-acetonitrile|Garcia & Chen (2023) Imprinted polymer films retain analyte X binding at elevated tempera…]]
 - main_claim_of:: [[P002-claims|P002 claims: temperature alone does not degrade the imprinted cavities]] — Heating alone does not degrade the imprinted cavities, since capacity is unchanged in acetonitrile
 - qualified_by:: [[P002-007-single-film-thickness-tested|Only one film thickness, 200 nm, was tested]]
 - side_of:: [[X001-does-heat-or-solvent-uptake-lower-capacity|Does heating itself lower binding capacity, or only heating in water?]]

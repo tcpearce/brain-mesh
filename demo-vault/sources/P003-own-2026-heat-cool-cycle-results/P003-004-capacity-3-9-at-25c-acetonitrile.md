@@ -19,3 +19,7 @@ At 25 °C in [[acetonitrile]] the [[binding-capacity|binding capacity]] was 3.9 
 - obtained_by:: [[P003-005-own-batch-rebinding-uv-n4]]
 - anchor:: [[P003_text#^b0003]]
 - loc:: "binding capacity was 3.9 ± 0.3 at 25 °C"
+
+## Linked from
+- in_source:: [[P003-own-2026-heat-cool-cycle-results|Own result (2026) Heat-then-cool cycle in water and acetonitrile, experiment E001]]
+- mentioned_in:: [[E001-heat-cool-cycle-two-solvents|Heat-then-cool cycle in water and acetonitrile with one assay]]

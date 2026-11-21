@@ -90,6 +90,15 @@ Extract every equation the source states, printed or defined in words, as LaTeX.
 4. An equation defined only in words ("the square root of the sum of squared differences") is written out too, anchored to its paragraph, and the prose says that the paper prints none. Add nothing the source does not state: where it leaves a choice open (a sign convention, a normalisation), say so instead of filling it in.
 5. Check each transcription: `python3 tools/mesh.py latex P012-007` draws the LaTeX beside the cropped original. Compare symbol by symbol: subscripts, signs, limits of sums, and what is in a numerator.
 
+### Data sets and code
+
+Every data set and every code base or software package the study uses gets a card, so the brain knows what each result was computed from and others can find it again.
+
+1. `python3 tools/mesh.py mentions P012` lists the paragraphs naming data sets and code (with their links and accessions), the paper's cited works that look like databases or software, and the data-set and code cards already in the brain that match. Read the data and code availability statements and the methods yourself too; the list is a starting point.
+2. For each one the study uses (not merely mentions): find its card (`find <name>`) or make one (`id D` or `id C`) in the format of `brain-mesh`, and add `- used_by:: [[P012]] — how the study uses it`. A data set the paper itself releases is a data-set card too.
+3. A code card summarises the code as its README would. Read the README (`python3 tools/mesh.py repoinfo <github URL>`, or the repository page) before writing; commercial software without a README is described from its documentation and marked `restricted`.
+4. Link the evidence cards that rest on it: `- uses_data:: [[D003]] — training set`, `- uses_code:: [[C002]] — model training`. The method card that describes the data or code is the usual place.
+
 ## 4. Concepts
 
 For every material, variable, technique and mechanism a card mentions, run `python3 tools/mesh.py concept "<name>"`.
@@ -165,7 +174,51 @@ Then:
 - For each main result and claim, act on the placement report as above.
 - Turn the authors' open questions and limitations into gap candidates (`brain-mesh-gaps`), searching existing gaps first.
 - **Check the workbench.** Does the source support or undermine an open hypothesis, or already answer a planned or registered experiment? Say so on that card, under `## Amendments` for a registered experiment, and tell the user at once.
+- **Decide on every open gap, tension and hypothesis the source bears on** (below).
+- **Write the claims card** (below).
 - If the source was in `ledger/reading-queue.md`, `build` marks its reference card held by itself (by DOI, or first author, year, volume and page; set `status: held` and `held:: [[P012]]` by hand if it did not match). Revisit the gap or tension it was queued for.
+
+### Decisions on gaps, tensions and hypotheses
+
+A new paper may close a gap, settle a tension or decide a hypothesis, and the brain must not go on treating them as open. The end of `place P012`, under **Decisions to record**, lists every open gap, tension and hypothesis the source bears on that has no decision for it yet. Read each against the source and record one of these:
+
+| Card | What the source can do | What to write |
+|---|---|---|
+| Gap | Measures what **What would close it** asks for | status `closed`, `- closed_by:: [[P012-014]] — why it closes it`, a `graded::` line |
+| | Answers part of it | rewrite **Unknown** to what is still missing, add the evidence under **What is known**, a `graded::` line naming P012 (status unchanged) |
+| | Shows where the answer is (a cited paper) | status `fillable`, queue the paper |
+| Tension | Takes a side | add its card to `sides::` |
+| | Accounts for both sides | status `explained`, `- explained_by:: [[H002]]` or the evidence, a `graded::` line |
+| | Settles it by decisive evidence | status `resolved`, `- resolved_by:: [[P012-020]] — why it settles it`, a `graded::` line |
+| Hypothesis | Tests a prediction | status `supported` or `refuted`, a `graded::` line naming the evidence |
+| Any | Touches it but changes nothing | `- reviewed:: <date> P012 — untouched: <why>` |
+
+Then follow the change through the ontology:
+
+- `python3 tools/mesh.py impact <id>` on each card whose status changed, and review what rests on it.
+- A closed gap: `check` flags experiments still planned against it. Amend or abandon them (`brain-mesh-experiment`) and record it with a `reviewed::` line on the experiment.
+- A resolved tension: `check` flags the hypotheses written to explain it. Re-grade them.
+- A resolved tension usually means a finding changes too. Its contested status may go, or a sibling finding may be needed for the conditions now understood.
+- `gapsdoc` rewrites the research-gaps document. The reading queue drops closed gaps and resolved tensions by itself.
+
+Once the source is integrated, `check` warns about every open gap, tension or hypothesis it bears on that still has no decision.
+
+### The claims card
+
+Every paper, preprint, thesis or report gets a claims card, `P012-claims.md`, written once the source's cards are linked to the findings.
+
+1. `python3 tools/mesh.py claims P012` lists the source's claim cards, what each rests on and which findings cite it, and writes a skeleton.
+2. Choose the **main claim**: what the paper says it shows. It is usually in the abstract and the last paragraph. Link the claim card that states it.
+3. Choose up to five **sub-claims**, the claims the main one depends on, in the order the argument needs them. Fewer is better than padding.
+4. On each claim's line, link:
+   - the paper's own evidence: the claim card that states it, and the observations or models it rests on;
+   - the findings, tensions, gaps or hypotheses it feeds, or write `no finding yet`.
+   A finding linked here should cite some of that evidence. If it does not, add the evidence to the finding or drop the link.
+5. Write **How far the evidence carries it** in your own judgement:
+   - where the paper's evidence is strong;
+   - where it is thin (single runs, overlapping error bars, untested conditions);
+   - what the paper does not show.
+6. Set status `checked` after comparing the card with the paper's abstract and conclusion.
 
 ## 9. Update the concept hubs
 
@@ -175,13 +228,14 @@ This is what the user reads, so it is not optional. For every concept the source
 - add or revise lines under **Relationships**, and the matching relation in Codes (`affects`, `measured_by`, `part_of`, `broader`, `related`);
 - add to **Open questions**; extend **How it is measured** when the source uses a new method;
 - revise a line that the new source has overtaken, and do not leave contradictory lines standing;
+- cite the closely relevant works in the text. The hub's generated block lists, under **Key references**, the works cited where its evidence cards are anchored. Cite in the prose those that a point actually rests on, as `[[R0042-…|Keller et al. 2017]]` or `[[P001-…|Lee et al. 2023]]` for a source in the brain, and add the matching `- cites:: [[R0042]] — what it supports` line. Cite no work just because it is listed;
 - set `updated` to today.
 
 ## 10. Close
 
-Set the source card's status to `integrated`. Rewrite the Overview in `MAP.md` if the picture has changed. Run `python3 tools/mesh.py build` until there are no errors, then `python3 tools/mesh.py log "add P012 <authors year> (<n> cards); <findings, tensions and gaps changed>"`.
+Set the source card's status to `integrated`. Rewrite the Overview in `MAP.md` if the picture has changed. Run `python3 tools/mesh.py build` until there are no errors (the decisions on gaps and tensions and the claims card are checked from here on), then `python3 tools/mesh.py log "add P012 <authors year> (<n> cards); <findings, tensions and gaps changed>"` and `python3 tools/mesh.py sync "add P012"`.
 
-Report to the user in a few lines: cards by type; findings added or re-graded; new tensions and gaps; hubs updated; anything bearing on their hypotheses or experiments; what was not extracted and why; and the top of the reading queue: the ★ works bearing on research gaps, then works cited where open gaps and tensions rest, with their DOIs. If the session's files are temporary, hand back the vault archive.
+Report to the user in a few lines: the paper's main claim and how far its evidence carries it; cards by type; findings added or re-graded; gaps closed or narrowed and tensions explained or resolved; new tensions and gaps; data sets and code carded; hubs updated; anything bearing on their hypotheses or experiments; what was not extracted and why; and the top of the reading queue: the ★ works bearing on research gaps, then works cited where open gaps and tensions rest, with their DOIs. If the session's files are temporary, hand back the vault archive.
 
 ## Lens pass: re-reading sources for a new question
 

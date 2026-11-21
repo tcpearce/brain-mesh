@@ -17,6 +17,8 @@ updated: 2026-11-20
 
 ## Cards from this source
 <!--AUTO:START-->
+**Claims** (1 main, 2 sub): [[P002-claims|Heating alone does not degrade the imprinted cavities, since capacity is unchanged in acetonitrile]]
+
 **Method (1)**
 - [[P002-001-capacity-measured-by-qcm|Binding capacity was measured with a quartz crystal microbalance]] · reported
 

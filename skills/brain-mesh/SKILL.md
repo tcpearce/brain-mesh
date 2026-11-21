@@ -5,6 +5,8 @@ description: "Map of a brain mesh: a Zettelkasten vault of interlinked markdown 
 
 # Brain mesh
 
+**Every time a vault is opened, by any agent, read `brain-mesh-access` first and follow it**: sync with GitHub before working and after, navigate and change the brain only through the tooling, and leave nothing uncommitted. A vault's own `CLAUDE.md` says the same to an agent that starts inside it.
+
 A brain mesh is a second brain for one research topic. Claude builds it from papers and the user's own results; the user reads and steers it in Obsidian. Its job is to support new science: proposing experiments, designing them and judging their outcomes. Nobody knows in advance which detail of which paper will matter, so the vault is built to lose nothing and to keep every statement traceable to the place on the page it came from.
 
 ## The ideas that hold it together
@@ -25,6 +27,7 @@ These instructions and the tooling live in the GitHub repository `tcpearce/brain
 
 | Task | Document |
 |---|---|
+| **Every session: syncing, navigating, answering, adding your own material, editing and deleting cards** | `brain-mesh-access` |
 | Start a vault, install or upgrade its tooling, open it in Obsidian | `brain-mesh-setup` |
 | Add a paper or an own result; re-read existing papers for a new question | `brain-mesh-add-paper` |
 | Add many papers at once, with agents working in parallel | `brain-mesh-batch` |
@@ -46,11 +49,13 @@ One writer at a time. If the user may have edited cards in Obsidian since the la
 
 ```
 MAP.md                    home note: overview, then the concept hubs
+CLAUDE.md                 instructions for any agent working in a clone of the vault (rewritten by `upgrade`; own notes go below its end marker)
 MESH.json  SCHEMA.md      marker file and a one-page cheat sheet
 concepts/<slug>.md        concept cards (the hubs)
 sources/P012-<slug>/      one folder per source, named after its source card (P012-smith-2021-binding-in-water), so it can be recognised in Obsidian
   P012-<slug>.md            source card
   P012-007-<slug>.md        evidence cards
+  P012-claims.md            claims card: the paper's main claim and up to five sub-claims
   P012.pdf                  the source as received: the ground truth, never changed
   P012_marked.pdf           generated copy with every card highlighted on the page
   P012_text.md              its paragraph-anchored text (never edited)
@@ -67,8 +72,10 @@ references/R0001-<slug>.md  reference cards: one per cited work, shared by every
 references/library.bib    generated BibTeX of the sources in the brain and every work they cite
 findings/K###-<slug>.md   tensions/X###-...   gaps/G###-...
 hypotheses/H###-...       experiments/E###-...
+data-sets/D###-<slug>.md  data-set cards: every data set a study uses
+code/C###-<slug>.md       code cards: every repository or software package a study uses
 gaps/RESEARCH-GAPS.md     generated research-gaps document
-ledger/                   CHANGELOG.md, lenses.md, reading-queue.md (with a generated list of what to read next), checksums.txt
+ledger/                   CHANGELOG.md, lenses.md, reading-queue.md (with a generated list of what to read next), checksums.txt, removed.md (deleted ids, never reused)
 index/                    generated lookup tables (cards.tsv, edges.tsv, coverage.tsv, marks.json ...)
 tools/mesh.py             the tooling (a copy; the repository holds the source of truth)
 .brain-mesh/              hidden: an offline copy of these instructions and the tooling version
@@ -77,10 +84,10 @@ notes/                    optional: the user's own free-form notes, ignored by t
 
 ## Ids and names
 
-- The id is the code at the start of the file name: `P012` (a source), `P012-007` (its seventh evidence card), `K003`, `X001`, `G004`, `H002`, `E001`, `R0042` (a cited work). A concept card's id is its slug: `binding-capacity`.
+- The id is the code at the start of the file name: `P012` (a source), `P012-007` (its seventh evidence card), `K003`, `X001`, `G004`, `H002`, `E001`, `D003` (a data set), `C002` (code), `R0042` (a cited work), and `P012-claims` for a source's claims card. A concept card's id is its slug: `binding-capacity`.
 - File name = id plus a short meaningful slug, lower case with hyphens, two to six words: `P012-007-capacity-falls-at-45c.md`. The slug is frozen when the card is created; refine the title inside the card instead of renaming the file. A source card's slug starts with a letter, usually the first author: `P012-smith-2021-film-temperature.md`.
 - Ids are never changed or reused. A card that is wrong or merged is retired by adding `- retired:: <reason and a link to its replacement>` to its Codes. It is never deleted, so nothing that cites it breaks.
-- Get the next free id from `python3 tools/mesh.py id P` (also `K`, `X`, `G`, `H`, `E`, `L`), or `id P012` for that source's next card.
+- Get the next free id from `python3 tools/mesh.py id P` (also `K`, `X`, `G`, `H`, `E`, `D`, `C`, `L`), or `id P012` for that source's next card.
 - When writing a link, a bare id is enough: `[[P012-007]]` or `[[P012-007|readable text]]`. `build` expands every link to the full file name so Obsidian resolves it. In prose always give readable display text.
 
 ## Card anatomy
@@ -208,13 +215,45 @@ Codes on evidence cards:
 - Housekeeping codes: `retracted:: <date and reason>` on a retracted source (or a single retracted card); `retraction_checked:: P012 — <what changed>` on a card reviewed after a retraction it rests on; `corrected:: <date> — <what changed>` on a card fixed after a published correction, together with an anchor into `P012_correction_text`. See `brain-mesh-housekeeping`.
 - Optional: `origin:: claude` when the statement is Claude's reading and not the authors' words; `via:: table`, `figure`, `si` or `inferred` when it did not come from the running text (a value read off a plot is `via:: figure`, with its reading error and the panel's data file, as `brain-mesh-add-paper` describes); `null:: true` for a null or negative result; `flag:: <doubt about the extraction>`; `ref::` on cited cards; `lens:: L003` when added in a lens pass.
 
+### Claims cards: what each paper says it shows
+
+Every paper, preprint, thesis or report has one claims card, `P012-claims.md`, in its folder: the argument of the paper as its authors make it, one **main claim** and at most five **sub-claims** the main claim depends on. It is the quickest way into a paper and the place to judge how far its evidence carries it.
+
+- Human part: `# P012 claims: <the main claim>`, **Main claim.**, **Sub-claims** (a numbered list), **How far the evidence carries it.** (where the evidence is strong, where thin, what the paper does not show), then the AUTO markers, where `build` tabulates each claim's evidence by type and status and the findings it feeds.
+- Codes: one `- main_claim:: <the claim as a sentence> — [[P012-031]] states it; rests on [[P012-012]], [[P012-014]]; feeds [[K003]]` line, and up to five `- sub_claim::` lines in the same form. Each line links the paper's own evidence: the claim card that states it (required for the main claim) and the observations or models it rests on. Each also links the findings, tensions, gaps or hypotheses it feeds, or says `no finding yet`. Status `drafted` or `checked`.
+- The links are mirrored, so a finding shows `main_claim_of` or `sub_claim_of` each paper whose claims it carries, and so do the evidence cards. `check` enforces one main claim, at most five sub-claims, links only to the paper's own evidence, and that a linked finding actually cites some of the claim's evidence.
+- `python3 tools/mesh.py claims P012` lists the paper's claim cards with what they rest on and feed, and writes a skeleton to fill in.
+
+**Claims and findings are different things.** A claim belongs to one paper and is in the authors' voice: what they say they showed, as they framed it, graded by nobody, fixed once written apart from corrections. A finding (`K`) belongs to the brain: one proposition with its scope, built from evidence across every source that bears on it, graded on independence, directness and replication, and re-graded as papers arrive. A claim feeds findings but is never one. Two papers can make the same claim and yield one finding; one paper's claim can be split across several scoped findings, or count against one. Claim *cards* (evidence of type `claim`) are the individual statements; the claims card arranges them into the paper's argument.
+
+### Data-set cards
+
+One per data set any study uses, in `data-sets/`, `D003-<short name>.md`. Find data sets in a paper with `python3 tools/mesh.py mentions P012`, which lists the paragraphs that name data sets and code, the links and accessions in them, cited works that look like databases, and the cards already in the brain that match.
+
+- Human part: `# <what the data set is, in a sentence>`, **What it is.**, **What it contains.** (samples, variables, size, how collected), **Access.**, **How the brain's studies use it.**
+- Codes: `name`, `version`, `creators`, `year`, `url`, `doi`, `accession`, `licence`, `size`, `samples`, `variables`, `modality`, `format`, `collection`, `concepts::`, `derived_from:: [[D001]] — how` for a data set built from others, `see_also::` for any other relevant card, and one `- used_by:: [[P012]] — how the study uses it (training set, re-analysis, validation)` per study. Status is its availability: `open`, `on-request`, `restricted`, `unavailable`, `unknown`.
+- Cards that rest on a data set link it with `uses_data:: [[D003]] — what for` (evidence cards, code cards). Both directions show: the study's source card lists its data sets, and the data-set card's `## Linked from` lists every card that uses it.
+
+### Code cards
+
+One per code repository or software package any study uses, in `code/`, `C002-<short name>.md`. The card summarises the code the way a good README would, so a reader knows what it does without opening it.
+
+- Human part: `# <name> <does what, in a sentence>`, **What it does.**, **Inputs and outputs.**, **How it works** (method, language, main dependencies), **How the brain's studies use it.**, **Getting it.** (install or access, licence, maintained or not).
+- Codes: `name`, `repo` (its URL), `url`, `doi` (a Zenodo or software DOI), `language`, `licence`, `version` or `commit` used, `last_push`, `concepts::` (the methods it implements), `uses_data:: [[D003]] — what for`, `depends_on:: [[C001]] — what for`, `see_also::`, and one `- used_by:: [[P012]] — how the study uses it` per study. Status as for data sets; commercial software that cannot be inspected is `restricted` or `unavailable`.
+- `python3 tools/mesh.py repoinfo <github URL>` prints a repository's description, language, licence, activity and the start of its README. Read the README, not just the description, and summarise from it; never describe a repository you have not read. If GitHub cannot be reached, open the repository page with whatever tool can.
+
+### Citations in cards
+
+Any card may cite works: a link in the prose to a reference card (`[[R0042-keller-2017-predicting-human-olfactory|Keller et al. 2017]]`) or to a source in the brain (`[[P001-lee-2023-principal-odor-map|Lee et al. 2023]]`), with the same work in Codes as `- cites:: [[R0042]] — what it supports here`. `check` warns about a reference cited in the prose and missing from Codes. Concept hubs should cite the closely relevant works in their text: `build` lists, under **Key references** in each concept's generated block, the works cited in the very paragraphs where that concept's evidence cards are anchored, strongest first, and marks those the card already cites. Each reference card lists the cards that cite it.
+
 ### Synthesis cards
 
 Written by Claude across sources. One proposition, disagreement or unknown per card. Each cites evidence cards and lists its concepts in `concepts::`.
 
 - **Finding `K`.** `# <the proposition, with its scope>`, **In brief.**, `## Evidence` (for and against, in words, with links), `## Where it holds and where it breaks`, `## What would change this`. Codes: `support::`, `against::`, and the scope as `when::` lines like those on evidence cards (`- when:: [[solvent]] = [[water]]`, `- when:: [[temperature]] = 25 to 45 degC`; several lines for one variable allow several values). The scope in Codes must match the scope in the title. Status: `single-source`, `tentative`, `probable`, `established`, `contested`. Grade on independent sources, directness and replication, not on how confident the authors sound.
-- **Tension `X`.** **The disagreement.**, `## Sides`, `## Possible explanations` (differing conditions, methods or definitions first), `## What would settle it`. Codes: `sides::`. Status: `open`, `explained`, `resolved`.
+- **Tension `X`.** **The disagreement.**, `## Sides`, `## Possible explanations` (differing conditions, methods or definitions first), `## What would settle it`. Codes: `sides::`, and once it changes status `explained_by::` (the hypothesis or evidence that accounts for both sides, or a hypothesis that `explains::` it) or `resolved_by::` (the evidence that settled it). Status: `open`, `explained`, `resolved`.
 - **Gap `G`.** See `brain-mesh-gaps`.
+- **Review after each paper.** Once a paper is integrated, every open gap, tension and hypothesis it bears on carries a decision for it: a status change with a `graded::` line naming the paper, or `- reviewed:: <date> P012 — untouched: <why>`. `check` lists those still undecided (add-paper step 8).
 - **Grading history.** Findings, tensions, gaps and hypotheses keep one `- graded:: <date> <status> — <why>` line per change of status, oldest first, so each carries its own reasoning trail (`- graded:: 2026-11-21 probable — P003 replicates P001 in the same conditions`). `build` starts the history of a card that has none; `check` warns when the status differs from the last `graded::` line.
 
 ### Workbench cards
@@ -245,11 +284,13 @@ Links live in Codes as `- relation:: [[target]] — reason`.
 | `replicates` | the same measurement under the same conditions from an independent source |
 | `extends` | follows on from that card: further conditions, a next step, a refinement |
 
-Synthesis and workbench cards use `support`, `against`, `sides`, `from`, `closed_by`, `explains`, `rivals`, `tests`, `addresses`, `uses` and `results`. `python3 tools/mesh.py schema` prints every allowed key and status.
+| `uses_data`, `uses_code` | this card rests on that data set or code |
+
+Synthesis and workbench cards use `support`, `against`, `sides`, `explained_by`, `resolved_by`, `from`, `closed_by`, `explains`, `rivals`, `tests`, `addresses`, `uses` and `results`; data-set and code cards `used_by`, `derived_from`, `uses_data` and `depends_on`; claims cards `main_claim` and `sub_claim`. Any card may carry `cites::` (a reference card or a source in the brain) and `see_also::` (any card), each with a reason. `python3 tools/mesh.py schema` prints every allowed key and status.
 
 - A link to a card from another source must carry a reason of a few words after ` — `. The reason is what makes the link worth following later, and `build` rejects a cross-source link without one.
 - Write each link once, on the newer card. `build` mirrors it onto the target under `## Linked from`, in inverse wording with the same reason, so both cards show the connection and nobody maintains two ends.
-- Evidence cards link to evidence cards. Findings cite evidence. Hypotheses and experiments cite findings, tensions, gaps and evidence. Nothing cites upward.
+- Evidence cards link to evidence cards. Findings cite evidence. Hypotheses and experiments cite findings, tensions, gaps and evidence. Nothing cites upward. Claims cards are the exception that proves the rule: they belong to their source but point up to the findings they feed, which is what lets each finding list the papers whose claims it carries.
 
 ## The PDF as ground truth
 
@@ -293,4 +334,4 @@ When answering:
 - Record each completed operation with `python3 tools/mesh.py log "<what changed>"`.
 - Before creating any card, apply the duplicate rules in `brain-mesh-add-paper`.
 - Keep prose and Codes in agreement on every card touched, and set its `updated` date.
-- If the vault is a git repository, offer to commit after each completed operation, one commit per changelog line.
+- If the vault is a git repository, every change ends up on GitHub: `python3 tools/mesh.py sync "<what changed>"` at the end of each completed operation, as `brain-mesh-access` says.

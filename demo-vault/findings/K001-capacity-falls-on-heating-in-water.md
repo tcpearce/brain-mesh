@@ -29,4 +29,6 @@ A replication in water with a second method, or kinetics showing the 45 °C film
 
 ## Linked from
 - explained_by:: [[H001-loss-is-reversible-swelling|The loss of binding capacity on heating in water is reversible swelling, not damage]]
+- main_claim_of:: [[P001-claims|P001 claims: heating in water lowers binding capacity because the film swells]] — Heating in water lowers binding capacity because swelling distorts the imprinted cavities
 - raises:: [[G001-is-capacity-loss-reversible-on-cooling|Is the loss of binding capacity on heating in water reversible on cooling?]]
+- sub_claim_of:: [[P001-claims|P001 claims: heating in water lowers binding capacity because the film swells]] — Binding capacity falls from 4.2 at 25 °C to 1.3 at 45 °C in water

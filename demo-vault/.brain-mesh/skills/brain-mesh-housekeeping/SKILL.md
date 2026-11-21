@@ -30,6 +30,8 @@ Work through the results in this order. Fix what is clear. Bring to the user any
 8. **Flagged cards.** Go back to the PDF page, resolve the doubt and remove the flag, or keep it with a clearer note.
 9. **Concepts used by at most one card.** Fold them into a broader concept as an alias, or leave them if more sources on the topic are coming.
 10. **References.** `check` warns when a source's reference list is extracted but not turned into cards (`cite P012`), when two reference cards look like the same work (merge them: the survivor takes over every `cited_by::` line), and when a card has no year or a malformed DOI. `health` counts the papers whose reference list was never extracted: run `refs` on them (add-paper step 1). Read the generated list in `ledger/reading-queue.md` and set statuses on the reference cards: `queued` for what the user is fetching, `skip` for what will not be read, so the list stays short. Cards a later source has made `held` need nothing.
+11. **Undecided gaps, tensions and hypotheses.** `check` lists each open one that an integrated paper bears on without a recorded decision. Decide as add-paper step 8 says: a status change with its `graded::` line, or `- reviewed:: <date> P012 — untouched: <why>`. It also flags experiments still planned against a closed gap and hypotheses explaining a resolved tension: amend, abandon or re-grade them.
+12. **Claims, data sets and code.** Integrated papers without a claims card; claims linked to findings that no longer cite their evidence; data-set and code cards with no study (`used_by::`), no location, or a summary too thin to stand in for a README; two cards for one data set or repository (merge them).
 10. **Hubs that have grown long.** Split: create narrower concept cards with `- broader::` pointing at the hub, move the relevant lines to them, and re-point the cards whose statement is specifically about the narrower concept.
 11. **Experiments registered or running for a long time; sources not yet integrated.** Ask the user, or finish the integration.
 
@@ -45,6 +47,8 @@ The identity rules in `brain-mesh-add-paper` step 8 decide when two findings, te
 - A gap partly filled by a new source is narrowed, not duplicated: rewrite what is still missing, and keep the evidence that narrowed it in its Codes.
 
 ## Merging
+
+Merging keeps both ids: the dropped card becomes a pointer. To delete a card outright, see **Removing a card** in `brain-mesh-access` (`mesh.py remove`); it is for cards added by mistake or that must not be kept, not for wrong or duplicate cards.
 
 Never delete a card file; other cards and the user's own notes may point at it.
 
@@ -86,7 +90,7 @@ Log the result, for example `audit: 30 cards across P004, P011, P019; 1 correcte
 
 ## Versioning and safety
 
-- One writer at a time. If the vault is in git, pull before starting and commit after each completed operation.
+- One writer at a time. If the vault is in git, `python3 tools/mesh.py sync` before starting and `sync "<what changed>"` after each completed operation (`brain-mesh-access`).
 - Before a large change such as a batch merge, a hub split or a migration, commit or copy the vault first.
 - Tooling and card-format upgrades go through `brain-mesh-setup`.
 - Publisher PDFs, their marked copies and anchored text stay out of any shared copy; see `brain-mesh-setup`.

@@ -107,6 +107,8 @@ Ground every choice in cards and cite them in the prose:
 
 Status runs `proposed`, `registered`, `running`, `done` or `abandoned`.
 
+The literature can overtake an experiment. When a newly added paper closes a gap an experiment `addresses`, `check` warns until the experiment is amended (under **Amendments**), re-aimed or `abandoned`, with a `- reviewed:: <date> P012 — G004 closed: <what changes>` line on the experiment. The same goes for a hypothesis whose tension a paper resolves: re-grade it with a `graded::` line naming the tension.
+
 ## 4. Register
 
 When the user approves the design, set status `registered` and add `- registered:: <date>` to Codes. From then on the **Registered predictions** and **Decision rule** sections are frozen. Any later change goes under **Amendments** with its date and reason, leaving the original text in place.

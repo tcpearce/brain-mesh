@@ -23,3 +23,4 @@ At 25 °C in [[acetonitrile]], the [[binding-capacity|binding capacity]] of the 
 ## Linked from
 - basis_for:: [[P002-004-no-change-on-heating-in-acetonitrile|Heating from 25 to 45 °C does not change binding capacity in acetonitrile]]
 - replicated_by:: [[P003-004-capacity-3-9-at-25c-acetonitrile|Own films: binding capacity is 3.9 at 25 °C in acetonitrile by batch rebinding]] — same solvent and temperature but a different assay (batch rebinding, not QCM); values agree
+- sub_claim_of:: [[P002-claims|P002 claims: temperature alone does not degrade the imprinted cavities]] — Binding capacity is 3.9 at 25 °C and 3.7 at 45 °C in acetonitrile, a difference within error

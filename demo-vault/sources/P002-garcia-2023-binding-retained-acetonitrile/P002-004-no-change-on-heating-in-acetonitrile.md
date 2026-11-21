@@ -24,3 +24,4 @@ In [[acetonitrile]], [[binding-capacity|binding capacity]] did not change signif
 
 ## Linked from
 - basis_for:: [[P002-005-heat-alone-does-not-degrade-cavities|Temperature alone does not degrade the imprinted cavities]]
+- main_claim_of:: [[P002-claims|P002 claims: temperature alone does not degrade the imprinted cavities]] — Heating alone does not degrade the imprinted cavities, since capacity is unchanged in acetonitrile

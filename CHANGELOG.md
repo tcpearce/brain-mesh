@@ -2,6 +2,17 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.6.0 (2026-11-21)
+
+Claims, data sets, code, citations in cards, decisions on gaps and tensions after each paper, and rules for any agent working in a vault.
+
+- **Claims cards.** Each paper gets `P012-claims.md`: one main claim and at most five sub-claims, each linking the paper's own evidence (the claim card stating it, the observations or models it rests on) and the findings, tensions, gaps or hypotheses it feeds. Mirrored onto those cards as `main_claim_of` and `sub_claim_of`; tabulated by evidence type and status in the card's generated block; listed on the source card. `check` enforces the limits, own-source evidence, and that a linked finding cites the claim's evidence, and asks for a claims card on every integrated paper. New command `claims P012` lists the candidates and writes a skeleton. The main skill sets out how claims (per paper, authors' voice, ungraded) differ from findings (cross-source, scoped, graded).
+- **Data-set cards** (`data-sets/D###`) and **code cards** (`code/C###`): key properties in Codes, `used_by:: [[P012]] — how` per study, `uses_data::`, `uses_code::`, `derived_from::`, `depends_on::`; status is availability (open, on-request, restricted, unavailable, unknown). Source cards list their data sets and code; data-set and code cards list what uses them. Code cards must summarise the code as a README would. New commands `mentions P012` (paragraphs naming data and code, links, accessions, matching cards) and `repoinfo <github URL>` (description, language, licence, README). `check` flags missing studies, locations, thin summaries and duplicates.
+- **Citations in cards.** Any card may carry `cites:: [[R0042]] — why` (a reference card or a source in the brain) and `see_also::`; a reference linked in the prose must also be in Codes. Concept hubs get **Key references**: the works cited in the paragraphs where their evidence cards are anchored. Reference cards list the cards that cite them.
+- **Decisions on gaps, tensions and hypotheses.** After a paper is integrated, every open gap, tension or hypothesis it bears on needs a decision: a status change with a `graded::` line naming the paper, or `- reviewed:: <date> P012 — untouched: <why>`. `place P012` lists them under **Decisions to record**; `check` warns until each is made. Tensions gain `resolved_by::` and `explained_by::`; a closed gap must name `closed_by::`. Knock-on warnings: experiments still planned against a closed gap, hypotheses explaining a resolved tension.
+- **Any agent, every session.** New skill `brain-mesh-access`, read every time a vault is opened: sync first and last, navigating and answering by layer, where bespoke material goes, editing, retiring and deleting cards, working alongside others. Vaults get a `CLAUDE.md` (written by `init` and refreshed by `upgrade`, keeping the user's own text) that sends local agents such as Claude Code there. New commands `sync ["message"]` (pull with rebase, build, refuse on errors, commit, push, retry once) and `remove <id> [--force] [--why]` (delete for good; refuses while linked unless --force unlinks; a source goes with its folder; ids recorded in `ledger/removed.md` and never reused).
+- Links in table cells (`[[card\|label]]`) now resolve. Batch agents draft claims cards and list data sets and code; the orchestrator makes the shared cards.
+
 ## 1.5.0 (2026-11-21)
 
 Citations: every source's reference list becomes reference cards, and the reading queue suggests what to read next.

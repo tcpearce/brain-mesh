@@ -17,6 +17,8 @@ updated: 2026-11-20
 
 ## Cards from this source
 <!--AUTO:START-->
+**Claims** (1 main, 2 sub): [[P001-claims|Heating in water lowers binding capacity because swelling distorts the imprinted cavities]]
+
 **Method (2)**
 - [[P001-001-films-spin-coated-and-cured|Films were spin coated at 2000 rpm and cured for 12 h]] · reported
 - [[P001-002-batch-rebinding-uv-254|Binding capacity was measured by batch rebinding with UV detection at 254 nm]] · reported

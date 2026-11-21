@@ -468,4 +468,118 @@ python3 tools/mesh.py build > build.txt; grep -q "R0001 is now a source in the b
 cp references/R0004-*.md references/R0099-devries-copy.md; sed -i 's/^- id:: R0004$/- id:: R0099/' references/R0099-devries-copy.md
 (python3 tools/mesh.py check || true) | grep -q "R0099 and R0004 look like the same work\|R0004 and R0099 look like the same work" && pass "check spots two reference cards for one work" || fail "reference dupes"
 python3 tools/mesh.py merge R0004 R0099 > /dev/null && grep -q "^- retired:: merged into" references/R0099-*.md && python3 tools/mesh.py build > build.txt && grep -q "check: 0 errors" build.txt && pass "merge retires a duplicate reference card" || { cat build.txt; fail "reference merge"; }
+# 10. claims cards, review of gaps and tensions, data sets and code, citations in cards, remove, sync, CLAUDE.md (1.6.0)
+cp -r "$ROOT/demo-vault" "$T/c"; cd "$T/c"; cp "$MESH" tools/mesh.py
+S1=$(ls -d sources/P001*); S2=$(ls -d sources/P002*)
+python3 tools/mesh.py build > build.txt; grep -q "check: 0 errors, 0 warnings" build.txt && pass "the demo vault, with claims cards and review decisions, builds clean" || { cat build.txt; fail "demo 1.6.0"; }
+grep -q "^\*\*Claims\*\* (1 main, 2 sub): \[\[P001-claims|" $S1/P001-smith-*.md && pass "a source card links its claims card" || fail "source claims link"
+grep -q "^- main_claim_of:: \[\[P001-claims|" findings/K001-*.md && grep -q "^- sub_claim_of:: \[\[P001-claims|" $S1/P001-003-*.md && pass "claims are mirrored on the findings and evidence they link" || fail "claims mirror"
+cp $S1/P001-claims.md /tmp/claims.bak
+for k in 3 4 5 6; do echo "- sub_claim:: Another sub-claim of this paper number $k — [[P001-003]]; no finding yet" >> $S1/P001-claims.md; done
+(python3 tools/mesh.py check || true) > chk.txt; grep -q "P001-claims: at most five sub-claims (has 6)" chk.txt && pass "more than five sub-claims is an error" || fail "sub-claim limit"
+cp /tmp/claims.bak $S1/P001-claims.md
+sed -i 's/^\(- sub_claim:: Binding capacity falls .*\) — \[\[\(P001-003[^]]*\)\]\]/\1 — [[P002-002]], [[\2]]/' $S1/P001-claims.md
+(python3 tools/mesh.py check || true) > chk.txt; grep -q "P001-claims: sub-claim 1 links evidence of another source (P002-002)" chk.txt && pass "a claims card may only link its own source's evidence" || { cat chk.txt; fail "claims own source"; }
+cp /tmp/claims.bak $S1/P001-claims.md
+sed -i 's/feeds \[\[G002\([^]]*\)\]\]$/feeds [[K001]]/' $S1/P001-claims.md
+(python3 tools/mesh.py check || true) > chk.txt; grep -q "P001-claims: sub-claim 2 links K001, which cites none of the evidence the claim links (P001-005)" chk.txt && pass "a claim linked to a finding that does not cite its evidence is flagged" || { cat chk.txt; fail "claims cross-link"; }
+cp /tmp/claims.bak $S1/P001-claims.md
+mv $S2/P002-claims.md /tmp/p2claims.md; (python3 tools/mesh.py check || true) > chk.txt; grep -q "P002: no claims card" chk.txt && pass "an integrated paper without a claims card is flagged" || fail "claims required"; mv /tmp/p2claims.md $S2/P002-claims.md
+g=$(ls gaps/G002-*.md); sed -i.bak '/^- reviewed:: .* P002 — /d' "$g"
+(python3 tools/mesh.py check || true) > chk.txt; grep -q "G002: P002 bears on this gap (P002-0[0-9][0-9] shares its concepts" chk.txt && pass "a gap a new paper bears on needs a recorded decision" || { cat chk.txt; fail "review due"; }
+python3 tools/mesh.py place P002 > place.txt; grep -q "^  G002 " place.txt && grep -q "Decisions to record (1)" place.txt && pass "place lists the decisions to record" || { cat place.txt; fail "place decisions"; }
+mv "$g.bak" "$g"
+x=$(ls tensions/X001-*.md); sed -i.bak 's/^status: explained$/status: resolved/; s/^\(- graded:: .* explained — .*\)$/\1\n- graded:: 2026-11-21 resolved — settled by the own results/' "$x"
+(python3 tools/mesh.py check || true) > chk.txt; grep -q "X001: resolved, but no '- resolved_by::'" chk.txt && grep -q "H001: explains X001, which is now resolved" chk.txt && pass "resolving a tension needs resolved_by and flags the hypotheses explaining it" || { grep X001 chk.txt; grep H001 chk.txt; fail "tension resolution"; }
+mv "$x.bak" "$x"
+python3 tools/mesh.py id D | grep -q "^D001$" && python3 tools/mesh.py id C | grep -q "^C001$" && pass "id gives data-set and code ids" || fail "id D C"
+cat > data-sets/D001-batch-rebinding-results.md <<'CARD'
+---
+type: dataset
+status: on-request
+updated: 2026-11-21
+---
+# Batch rebinding capacities of imprinted films in water at three temperatures
+
+**What it is.** Binding capacities for [[analyte-x]] measured by batch rebinding on imprinted films in [[water]] at 25, 35 and 45 °C, three films each.
+
+## Codes
+- id:: D001
+- name:: Smith batch rebinding data
+- size:: 9 films, 3 temperatures
+- access:: from the authors on request
+- concepts:: [[binding-capacity]], [[temperature]]
+- used_by:: [[P001]] — the measurements behind its capacity results
+CARD
+cat > code/C001-rebind-fit.md <<'CARD'
+---
+type: code
+status: open
+updated: 2026-11-21
+---
+# rebind-fit fits binding isotherms to batch rebinding data
+
+**What it does.** Short.
+
+## Codes
+- id:: C001
+- name:: rebind-fit
+- repo:: https://github.com/example/rebind-fit
+- concepts:: [[binding-capacity]]
+- used_by:: [[P001]] — fitted the capacities
+- uses_data:: [[D001]] — its input
+CARD
+sed -i 's/^- anchor:: \(.*\)$/- anchor:: \1\n- uses_data:: [[D001]] — the measurements/' $S1/P001-004-*.md
+python3 tools/mesh.py build > build.txt
+grep -q "^\*\*Data sets (1)\*\*" $S1/P001-smith-*.md && grep -q "^\*\*Code (1)\*\*" $S1/P001-smith-*.md && pass "a source card lists the data sets and code it uses" || fail "source data and code"
+grep -q "^- data_for:: \[\[P001-004-" data-sets/D001-*.md && grep -q "^- data_for:: \[\[C001-" data-sets/D001-*.md && pass "a data-set card shows what uses it" || fail "dataset linked from"
+grep -q "C001: the summary is too thin" build.txt && pass "a code card needs a README-like summary" || fail "code summary"
+sed -i 's/^\*\*What it does\.\*\* Short\.$/**What it does.** rebind-fit reads a table of batch rebinding measurements, one row per film, temperature and analyte concentration, fits Langmuir and Freundlich isotherms to each film, and writes the fitted binding capacities with their standard errors to a CSV file and a plot per film. It is a small Python package with a command-line entry point and no other dependencies than NumPy and SciPy. The study used it to turn its raw rebinding curves into the capacities it reports./' code/C001-*.md
+sed -i 's/^- used_by:: \[\[P001[^]]*\]\]/- used_by:: [[K001]]/' data-sets/D001-*.md; (python3 tools/mesh.py check || true) > chk.txt
+grep -q "D001: 'used_by::' links studies" chk.txt && pass "used_by:: must link a study" || fail "used_by target"
+sed -i 's/^- used_by:: \[\[K001[^]]*\]\]/- used_by:: [[P001]]/' data-sets/D001-*.md
+cp data-sets/D001-*.md data-sets/D002-copy.md; sed -i 's/^- id:: D001$/- id:: D002/' data-sets/D002-copy.md
+(python3 tools/mesh.py check || true) | grep -q "D002 and D001 look like the same data set\|D001 and D002 look like the same data set" && pass "two cards for one data set are flagged" || fail "dataset dupes"
+rm data-sets/D002-copy.md
+c=concepts/swelling.md; sed -i 's/^\(\*\*Definition\.\*\*.*\)$/\1 Hydrogels are the classic case ([[R0001|Lee \& Park 2015]])./' $c
+echo '---
+type: reference
+status: not-held
+updated: 2026-11-21
+---
+# Lee & Park (2015) Hydrogel swelling scales with temperature
+
+<!--AUTO:START-->
+<!--AUTO:END-->
+
+## Codes
+- id:: R0001
+- authors:: Lee, K.; Park, J.
+- year:: 2015
+- title:: Hydrogel swelling scales with temperature
+- journal:: J. Appl. Polym. Sci.
+- volume:: 98
+- pages:: 101--109
+- kind:: article
+- cited_by:: [[P001]] ref 1 — b0005' > references/R0001-lee-2015-hydrogel-swelling.md
+(python3 tools/mesh.py check || true) | grep -q "swelling: cites R0001 in the prose but not in Codes" && pass "a citation in the prose needs a cites:: line" || fail "prose cites"
+sed -i 's/^- id:: swelling$/- id:: swelling\n- cites:: [[R0001]] — swelling scales with temperature in hydrogels/' $c
+grep -q "^- id:: swelling" $c || sed -i 's/^## Codes$/## Codes\n- cites:: [[R0001]] — swelling scales with temperature in hydrogels/' $c
+python3 tools/mesh.py build > build.txt; grep -q "check: 0 errors" build.txt && grep -q "^\*\*Cited in the brain's cards\*\*" references/R0001-*.md && grep -q "\[\[swelling|" references/R0001-*.md && pass "a reference card lists the cards that cite it" || { cat build.txt; fail "cited in"; }
+grep -q "^\*\*Key references\*\*" concepts/swelling.md && grep -q "R0001-lee-2015-hydrogel-swelling|.*cited in this card" concepts/swelling.md && pass "a concept card lists its key references" || { sed -n '/AUTO:START/,/AUTO:END/p' concepts/swelling.md; fail "key references"; }
+sed -i 's/^- cites:: \[\[R0001[^]]*\]\]/- cites:: [[water]]/' $c; (python3 tools/mesh.py check || true) | grep -q "swelling: 'cites::' links a reference card" && pass "cites:: must link a reference or a source" || fail "cites target"
+sed -i 's/^- cites:: \[\[water\]\]/- cites:: [[R0001]]/' $c
+python3 tools/mesh.py remove C001 > rm.txt 2>&1 && fail "remove deleted a card that others link to" || grep -q "Retire it instead" rm.txt && pass "remove refuses while other cards link to a card" || { cat rm.txt; fail "remove refuse"; }
+python3 tools/mesh.py remove D001 --force --why "test" > rm.txt && [ ! -e data-sets/D001-batch-rebinding-results.md ] && ! grep -q "D001" $S1/P001-004-*.md && grep -q "^- 2026-.* D001 D001-batch-rebinding-results — test" ledger/removed.md && pass "remove --force deletes a card and unlinks it everywhere" || { cat rm.txt; fail "remove force"; }
+python3 tools/mesh.py id D | grep -q "^D002$" && pass "a removed id is never reused" || fail "removed id reused"
+python3 tools/mesh.py build > build.txt; grep -q "check: 0 errors" build.txt && pass "the vault builds clean after a removal" || { cat build.txt; fail "build after remove"; }
+grep -q "brain-mesh-access/SKILL.md" CLAUDE.md && pass "the vault has a CLAUDE.md for local agents" || fail "CLAUDE.md"
+echo "My own note for agents." >> CLAUDE.md; python3 "$MESH" upgrade . > /dev/null; grep -q "My own note for agents." CLAUDE.md && [ "$(grep -c 'brain-mesh:start' CLAUDE.md)" = 1 ] && pass "upgrade refreshes CLAUDE.md and keeps the user's own text" || fail "CLAUDE.md upgrade"
+python3 tools/mesh.py mentions P002 > men.txt; grep -q "^## Data sets" men.txt && grep -q "^## Code and software" men.txt && pass "mentions lists where a paper names data and code" || { cat men.txt; fail "mentions"; }
+if command -v git > /dev/null; then
+  git init -q --bare "$T/remote.git"; git init -q -b main . ; git config user.email t@t; git config user.name t; git remote add origin "$T/remote.git"
+  git add -A > /dev/null; git commit -qm init; git push -q -u origin main 2> /dev/null
+  echo "- [stated] a note" > notes.md; python3 tools/mesh.py sync "test sync" > sync.txt && grep -q "and pushed" sync.txt && [ "$(git -C "$T/remote.git" log main -1 --format=%s)" = "test sync" ] && pass "sync builds, commits and pushes" || { cat sync.txt; fail "sync"; }
+  python3 tools/mesh.py sync > sync.txt; grep -q "up to date" sync.txt && pass "sync with nothing new does nothing" || { cat sync.txt; fail "sync idle"; }
+fi
 echo "ALL TESTS PASSED"

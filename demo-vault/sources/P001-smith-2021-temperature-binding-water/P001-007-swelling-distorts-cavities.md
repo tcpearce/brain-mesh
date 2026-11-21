@@ -19,6 +19,7 @@ The authors propose that [[swelling]] of the polymer network distorts the imprin
 
 ## Linked from
 - contradicted_by:: [[P002-005-heat-alone-does-not-degrade-cavities|Temperature alone does not degrade the imprinted cavities]] — only if the water result is read as a direct effect of heat
+- main_claim_of:: [[P001-claims|P001 claims: heating in water lowers binding capacity because the film swells]] — Heating in water lowers binding capacity because swelling distorts the imprinted cavities
 - qualified_by:: [[P001-008-organic-solvents-not-tested|Organic solvents were not tested]]
 - side_of:: [[X001-does-heat-or-solvent-uptake-lower-capacity|Does heating itself lower binding capacity, or only heating in water?]]
 - supported_by:: [[P002-006-water-uptake-causes-loss-in-water|The loss reported in water is suggested to come from water uptake, not heating]] — both attribute the loss to solvent uptake

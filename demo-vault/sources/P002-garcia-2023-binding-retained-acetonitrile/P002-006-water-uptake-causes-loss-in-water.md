@@ -16,3 +16,6 @@ The authors suggest that the loss of [[binding-capacity|binding capacity]] repor
 - missing:: basis — the authors present no measurement in water to support the suggestion
 - anchor:: [[P002_text#^b0004]]
 - loc:: "arises from water uptake by the film rather than from heating"
+
+## Linked from
+- sub_claim_of:: [[P002-claims|P002 claims: temperature alone does not degrade the imprinted cavities]] — The loss reported in water comes from water uptake rather than heating

@@ -23,8 +23,12 @@ Ellipsometry of the same films in both solvents at 25 and 45 °C.
 ## Codes
 - graded:: 2026-11-20 confirmed — status when the grading history began
 - id:: G002
+- reviewed:: 2026-11-21 P002 — untouched: P002 tested one 200 nm film and measured no thickness in acetonitrile
 - kind:: unmeasured
 - priority:: 2
 - searched:: 2026-11-20
 - from:: [[P001-005-film-thickens-18-percent]], [[X001-does-heat-or-solvent-uptake-lower-capacity]]
 - concepts:: [[film-thickness]], [[acetonitrile]], [[swelling]], [[temperature]], [[imprinted-polymer-film]]
+
+## Linked from
+- sub_claim_of:: [[P001-claims|P001 claims: heating in water lowers binding capacity because the film swells]] — The film thickens by 18% between 25 and 45 °C, the swelling the main claim invokes

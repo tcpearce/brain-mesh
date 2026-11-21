@@ -21,10 +21,13 @@ Both solvents, both temperatures, one method, with [[film-thickness|thickness]] 
 ## Codes
 - graded:: 2026-11-20 explained — status when the grading history began
 - id:: X001
+- reviewed:: 2026-11-21 P003 — untouched: capacity recovers on cooling in water, which favours explanation 1, but no thickness was measured, so the tension stands
 - sides:: [[P001-007-swelling-distorts-cavities]], [[P002-005-heat-alone-does-not-degrade-cavities]]
 - concepts:: [[binding-capacity]], [[temperature]], [[solvent]], [[water]], [[acetonitrile]], [[swelling]], [[film-thickness]]
 
 ## Linked from
 - addressed_by:: [[E001-heat-cool-cycle-two-solvents|Heat-then-cool cycle in water and acetonitrile with one assay]]
 - explained_by:: [[H001-loss-is-reversible-swelling|The loss of binding capacity on heating in water is reversible swelling, not damage]]
+- main_claim_of:: [[P001-claims|P001 claims: heating in water lowers binding capacity because the film swells]] — Heating in water lowers binding capacity because swelling distorts the imprinted cavities
+- main_claim_of:: [[P002-claims|P002 claims: temperature alone does not degrade the imprinted cavities]] — Heating alone does not degrade the imprinted cavities, since capacity is unchanged in acetonitrile
 - raises:: [[G002-no-thickness-data-in-acetonitrile|Film thickness has never been measured in acetonitrile, so swelling is not ruled in or ou…]]

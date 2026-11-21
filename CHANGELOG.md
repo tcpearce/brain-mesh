@@ -2,6 +2,10 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.14.5 (2026-11-21)
+
+- Supplementary material that arrives in parts (data files, but not the supplementary PDF) is reported as what is still missing, by coverage unit. Before, `check` said a coverage line was out of date and should be updated (issue #8).
+
 ## 1.14.4 (2026-11-21)
 
 - Concept matching lets the longer of two overlapping names win. "Olfactory receptor" (the GPCR) is no longer counted inside "olfactory receptor neuron" (the cell), so `scan` and `check` stop asking for cards on false mentions (issue #17).

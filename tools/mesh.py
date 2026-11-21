@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.14.4"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.14.5"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -715,7 +715,9 @@ class Mesh:
                 if si == "missing": W.append(f"{i}: supplementary material is listed as missing. Ask the user for it, or find it on the publisher's page, and anchor it with `mesh.py anchor {i} --si <files>`; until then methods and results may be incomplete" + (f", and the {gaps_} cards recording evidence as missing:: may be answered there" if gaps_ else ""))
                 elif si == "unstated": notes["sources not saying whether they have supplementary material"] += 1
                 if c.get("retracted") and not re.search(r"retract", c.prose(), re.I): W.append(f"{i}: retracted, but the prose does not say so; state the retraction at the top of the card")
-                if si == "anchored" and any(re.search(r"supplement|\bSI\b", r[0], re.I) and r[1:2] == ["missing"] for r in cov): W.append(f"{i}: the supplementary material is anchored but a coverage line still says missing; update it")
+                left_ = [r[0] for r in cov if re.search(r"supplement|\bSI\b", r[0], re.I) and r[1:2] == ["missing"]]
+                if si == "anchored" and left_:  # partly supplied: say what is still missing, not that the line is stale (issue #8)
+                    W.append(f"{i}: supplementary material is partly in the vault; still missing: {'; '.join(left_)}. Ask the user for it, or anchor it with `mesh.py anchor {i} --si <files>` when it comes; if it has in fact arrived, update the coverage line")
                 for f in files:
                     rec = s.sums().get(os.path.basename(f))
                     if not rec: W.append(f"{i}: no checksum recorded for {os.path.basename(f)}; run `mesh.py seal {i}`")

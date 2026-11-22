@@ -1267,4 +1267,14 @@ python3 tools/mesh.py show binding-capacity > s.txt; python3 tools/mesh.py show 
 grep -q "^(generated list of [0-9]* lines, every card that uses this concept" s.txt && grep -q "^USED BY 23 cards (15 shown: " s.txt && [ "$(grep -c "^  [A-Z][0-9]*	\|^  P00" s.txt)" = 15 ] && ! grep -q "generated list of" sa.txt && grep -q "^\*\*Evidence: " sa.txt && [ "$(wc -c < s.txt)" -lt "$(wc -c < sa.txt)" ] && pass "show cuts a hub's generated list and ranks what uses it; --all prints everything" || { head -40 s.txt; fail "show short"; }
 python3 tools/mesh.py table binding-capacity --limit 3 > t.txt; grep -q "^Showing 3 of 13 rows: the most relevant from each source in turn" t.txt && [ "$(grep -c "^| .* (20[0-9][0-9]) P00" t.txt)" = 3 ] && [ "$(python3 tools/mesh.py table binding-capacity --limit 0 | grep -c "^| .* (20[0-9][0-9]) P00")" = 13 ] && pass "table shows the most relevant rows from each source, and every row with --limit 0" || { cat t.txt; fail "table limit"; }
 python3 tools/mesh.py place P003 > p.txt; grep -q "^Where P003's evidence goes, by the card it bears on" p.txt && grep -q "^K001 \[finding/probable\] .* — 4 cards$" p.txt && grep -q "^   P003-004 (0\.[0-9]*) -> OUTSIDE the finding's scope" p.txt && python3 tools/mesh.py place P003 --by-card | grep -q "^P003-001 \[observation\]" && pass "place groups a source's evidence by the card it bears on; --by-card lists it card by card" || { cat p.txt; fail "place grouped"; }
+# 24. extraction agents split their batches at the same moment (issue #25)
+cp -r "$ROOT/demo-vault" "$T/ps"; cd "$T/ps"; cp "$MESH" tools/mesh.py
+python3 -c "
+for pid in ('P001', 'P002'):
+    out = []
+    for k in range(101, 141):
+        out.append(f'=== {pid}-{k:03d}-parallel-card-{k}\n---\ntype: observation\nstatus: measured\nupdated: 2026-01-01\n---\n# Parallel card {k} of {pid}\n\nA statement numbered {k} about {pid}.\n\n## Codes\n- missing:: method — a test card\n- anchor:: [[{pid}_text#^b0001]]\n- loc:: \"test\"\n')
+    open(f'b-{pid}.md', 'w', encoding='utf-8').write('\n'.join(out))"
+python3 tools/mesh.py split b-P001.md > s1.txt 2>&1 & python3 tools/mesh.py split b-P002.md > s2.txt 2>&1 & wait
+[ "$(ls $(ls -d sources/P001*)/P001-1[0-4][0-9]-parallel-card-*.md | wc -l)" = 40 ] && [ "$(ls $(ls -d sources/P002*)/P002-1[0-4][0-9]-parallel-card-*.md | wc -l)" = 40 ] && grep -q "40 cards written" s1.txt && grep -q "40 cards written" s2.txt && [ -z "$(ls index/.new* 2> /dev/null)" ] && pass "two split runs at once each write all their cards and leave no temporary file" || { cat s1.txt s2.txt; ls index/.new* 2> /dev/null; fail "parallel split"; }
 echo "ALL TESTS PASSED"

@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.18.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.18.1"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -1239,7 +1239,7 @@ def cmd_init(path, name, topic):
     wr(J(path, "SCHEMA.md"), SCHEMA_MD.format(v=SCHEMA))
     wr(J(path, "ledger", "CHANGELOG.md"), f"# Changelog (append only, newest last)\n\n- {TODAY} brain mesh created\n")
     wr(J(path, "ledger", "lenses.md"), "# Lens passes (targeted re-reads of the sources)\n")
-    wr(J(path, ".gitignore"), "# Everything a vault needs is versioned, including index/ and the marked PDFs, so a pull is enough to browse it.\n__pycache__/\n*.pyc\n*.tmp\n.DS_Store\n.trash/\nindex/.new.md\nindex/.scratch/\n.obsidian/workspace*.json\n" + INGEST_IGNORE)
+    wr(J(path, ".gitignore"), "# Everything a vault needs is versioned, including index/ and the marked PDFs, so a pull is enough to browse it.\n__pycache__/\n*.pyc\n*.tmp\n.DS_Store\n.trash/\nindex/.new*.md\nindex/.scratch/\n.obsidian/workspace*.json\n" + INGEST_IGNORE)
     wr(J(path, ".gitattributes"), GITATTR)
     wr(J(path, "ledger", "reading-queue.md"), "# Reading queue (papers found that are not yet in the brain)\n\n| ref | would fill | priority | access | status |\n|---|---|---|---|---|\n")
     cmd_upgrade(path, quiet=True)
@@ -1262,6 +1262,7 @@ def cmd_upgrade(vault, quiet=False):
     write_claude_md(vault)
     gi = J(vault, ".gitignore")
     if os.path.exists(gi) and "index/.scratch/" not in rd(gi): wr(gi, rd(gi).rstrip("\n") + "\nindex/.scratch/\n")
+    if os.path.exists(gi) and "index/.new*.md" not in rd(gi): wr(gi, rd(gi).rstrip("\n") + "\nindex/.new*.md\n")  # split's temporary cards (issue #25)
     if os.path.exists(gi) and not re.search(r"(?m)^/?ingest/?$", rd(gi)): wr(gi, rd(gi).rstrip("\n") + "\n" + INGEST_IGNORE)  # issue #22
     cfg = json.loads(rd(J(vault, "MESH.json")))
     if not cfg.get("obsidian_vault"):  # pin the name the PDF tags use, so clones in other folders do not re-mark the PDFs
@@ -1800,7 +1801,10 @@ def cmd_split(m, batch, update=False):
         if os.path.exists(path) and not update: skipped.append(f"{name}: exists (use --update to overwrite)"); continue
         content = content.strip("\n") + "\n"
         if ev and ev.group(2) and not update:  # new evidence card: same source, variable, value and conditions already carded?
-            tmp = J(m.root, "index", ".new.md"); wr(tmp, content); new = Card(tmp, "evidence", cid); os.remove(tmp)
+            tmp = J(m.root, "index", f".new-{cid}-{os.getpid()}.md")  # one per process and card: agents split in parallel (issue #25)
+            try: wr(tmp, content); new = Card(tmp, "evidence", cid)
+            finally:
+                if os.path.exists(tmp): os.remove(tmp)
             twin = next((c for c in m.evidence(ev.group(1)) + fresh if c.id[:4] == cid[:4] and m.sig(new) and m.sig(c) == m.sig(new) and m.num(c) == m.num(new)), None)
             if twin: skipped.append(f"{name}: duplicates {twin.id} '{one(twin.title, 70)}' (add an anchor to that card instead)"); continue
             fresh.append(new)

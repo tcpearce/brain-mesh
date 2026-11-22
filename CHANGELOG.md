@@ -2,6 +2,10 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.18.1 (2026-11-22)
+
+- `split` gives each new card's duplicate check its own temporary file (`index/.new-<card id>-<process>.md`, removed even on error), so extraction agents can split their batches at the same moment. Before, every process used `index/.new.md`: two agents splitting together could read each other's card, or crash (on Windows, "file in use") with a batch left unwritten. `init` and `upgrade` ignore `index/.new*.md` (issue #25).
+
 ## 1.18.0 (2026-11-22)
 
 A small context: a session can navigate, extract from and mine a large brain without filling its context with cards it does not need.

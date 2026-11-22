@@ -43,6 +43,10 @@ updated: 2026-11-20
 - year:: 2023
 - venue:: Polymer Sensing Letters 4, 55-60
 - doi:: 10.0000/psl.2023.014
+- question:: Does heating alone degrade the imprinted cavities?
+- design:: experiment — binding capacity measured by quartz crystal microbalance at 25 and 45 °C in acetonitrile
+- sample:: imprinted polymer films of one thickness
+- framework:: molecular imprinting; loss of binding attributed to solvent uptake rather than heat
 - coverage:: Abstract | full | aim and headline result
 - coverage:: Results | full | capacity at two temperatures in acetonitrile
 - coverage:: Discussion | full | interpretation, limits

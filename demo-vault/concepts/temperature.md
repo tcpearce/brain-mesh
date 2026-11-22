@@ -50,5 +50,5 @@ updated: 2026-11-20
 - id:: temperature
 - kind:: variable
 - unit:: degC
-- affects:: [[binding-capacity]] — in water only, [[K001-capacity-falls-on-heating-in-water]], [[X001-does-heat-or-solvent-uptake-lower-capacity]]
-- affects:: [[film-thickness]] — [[P001-005-film-thickens-18-percent]]
+- affects:: [[binding-capacity]] — tested: in water only, [[K001-capacity-falls-on-heating-in-water]], [[X001-does-heat-or-solvent-uptake-lower-capacity]]
+- affects:: [[film-thickness]] — tested: [[P001-005-film-thickens-18-percent]]

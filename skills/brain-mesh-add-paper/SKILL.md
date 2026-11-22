@@ -50,6 +50,8 @@ Read the paper from the PDF itself, viewing pages as images wherever figures, ta
 
 List every unit of the source: each section, table, figure and supplementary item, with a few words on what it holds. These become the `coverage::` lines of the source card. Record supplementary material that was not supplied as `missing`.
 
+Note the study profile for the source card (`brain-mesh`, **Source cards**): the question the study asks; its design or designs from the fixed list, each with what was done; what was studied and how many; and the theory or model it works within. A paper often holds more than one study (a model and the experiment that tests it): one `design::` line each. Take them from the methods, not the abstract.
+
 Transcribe each data table to `P012-T2.csv`, in the source's folder, exactly as printed. Cards then cite `T2` and describe the dataset; the numbers stay in the table.
 
 ## 3. Extract
@@ -200,6 +202,8 @@ Two tests keep findings honest:
 
 It ends with the results that bear on nothing yet: each may start a new finding if it passes the one-sentence test and is worth building on, or may stand alone. The placement report is a starting point, not the decision: read the finding and the card before acting.
 
+Before raising a finding's grade because another source now supports it, run `python3 tools/mesh.py independence K001`: sources that share a data set or authors count once, and a reanalysis of a study's data never replicates it.
+
 Whenever a finding, tension, gap or hypothesis changes status, add a `- graded:: <date> <status> — <why>` line below its earlier ones. `check` enforces the scope (a finding citing evidence outside its `when::` lines), the agreement test (supporting cards that disagree beyond error) and the grading history.
 
 Then:
@@ -263,7 +267,7 @@ Every paper, preprint, thesis or report gets a claims card, `P012-claims.md`, wr
 This is what the user reads, so it is not optional. For every concept the source says something material about:
 
 - add to **What is known**, one line per point, citing the finding or evidence card;
-- add or revise lines under **Relationships**, and the matching relation in Codes (`affects`, `measured_by`, `part_of`, `broader`, `related`);
+- add or revise lines under **Relationships**, and the matching relation in Codes (`affects`, `measured_by`, `part_of`, `broader`, `related`). Every `affects` line starts its reason with its basis (`tested`, `correlational`, `proposed`, `inferred`), judged from the design of the study behind it, and the wording of the hub line follows that basis: causal words only for `tested` (`brain-mesh`, **Concept cards**);
 - add to **Open questions**; extend **How it is measured** when the source uses a new method;
 - put the source's key equations and figure panels for the concept under **Key equations and figures**, each with its evidence card and the works that card cites (`brain-mesh-concept-scan` step 7; `scan P012` lists the candidates);
 - revise a line that the new source has overtaken, and do not leave contradictory lines standing;

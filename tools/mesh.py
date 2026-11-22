@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.14.8"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.15.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -48,7 +48,7 @@ PAGES = {  # id prefix: (folder, type, allowed status, link keys in Codes)
 PG = "".join(PAGES)
 MINED = re.compile(r"([a-z]+:\S+) \| (\d{4}-\d\d-\d\d) \| ([-\d.]+) \| ?(.*)")  # stamp on a card a miner proposed: key | date | score | basis sources  # id prefixes of synthesis, workbench and discovery cards
 GRADED = "KXGHTAV"    # cards that keep a graded:: history of their status
-MINERS = ["contradictions", "bridges", "moderators", "transfer", "implied", "constraints", "genealogy", "assumptions", "oddities", "theories", "analogies", "links"]
+MINERS = ["contradictions", "bridges", "moderators", "definitions", "transfer", "implied", "constraints", "genealogy", "assumptions", "oddities", "theories", "analogies", "links"]
 SEED_ROUTES = MINERS + ["inversion", "red-team", "levels", "lens", "manual"]  # how a seed arose: a miner, or a pass Claude runs by reading
 GAP_KINDS = ["untested-region", "unreplicated", "unresolved-tension", "unexplained", "untested-assumption", "unvalidated-model", "unmeasured", "open-question", "method", "scope"]
 CONCEPT_KINDS = ["entity", "variable", "count", "technique", "concept"]  # count: a variable that only counts items (sample-size), never compared across cards
@@ -66,7 +66,7 @@ INVERSE = {"obtained_by": "used_to_obtain", "based_on": "basis_for", "qualifies"
            "uses_data": "data_for", "uses_code": "code_for", "used_by": "uses", "derived_from": "source_of", "depends_on": "dependency_of",
            "cites": "cited_in", "see_also": "see_also", "main_claim": "main_claim_of", "sub_claim": "sub_claim_of",
            "resolved_by": "resolves", "explained_by": "explains_tension", "tension": "includes_contradiction"}
-BACKLABELS = set(INVERSE.values()) | {"mentioned_in", "in_source", "used_in_source", "cited_in_its_paragraph", "key_reference_for", "listed_in", "cited_as"}
+BACKLABELS = set(INVERSE.values()) | {"mentioned_in", "in_source", "used_in_source", "cited_in_its_paragraph", "key_reference_for", "listed_in", "cited_as", "declared_independent_in"}
 is_backlabel = lambda k: k in BACKLABELS or k.endswith("_of")  # labels of generated back-links; any other '- key::' line below '## Linked from' was written by hand
 STOP = set("a an the of in on at to for by with and or is are was were be as it its this that from into than not no does do did between about".split())
 MARK_COLOURS = {"method": (0.55, 0.75, 1.0), "observation": (1.0, 0.9, 0.2), "model": (0.55, 0.9, 0.9), "claim": (0.6, 0.9, 0.5), "assumption": (1.0, 0.7, 0.4),
@@ -707,6 +707,11 @@ class Mesh:
                 if not cov: E.append(f"{i}: no '- coverage::' lines (unit | depth | what)")
                 for r in cov:
                     if len(r) < 2 or r[1] not in DEPTHS: E.append(f"{i}: coverage '{' | '.join(r)}' needs depth in {DEPTHS}")
+                if c.get("kind") in PROFILE_KINDS and c.status in ("extracted", "integrated"):
+                    miss = [k for k in PROFILE_KEYS if not c.get(k)]
+                    if miss: W.append(f"{i}: study profile incomplete: add " + ", ".join(f"'- {k}::'" for k in miss) + " to its Codes (question: what the study asks; design: one of the designs `mesh.py schema` lists, then ' — ' and what was done; sample: what was studied and how many; framework: the theory or model it works within, or 'none stated')")
+                for d, _n in study(c)["designs"]:
+                    if d not in DESIGNS: W.append(f"{i}: design '{d}' is not one of {', '.join(DESIGNS)} (write '- design:: <design> — <what was done>', one line per study in the paper)")
                 if not s.blocks(i): W.append(f"{i}: no anchored {i}_text.md")
                 elif c.status in ("extracted", "integrated"):
                     todo = scan_todo(s, i)
@@ -777,6 +782,13 @@ class Mesh:
                     if k in LINK_KEYS and k not in CONCEPT_RELS: E.append(f"{i}: '{k}::' is not a concept relation {CONCEPT_RELS}")
                     elif k in CONCEPT_RELS and not any(s.cards[t].fam == "concept" for t in s.ids(v)[0]): E.append(f"{i}: '{k}::' must link a concept card")
                     elif k == "affects" and all(s.cards[t].fam == "concept" for t in s.ids(v)[0]): W.append(f"{i}: 'affects::' should also cite the finding or evidence card it rests on")
+                nob = [t for v in c.all("affects") if not rel_basis(v) for t in s.ids(v)[0] if s.cards[t].fam == "concept"]
+                if nob: W.append(f"{i}: 'affects::' {', '.join(nob[:5])}{' …' if len(nob) > 5 else ''} {'states' if len(nob) == 1 else 'state'} no basis: start the reason with tested, correlational, proposed or inferred ('- affects:: [[outcome]] — correlational: higher with higher values, [[P001-012]]')")
+                for v in c.all("affects"):
+                    if rel_basis(v) != "tested": continue
+                    ds = {p_: [d for d, _n in study(s.cards[p_])["designs"]] for p_ in sorted({t[:4] for t in s.ids(v)[0] if s.cards[t].fam == "evidence"}) if p_ in s.cards}
+                    if ds and all(ds.values()) and not any("experiment" in d for d in ds.values()):
+                        W.append(f"{i}: 'affects::' {next((t for t in s.ids(v)[0] if s.cards[t].fam == 'concept'), '?')} says tested, but no source it cites is recorded as an experiment ({'; '.join(p_ + ' ' + ', '.join(d) for p_, d in ds.items())}): 'tested' needs an experiment that set the cause. Use correlational, or add the experiment to the source's design lines")
             else:
                 _f, typ, statuses, keys = PAGES[i[0]]
                 if c.type != typ: E.append(f"{i}: type must be '{typ}'")
@@ -790,6 +802,13 @@ class Mesh:
                     sup = [s.cards[t] for v in c.all("support") for t in s.ids(v)[0] if s.cards[t].fam == "evidence"]
                     agn = [s.cards[t] for v in c.all("against") for t in s.ids(v)[0] if s.cards[t].fam == "evidence"]
                     if not s.scope_of(c): notes["findings without a scope (when:: lines)"] += 1
+                    for v in c.all("independent"):
+                        if not reason(v) or len({t[:4] for t in s.ids(v)[0] if re.match(r"P\d{3}", t)}) < 2: W.append(f"{i}: 'independent::' names two or more sources and says why they count separately for this finding: '- independent:: [[P001]], [[P003]] — <why>'")
+                    srcs_ = support_sources(s, c); gs_ = independent_groups(s, srcs_, waived_pairs(s, c))
+                    if len(srcs_) > 1 and len(gs_) < 2:
+                        why_ = "; ".join(w_ for _g, ws in gs_ for w_ in ws[:3])
+                        if c.status in ("probable", "established"): W.append(f"{i}: graded {c.status}, but its {len(srcs_)} supporting sources are not independent ({why_}), so they count once. Grade it tentative or single-source; or, if they are independent for this finding, add '- independent:: [[{srcs_[0]}]], [[{srcs_[1]}]] — <why>'")
+                        else: notes["findings whose supporting sources are not independent, so count once (`mesh.py independence`)"] += 1
                     for e in sup + agn:
                         st, why = s.scope_report(c, e)
                         if st == "outside": W.append(f"{i}: cites {e.id}, which lies outside the finding's scope ({why}). Widen the scope only if the claim holds there too; otherwise give that evidence its own scoped finding, or drop the citation")
@@ -881,6 +900,12 @@ class Mesh:
                 if os.path.exists(rf) and src.id not in cited: W.append(f"{src.id}: its references are extracted ({src.id}_refs.md) but not yet turned into reference cards: run `mesh.py cite {src.id}`")
                 elif not os.path.exists(rf) and src.get("kind") in ("paper", "preprint", "thesis", "report"): notes["papers whose reference list is not extracted"] += 1
         if not only:
+            dep_ = dependence(s)
+            for c in s.evidence():
+                for v in c.all("replicates"):
+                    for t in s.ids(v)[0]:
+                        pr = tuple(sorted((c.id[:4], t[:4]))); ws = [r for r in dep_.get(pr, []) if r.startswith("both use")]
+                        if pr[0] != pr[1] and ws and not re.search(r"independen", reason(v), re.I): W.append(f"{c.id}: 'replicates:: {t}', but {pr[0]} and {pr[1]} {ws[0]}: a result from the same data is not an independent replication. Use 'extends::' or 'supports::', or say in the reason what is independent")
             oc = open_candidates(s)
             if oc: W.append(f"{len(oc)} possible contradiction{'s are' if len(oc) > 1 else ' is'} not on the register: " + ", ".join(r[0] for r in oc[:4]) + (" …" if len(oc) > 4 else "") + " — `mesh.py contradictions` lists them: log each (`contradictions add <key>`) or dismiss it with the reason")
             lk_ = {c.id: set(s.ids(c.raw)[0]) - {c.id} for c in s.cards.values()}
@@ -1087,6 +1112,14 @@ they feed · `data-sets/D###-<slug>.md` and `code/C###-<slug>.md` the data and c
 
 **Priority.** `priority: high | normal | low` in front matter (absent = normal), a `prioritised::` line per change. Attention,
 never evidence: a high card draws deeper treatment to everything one link away. Set it with `mesh.py priority`.
+
+**Study profile.** Every source card says what kind of study it is: `question::`, `design::` (experiment, observational,
+reanalysis, computational-model, simulation, theory, review, method, case, other; then ` — ` and what was done),
+`sample::`, `framework::`. A design sets what the study can establish. Sources that share a data set or authors count
+once behind a finding (`mesh.py independence`).
+
+**Relations.** `affects:: [[outcome]] — <basis>: <what>, [[evidence]]` with basis tested, correlational, proposed or
+inferred. Causal wording only for tested relations.
 
 **Layers.** Evidence cites its source; synthesis cites evidence; workbench cites synthesis. Never edit the PDF,
 the anchored text or an id. `index/` and AUTO blocks are generated by `mesh.py build`.
@@ -1847,7 +1880,7 @@ def card_parts(c):
     return re.sub(r"<!--AUTO:START.*?<!--AUTO:END-->", "", raw, flags=re.S), "\n".join(re.findall(r"<!--AUTO:START.*?<!--AUTO:END-->", raw, re.S))
 
 
-BACK_CODES = {"held": "cited_as"}  # back-link labels for link-bearing Codes keys that are not typed links
+BACK_CODES = {"held": "cited_as", "independent": "declared_independent_in"}  # back-link labels for link-bearing Codes keys that are not typed links
 
 
 def backlinks(m):
@@ -2099,7 +2132,8 @@ def cmd_gaps(m):
         for r in rows[:cap]: print("  " + r)
         if len(rows) > cap: print(f"  … {len(rows) - cap} more")
     row = lambda c: f"{c.id} {one(c.title, 115)}"
-    sec("Findings resting on one source", [f"{row(c)} [{c.status}]" for c in m.pages("K") if len({t[:4] for v in c.all("support") for t in m.ids(v)[0]}) <= 1])
+    ngroups = lambda c: len(independent_groups(m, support_sources(m, c), waived_pairs(m, c)))
+    sec("Findings resting on one source, or on sources that are not independent of each other", [f"{row(c)} [{c.status}; {' + '.join(support_sources(m, c)) or 'no source'}]" for c in m.pages("K") if ngroups(c) <= 1])
     sec("Open tensions", [row(c) for c in m.pages("X") if c.status == "open"])
     addressed = {t for c in m.pages("E") for v in c.all("addresses") for t in m.ids(v)[0]}
     for st, label in (("open", "Gaps not yet searched"), ("fillable", "Gaps with papers waiting to be added"), ("confirmed", "Confirmed research gaps with no experiment yet")):
@@ -2285,7 +2319,9 @@ def cmd_health(m):
     regrade = []
     for k in m.pages("K"):
         n = len({t[:4] for v in k.all("support") for t in m.ids(v)[0]}); a = len([t for v in k.all("against") for t in m.ids(v)[0]])
-        if k.status == "single-source" and n > 1: regrade.append(f"{row(k)} [single-source, but support now comes from {n} sources]")
+        ng = len(independent_groups(m, support_sources(m, k), waived_pairs(m, k)))
+        if k.status == "single-source" and ng > 1: regrade.append(f"{row(k)} [single-source, but support now comes from {ng} independent groups of sources]")
+        if k.status in ("established", "probable") and n > 1 and ng < 2: regrade.append(f"{row(k)} [{k.status}, but its {n} sources are not independent: `mesh.py independence {k.id}`]")
         if k.status in ("established", "probable") and a: regrade.append(f"{row(k)} [{k.status}, but {a} cards now count against it]")
         if k.status != "single-source" and n <= 1: regrade.append(f"{row(k)} [{k.status}, but only one source supports it]")
     sec("Findings whose status no longer matches their evidence", sorted(regrade, key=lambda r: (PRANK[m.level(r.split()[0])], r)))
@@ -3254,7 +3290,7 @@ def cmd_facts(m, args):
             for v in con.all(k): print(f"   relation: {cid} {k} {plain(v)}")
     eff = effects(m)
     for (x, y), e in sorted(eff.items()):
-        if x in S or y in S: print(f"effect: {x} → {y} ({e['sign']}, {e['how']}) {' '.join(e['basis'][:5])}")
+        if x in S or y in S: print(f"effect: {x} → {y} ({e['sign']}, {e['how']}, basis {e.get('rel') or 'data'}) {' '.join(e['basis'][:5])}")
     for (x, y), ns in sorted(null_results(m).items()):
         if x in S or y in S: print(f"no effect found: {x} → {y} in {' '.join(ns[:6])}")
     ks = [k for k in m.pages("K") if not k.get("retired") and S <= m.terms(k)]
@@ -3267,6 +3303,453 @@ def cmd_facts(m, args):
     vs = [p for p in m.pages("VX") if not p.get("retired") and p.status in ("open", "explained") and m.terms(p) & S]
     for p in vs: print(f"logged contradiction: {p.id} [{p.status}] {one(p.title, 120)}; sides {' '.join(t for v in p.all('sides') for t in m.ids(v)[0])}")
     print("\nA proposal must agree with all of these. It may go against a card only where that card is a side of an open or explained contradiction listed above, and is then offered as a way out of it. Any other clash is the proposal's error, or a new contradiction to log (`mesh.py contradictions add`).")
+
+
+# ---- 1.15.0: study profiles, independence of sources, the basis of relations, tables, draft audit ----
+DESIGNS = {  # study designs: what each can establish, and the strongest basis it can give a relation between concepts
+    "experiment": ("the investigators set the conditions and measured the outcome: can show that a variable they changed changes the outcome, within the conditions tested", "tested"),
+    "observational": ("measured without intervening: can show that things vary together, not which causes which", "correlational"),
+    "reanalysis": ("a new analysis of data others collected: as strong as those data and no stronger, and not independent of the work that produced them", "correlational"),
+    "computational-model": ("a model fitted or trained on data and tested on data: can show what predicts the outcome, not what causes it", "correlational"),
+    "simulation": ("a model run from stated assumptions: shows what follows from them, not what happens", "proposed"),
+    "theory": ("argument or derivation with no new data: a proposal", "proposed"),
+    "review": ("a summary of others' work: the evidence is in the original studies", "proposed"),
+    "method": ("a technique, instrument, data set or software introduced or validated: shows that it works as characterised", "tested"),
+    "case": ("one or a few cases described: shows that something can happen, not how often or why", "correlational"),
+    "other": ("say what it is after the dash", "proposed"),
+}
+BASES = {  # how far a relation between two concepts is known to be causal
+    "tested": "an experiment set the cause and measured the outcome",
+    "correlational": "the two vary together in observational data, a reanalysis or a fitted model; nothing was manipulated",
+    "proposed": "the cited authors say so (theory, mechanism, discussion) without testing it in the cited work",
+    "inferred": "the brain's own inference, from chaining relations or from comparing sources",
+}
+PROFILE_KINDS = ("paper", "preprint", "thesis", "report", "own-result")
+PROFILE_KEYS = ("question", "design", "sample", "framework")
+RESULT_TYPES = ("observation", "model", "claim", "cited", "oddity")
+
+
+def study(c):
+    """A source card's study profile, from its Codes: the question, [(design, what was done)], the sample, the framework."""
+    return {"question": c.get("question"), "designs": [(v.split(" — ", 1)[0].strip().lower(), reason(v)) for v in c.all("design")],
+            "sample": c.get("sample"), "framework": c.get("framework")}
+
+
+def rel_basis(v):
+    """The basis an affects:: line states: the word its reason starts with (tested, correlational, proposed, inferred)."""
+    mo = re.match(r"\s*(" + "|".join(BASES) + r")\b\s*[:,;]?", reason(v), re.I)
+    return mo.group(1).lower() if mo else None
+
+
+def author_keys(c):
+    """[('lee b', 'Lee BK'), ...]: a source's authors in order, each as (surname and first initial, the name as written)."""
+    out = []
+    for a in (c.get("authors") or "").split(";"):
+        a = a.strip()
+        if not a or re.fullmatch(r"none|anonymous|anon\.?|unknown", a, re.I): continue
+        mo = re.fullmatch(r"(.+?) ([A-Z]{1,4})", a)
+        if mo: sur, ini = mo.group(1), mo.group(2)
+        elif "," in a: sur, ini = a.split(",", 1)[0], re.sub(r"[^A-Za-z]", "", a.split(",", 1)[1])
+        else: parts = a.split(); sur, ini = parts[-1], "".join(p[:1] for p in parts[:-1])
+        k = re.sub(r"[^a-z]", "", ascii_fold(sur).lower())
+        if k: out.append(((k + " " + ini[:1].lower()).strip(), a))
+    return out
+
+
+def definition_of(con):
+    """The sentence after **Definition.** on a concept card."""
+    return plain(re.sub(r".*?\*\*Definition\.\*\*\s*", "", con.prose(), count=1, flags=re.S).split("\n")[0]) if "**Definition.**" in con.prose() else ""
+
+
+def dependence(m):
+    """Pairs of sources that are not independent of each other, and why: {(a, b): [reasons]} with a < b. Two sources
+    depend on each other when a data-set card lists both as users (directly, or through a data set derived from it),
+    or when they share two or more authors, or an author who is first or last on both."""
+    if getattr(m, "_dep", None) is not None: return m._dep
+    out, users, parents = defaultdict(list), defaultdict(set), defaultdict(set)
+    for d in m.pages("D"):
+        if d.get("retired"): continue
+        for v in d.all("used_by"): users[d.id] |= {t[:4] for t in m.ids(v)[0] if re.match(r"P\d{3}", t)}
+        for v in d.all("derived_from"): parents[d.id] |= {t for t in m.ids(v)[0] if t[0] == "D"}
+    for _round in range(2):  # the users of a derived data set also use what it was derived from
+        for d, ps in parents.items():
+            for p in ps: users[p] |= users[d]
+    for d in sorted(users):
+        nm = m.cards[d].get("name") or one(m.cards[d].title, 50)
+        for a, b in itertools.combinations(sorted(users[d]), 2):
+            if a in m.cards and b in m.cards: out[(a, b)].append(f"both use the data set {d} ({nm})")
+    srcs = sorted((c for c in m.cards.values() if c.fam == "source" and not c.get("retired")), key=lambda c: c.id)
+    names = {c.id: author_keys(c) for c in srcs}
+    for a, b in itertools.combinations(srcs, 2):
+        A, B = [k for k, _n in names[a.id]], [k for k, _n in names[b.id]]
+        sh = [(k, n) for k, n in names[a.id] if k in B]
+        if sh and (len(sh) >= 2 or any(k in (A[0], A[-1]) and k in (B[0], B[-1]) for k, _n in sh)):
+            out[(a.id, b.id)].append("share " + ("authors " if len(sh) > 1 else "the author ") + ", ".join(n for _k, n in sh[:4]) + (" …" if len(sh) > 4 else ""))
+    m._dep = dict(out)
+    return m._dep
+
+
+def waived_pairs(m, k):
+    """Pairs of sources a finding declares independent for its purposes: '- independent:: [[P001]], [[P003]] — why'."""
+    out = set()
+    for v in k.all("independent"):
+        ps = sorted({t[:4] for t in m.ids(v)[0] if re.match(r"P\d{3}", t)})
+        if reason(v): out |= {frozenset(p) for p in itertools.combinations(ps, 2)}
+    return out
+
+
+def independent_groups(m, pids, waived=()):
+    """Sources grouped so that each group counts once as evidence: [(sources, [why they are grouped])]."""
+    dep, pids = dependence(m), sorted(set(pids))
+    top = {p: p for p in pids}
+    def find(x):
+        while top[x] != x: x = top[x]
+        return x
+    why = defaultdict(list)
+    for a, b in itertools.combinations(pids, 2):
+        if (a, b) in dep and frozenset((a, b)) not in waived:
+            why[(a, b)] = dep[(a, b)]; top[find(b)] = find(a)
+    groups = defaultdict(list)
+    for p in pids: groups[find(p)].append(p)
+    return [(g, [f"{a} and {b} {'; '.join(r)}" for (a, b), r in sorted(why.items()) if a in g]) for g in sorted(groups.values())]
+
+
+def support_sources(m, k):
+    return sorted({t[:4] for v in k.all("support") for t in m.ids(v)[0] if m.cards[t].fam == "evidence"})
+
+
+def cmd_independence(m, args):
+    """How many independent groups of sources stand behind each finding (`independence`, or `independence K001`), or
+    how a set of sources groups (`independence P001 P003 ...`)."""
+    if args and all(re.fullmatch(r"P\d{3}", a) for a in args):
+        for g, why in independent_groups(m, args): print(" + ".join(g) + (f"  ({'; '.join(why)})" if why else ""))
+        return
+    ks = [need(m, a) for a in args] if args else sorted(m.pages("K"), key=lambda c: c.id)
+    for k in ks:
+        if k.id[0] != "K" or k.get("retired"): continue
+        srcs = support_sources(m, k); gs = independent_groups(m, srcs, waived_pairs(m, k))
+        print(f"{k.id} [{k.status}] {one(k.title, 90)}\n   {len(srcs)} source{'s' * (len(srcs) != 1)}, {len(gs)} independent group{'s' * (len(gs) != 1)}: " + " | ".join(" + ".join(g) for g, _w in gs))
+        for _g, why in gs:
+            for w_ in why: print(f"   not independent: {w_}")
+        for v in k.all("independent"): print(f"   declared independent: {plain(v)}")
+    if not args: print("\nGrade a finding on its independent groups, not on its number of papers. If two grouped sources are independent for a finding (different data, different laboratories' work), say so on the finding: '- independent:: [[P001]], [[P003]] — <why>'.")
+
+
+def page_of(m, c):
+    """'p. 7' for an evidence card: the page of its first anchored paragraph, or the page in its Source line."""
+    for a in m.anchors(c):
+        if re.fullmatch(r"[bsc]\d{4}", a):
+            blk = m.blocks(c.id[:4]).get(a)
+            if blk: return {"s": "SI ", "c": "correction "}.get(a[0], "") + f"p. {blk[0]}"
+        mo = re.fullmatch(r"(SI-|CR-)?p(\d+)", a)
+        if mo: return {"SI-": "SI ", "CR-": "correction "}.get(mo.group(1), "") + f"p. {mo.group(2)}"
+    mo = re.search(r"\*\*Source:\*\*[^\n]*?\bp\.\s*(\d+)", c.human)
+    return f"p. {mo.group(1)}" if mo else ""
+
+
+def md_table(head, rows):
+    cell = lambda x: " ".join(str(x).replace("|", "\\|").split()) or " "
+    return ["| " + " | ".join(head) + " |", "|" + "---|" * len(head)] + ["| " + " | ".join(cell(x) for x in r) + " |" for r in rows]
+
+
+def concept_arg(m, a):
+    c = m.resolve(a) or m.alias.get(" ".join(a.lower().replace("-", " ").split())) or m.alias.get(" ".join(a.lower().split()))
+    return c if c and m.cards[c].fam == "concept" else None
+
+
+def cmd_table(m, args):
+    """Tables from the brain's cards. `table <concept ...|K001|X001|V001|G001> [evidence|relations|definitions]
+    [--type t] [--source P###] [--all] [--out file]`. evidence (the default): one row per evidence card, with the
+    study, its design and sample, the result, its conditions, how it was obtained, what limits it and the page.
+    relations: every relation the brain holds to or from the concepts, with its direction, basis and evidence.
+    definitions: how each source defines and measures the concept."""
+    o, rest, k = {"type": None, "source": None, "out": None}, [], 0
+    every = "--all" in args; args = [a for a in args if a != "--all"]
+    while k < len(args):
+        if args[k] in ("--type", "--source", "--out") and k + 1 < len(args): o[args[k][2:]] = args[k + 1]; k += 2
+        else: rest.append(args[k]); k += 1
+    mode = next((a for a in rest if a in ("evidence", "relations", "definitions")), "evidence")
+    targets = [a for a in rest if a not in ("evidence", "relations", "definitions")]
+    if not targets: sys.exit("table: give a concept (or several), or a finding, tension, contradiction or gap id; then evidence (default), relations or definitions")
+    links = bool(o["out"])
+    ref = lambda c: f"[[{c.name}|{c.id}]]" if links else c.id
+    cons = [concept_arg(m, a) for a in targets]
+    page = None if all(cons) else need(m, targets[0])
+    if page is not None and (page.fam != "page" or len(targets) > 1): sys.exit("table: give concepts, or one finding, tension, contradiction, gap, hypothesis or theory id")
+    title = " + ".join(m.cards[c].title for c in cons) if page is None else f"{page.id} {page.title}"
+    L = []
+    if mode == "evidence":
+        if page is None:
+            rows_ = [(c, "") for c in m.evidence() if set(cons) <= m.terms(c) and (every or c.type in RESULT_TYPES)]
+        else:
+            rows_, seen = [], set()
+            for key in PAGES[page.id[0]][3]:
+                for v in page.all(key):
+                    for t in m.ids(v)[0]:
+                        if m.cards[t].fam == "evidence" and t not in seen and not m.cards[t].get("retired"): seen.add(t); rows_.append((m.cards[t], {"support": "for", "against": "against", "sides": "side"}.get(key, key)))
+        rows_ = [(c, r) for c, r in rows_ if (not o["type"] or c.type == o["type"]) and (not o["source"] or c.id.startswith(o["source"]))]
+        if not rows_: sys.exit(f"table: no evidence cards for {title}" + ("" if every else " (try --all for methods, definitions and limitations too)"))
+        qual = defaultdict(list)
+        for e in m.evidence():
+            for v in e.all("qualifies"):
+                for t in m.ids(v)[0]: qual[t].append(e)
+        body = []
+        for c, role in sorted(rows_, key=lambda r: ({"for": 0, "against": 1}.get(r[1], 2), r[1], r[0].id)):
+            src = m.cards.get(c.id[:4]); st = study(src) if src else {"designs": [], "sample": ""}
+            cav = re.search(r"\*\*Caveat:\*\*\s*(.+)", c.human)
+            lim = [ref(q) for q in qual.get(c.id, [])] + ([one(plain(cav.group(1)), 90)] if cav else [])
+            how = [ref(m.cards[t]) for v in c.all("obtained_by") + c.all("based_on") for t in m.ids(v)[0]]
+            row = [f"{short_cite(src)} {ref(src)}" if src else c.id[:4], ", ".join(d for d, _n in st["designs"]) or "not recorded", one(plain(st["sample"] or "not recorded"), 70), ref(c)]
+            if page is not None: row.append(role)
+            row += [f"{one(plain(c.title), 120)} ({c.type}, {c.status}{', null' if c.get('null') else ''})", "; ".join(one(plain(v), 90) for v in c.all("value")) or "—",
+                    "; ".join(f"{w_ or '?'} = {v_}" for w_, v_, _t in m.whens(c)) or "—", ", ".join(how) or "—", "; ".join(lim) or "—", page_of(m, c)]
+            body.append(row)
+        head = ["Study", "Design", "Sample", "Card"] + (["Role"] if page is not None else []) + ["Statement", "Result", "Conditions", "How obtained", "Limits", "Where"]
+        L += [f"# Evidence table: {title}", "", f"One row per evidence card ({len(body)}). Built by `mesh.py table` on {TODAY} from the brain's cards: check a value on its page before quoting it, and read 'not recorded' as missing from the brain, not from the paper.", ""] + md_table(head, body) + [""]
+        srcs = sorted({c.id[:4] for c, _r in rows_})
+        gs = independent_groups(m, srcs, waived_pairs(m, page) if page is not None and page.id[0] == "K" else ())
+        L += [f"**Independence.** {len(srcs)} source{'s' * (len(srcs) != 1)} in {len(gs)} independent group{'s' * (len(gs) != 1)}: " + " | ".join(" + ".join(g) for g, _w in gs) + "."] + [f"- Not independent: {w_}." for _g, why in gs for w_ in why] + [""]
+        used = sorted({d for p in srcs if p in m.cards for d, _n in study(m.cards[p])["designs"] if d in DESIGNS})
+        if used: L += ["**What each design can establish.**"] + [f"- {d}: {DESIGNS[d][0]}." for d in used] + [""]
+    elif mode == "relations":
+        if page is not None: cons = sorted(m.terms(page))
+        S, eff, nulls = set(cons), effects(m), null_results(m)
+        body = []
+        for (x, y), e in sorted(eff.items()):
+            if x not in S and y not in S: continue
+            ev = [t for t in e["basis"] if t in m.cards]
+            srcs = sorted({t[:4] for t in ev if m.cards[t].fam == "evidence"} | {p for t in ev if m.cards[t].fam == "page" for p in srcs_of(m, [t])})
+            des = "; ".join(f"{p} {', '.join(d for d, _n in study(m.cards[p])['designs']) or 'design not recorded'}" for p in srcs if p in m.cards)
+            vx = sorted(p.id for p in m.pages("VX") if not p.get("retired") and p.status in ("open", "explained") and {x, y} <= m.terms(p))
+            body.append([ref(m.cards[x]), ref(m.cards[y]), {"+": "raises", "-": "lowers", "±": "raises and lowers", "?": "direction not recorded"}[e["sign"]],
+                         e.get("rel") or "data", " ".join(ref(m.cards[t]) for t in ev[:6]) or "none cited", des or "—",
+                         "; ".join(([f"no effect found in {' '.join(nulls[(x, y)][:4])}"] if (x, y) in nulls else []) + ([f"contested in {' '.join(vx)}"] if vx else [])) or "—"])
+        L += [f"# Relations: {title}", "", f"Every directed relation the brain holds to or from these concepts. Built by `mesh.py table` on {TODAY}.", ""]
+        L += (md_table(["Cause", "Outcome", "Direction", "Basis", "Evidence", "Sources and their designs", "Against or unresolved"], body) if body else ["No directed relation is recorded or shown by the data."]) + [""]
+        L += ["**Basis.** " + " ".join(f"*{b}*: {t}." for b, t in BASES.items()) + " *data*: the observation cards differ in this one condition and in the outcome; whether that is causal depends on the design. *unstated*: the concept card gives no basis yet. Use causal wording (causes, raises, leads to) only for *tested* relations.", ""]
+        other = [f"- {ref(m.cards[c])} {k_} {plain(v)}" for c in cons for k_ in CONCEPT_RELS if k_ != "affects" for v in m.cards[c].all(k_)]
+        if other: L += ["**Other recorded relations.**"] + other + [""]
+        for pre, nm, live in (("T", "Accounts (theories)", ("active", "strained")), ("H", "Open hypotheses", ("open",)), ("VX", "Contradictions and tensions not yet resolved", ("open", "explained")), ("G", "Open gaps", ("open", "fillable", "confirmed", "planned"))):
+            ps = sorted((p for p in m.pages(pre) if not p.get("retired") and p.status in live and m.terms(p) & S), key=lambda p: p.id)
+            if ps: L += [f"**{nm}.**"] + [f"- {ref(p)} [{p.status}] {one(p.title, 130)}" for p in ps] + [""]
+    else:
+        if page is not None or len(cons) != 1: sys.exit("table: definitions takes one concept")
+        con = m.cards[cons[0]]
+        L += [f"# Definitions and measures: {con.title}", "", f"**The brain's definition.** {definition_of(con) or 'none written'}", ""]
+        L += [f"Kind {con.get('kind')}" + (f", unit {con.get('unit')}" if con.get("unit") else "") + (f"; also called {', '.join(str(a) for a in (con.fm.get('aliases') or []))}" if con.fm.get("aliases") else "") + ".", ""]
+        for v in con.all("measured_by"): L.append(f"- measured by {plain(v)}")
+        body, bare = [], []
+        for pid, r in sorted(measures(m, con.id).items()):
+            src = m.cards[pid]
+            if not (r["defs"] or r["methods"] or r["example"]): bare.append(f"{short_cite(src)} {ref(src)}"); continue
+            body.append([f"{short_cite(src)} {ref(src)}", "; ".join(f"{ref(d)}: {one(plain(d.title), 110)}" for d in r["defs"]) or "none carded",
+                         "; ".join(f"{ref(x)}: {one(plain(x.title), 70)}" for x in r["methods"][:4]) or "not recorded", ", ".join(sorted(r["techniques"])) or "—",
+                         one(plain(r["example"].get("value")), 70) if r["example"] else "—", page_of(m, (r["defs"] or r["methods"] or [r["example"]])[0]) if (r["defs"] or r["methods"] or r["example"]) else ""])
+        L += [""] + (md_table(["Source", "How it defines or operationalises it", "How it measures it", "Techniques", "Example value", "Where"], body) if body else ["No source in the brain defines or measures it on a card."]) + [""]
+        if bare: L += ["Name it on a card, with no definition, method or value of it carded: " + ", ".join(bare) + ".", ""]
+        L += [f"Built by `mesh.py table` on {TODAY}. 'none carded' means the brain holds no definition card from that source, not that the paper gives none. Values from sources that define or measure the concept differently are not directly comparable.", ""]
+    out = "\n".join(L).rstrip("\n") + "\n"
+    if o["out"]:
+        p = o["out"] if os.path.isabs(o["out"]) else J(m.root, o["out"])
+        os.makedirs(os.path.dirname(p) or ".", exist_ok=True); wr(p, out); print(f"written: {relp(p, m.root)} ({len(L)} lines)")
+    else: print(out, end="")
+
+
+def measures(m, cid):
+    """How each source defines and measures a concept: {source: {defs: [definition cards], methods: [method cards],
+    techniques: {technique concepts}, example: an observation of it}}."""
+    out = defaultdict(lambda: {"defs": [], "methods": [], "techniques": set(), "example": None})
+    for c in sorted(m.evidence(), key=lambda c: c.id):
+        if cid not in m.terms(c): continue
+        r = out[c.id[:4]]
+        if c.type == "definition":  # a definition card defines the concepts its title names; if it names none, every concept it links
+            named = [t for t in m.terms(c) if (m._crx.setdefault((t, False), concept_rx(m.cards[t]))[0] or re.compile(r"(?!x)x")).search(c.title)]
+            if cid in (named or m.terms(c)): r["defs"].append(c)
+        isval = bool(c.get("value")) and m.pair(c.get("value"))[0] == cid
+        if isval and r["example"] is None: r["example"] = c
+        ms = [m.cards[t] for v in c.all("obtained_by") for t in m.ids(v)[0] if m.cards[t].fam == "evidence"] if isval else ([c] if c.type == "method" else [])
+        for x in ms:
+            if x not in r["methods"]: r["methods"].append(x)
+            r["techniques"] |= {t for t in m.terms(x) if m.cards[t].get("kind") == "technique"}
+    return {p: r for p, r in out.items() if p in m.cards}
+
+
+CAUSAL = re.compile(r"\b(caus(?:es?|ed|ing)|leads? to|led to|drives?|drove|driven by|determin(?:es?|ed)|results? in|resulted in|due to|because of|owing to|gives? rise to|responsible for|underl(?:ies|ie|ying)|mediat(?:es?|ed)|induc(?:es?|ed)|"
+                    r"rais(?:es?|ed)|lower(?:s|ed)|increas(?:es|ed)|decreas(?:es|ed)|reduc(?:es?|ed)|enhanc(?:es?|ed)|suppress(?:es|ed)|improv(?:es?|ed)|impair(?:s|ed)|affect(?:s|ed)?|(?:effect|impact|influence) of|influenc(?:es|ed))\b", re.I)
+NOT_SURNAMES = set("In Since Figure Fig Table During By From Until After Before Between Around Circa Year Early Late Mid Section Chapter Equation Eq Ref Refs See And Or The Of Spring Summer Autumn Winter January February March April May June July August September October November December".split())
+
+
+def draft_sentences(t):
+    """The sentences of a paragraph of ordinary prose, not split after 'et al.', 'e.g.', 'Fig.' or an initial."""
+    t = re.sub(r"\b(et al|e\.g|i\.e|cf|vs|ca|approx|Figs?|Eqs?|Refs?|Tabs?|No|Dr|Prof|resp|incl|viz|Suppl|al)\.", lambda mo: mo.group(0).replace(".", "\x00"), t)
+    t = re.sub(r"\b([A-Z])\.(?=\s*[A-Z][a-z'’\-]+|\s*[A-Z]\.)", "\\1\x00", t)
+    return [x.replace("\x00", ".").strip() for x in re.split(r"(?<=[.!?])[\"”’')\]]*\s+(?=[A-Z(\[“\"])", t) if x.strip()]
+
+
+def draft_refs(m, text):
+    """The draft's own reference list, if it has one: (body text, {number: text}, [(surname, year, text)])."""
+    mo = re.search(r"^#{0,6}\s*\**(References|Bibliography|Works cited|Literature cited|Reference list)\**\s*:?\s*$", text, re.I | re.M)
+    if not mo: return text, {}, []
+    body, tail = text[:mo.start()], text[mo.end():]
+    nxt = re.search(r"^#{1,6}\s+\S", tail, re.M)
+    refs, after = (tail[:nxt.start()], tail[nxt.start():]) if nxt else (tail, "")
+    nums, named = {}, []
+    for para in re.split(r"\n\s*\n|\n(?=\s*(?:\[\d+\]|\d{1,3}[.)])\s)", refs):
+        p = " ".join(para.split())
+        if not p: continue
+        n = re.match(r"(?:\[(\d+)\]|(\d{1,3})[.)])\s*(.*)$", p)
+        if n: nums[int(n.group(1) or n.group(2))] = n.group(3); p = n.group(3)
+        sy = re.match(r"\W*([A-Z][A-Za-z'’\-]+)", p), re.search(r"\b((?:1[6-9]|20)\d{2})[a-z]?\b", p)
+        if sy[0] and sy[1]: named.append((sy[0].group(1), sy[1].group(1), p))
+    return body + "\n\n" + after, nums, named
+
+
+def cmd_draft(m, args):
+    """A worklist for auditing a draft against the brain: `draft <file.md|.txt|.tex> [--out file]`. For each sentence
+    that names a concept, cites a work or gives a number: the works it cites and whether the brain holds them, the
+    concepts it names, where its numbers are found on cards, the cards most likely to bear on it, and what to check
+    (a number on no card, causal wording beyond the recorded basis, a citation the brain knows only second-hand, a
+    side of a logged contradiction). The verdicts are for the reader of the worklist to give (brain-mesh-write)."""
+    out_file = args[args.index("--out") + 1] if "--out" in args and args.index("--out") + 1 < len(args) else None
+    files = [a for k, a in enumerate(args) if a != "--out" and (k == 0 or args[k - 1] != "--out")]
+    if len(files) != 1: sys.exit("draft: give one text, markdown or LaTeX file (convert a Word file first: pandoc draft.docx -t markdown -o draft.md)")
+    path = files[0]
+    if not os.path.exists(path): sys.exit(f"draft: no file {path}")
+    if re.search(r"\.(docx?|pdf|odt|rtf)$", path, re.I): sys.exit("draft: give text, markdown or LaTeX; convert first (pandoc draft.docx -t markdown -o draft.md)")
+    text, nums, named = draft_refs(m, rd(path).replace("\r\n", "\n"))
+    # works the brain knows, by first author and year, and by the keys reference lists are matched with
+    by_sy, by_key = defaultdict(list), {}
+    held = {r.id: t for r in m.cards.values() if r.fam == "reference" for v in r.all("held") for t in m.ids(v)[0] if m.cards[t].fam == "source"}
+    for c in sorted(m.cards.values(), key=lambda c: (c.fam != "source", c.id)):
+        if c.fam not in ("source", "reference") or c.get("retired"): continue
+        f = source_fields(c) if c.fam == "source" else c.fields()
+        wid = held.get(c.id, c.id)
+        sur = re.sub(r"[^a-z]", "", ascii_fold(first_surname(f.get("authors"))).lower())
+        if sur and f.get("year") and wid not in by_sy[(sur, str(f["year"])[:4])]: by_sy[(sur, str(f["year"])[:4])].append(wid)
+        for k_ in ref_keys(f): by_key.setdefault(k_, wid)
+    def lookup(sur, year): return by_sy.get((re.sub(r"[^a-z]", "", ascii_fold(sur).lower()), year), [])
+    def entry_works(t):
+        try: ks = ref_keys(parse_ref(t))
+        except Exception: ks = []
+        hit = [by_key[k_] for k_ in ks if k_ in by_key]
+        if hit: return hit[:1]
+        sy = re.match(r"\W*([A-Z][A-Za-z'’\-]+)", t), re.search(r"\b((?:1[6-9]|20)\d{2})[a-z]?\b", t)
+        return lookup(sy[0].group(1), sy[1].group(1)) if sy[0] and sy[1] else []
+    numworks = {n: entry_works(t) for n, t in nums.items()}
+    citers = defaultdict(list)
+    for e in m.evidence():
+        for w_ in works_cited(m, e): citers[w_.id].append(e.id)
+    def work_line(wid):
+        c = m.cards[wid]
+        if c.fam == "source": return f"{wid} {short_cite(c)}: in the brain" + (" (RETRACTED)" if c.get("retracted") else "")
+        by = sorted({p for p, _n, _b in ref_cites(c)})
+        return f"{wid} {short_cite(c)}: NOT in the brain, known only through {', '.join(by) or 'a citation'}" + (f" (cards {' '.join(citers[wid][:4])})" if citers.get(wid) else "") + ": a second-hand citation"
+    w = rarity(m)
+    concepts = [(c.id,) + concept_rx(c) for c in m.cards.values() if c.fam == "concept" and not c.get("retired")]
+    pool = [c for c in m.cards.values() if (c.fam == "evidence" or (c.fam == "page" and c.id[0] == "K")) and not c.get("retired")]
+    def fnum(t):
+        t = t.replace("−", "-")
+        t = t.replace(",", "") if re.fullmatch(r"-?\d{1,3}(,\d{3})+(\.\d+)?", t) else t.replace(",", ".")
+        try: return float(t)
+        except ValueError: return None
+    cnums = {c.id: {x for x in (fnum(t) for t in result_numbers(c.prose() + " " + c.title) + NUMWORD.findall(" ".join(plain(v) for v in c.all("value")))) if x is not None} for c in pool}
+    eff, (_ag, free) = effects(m), logged_pairs(m)
+    live_vx = sorted((p_ for p_ in m.pages("VX") if not p_.get("retired") and p_.status in ("open", "explained")), key=lambda p_: p_.id)
+    AY = re.compile(r"(\()?\b([A-Z][A-Za-z'’\-]+)(\s+et\s+al\.?|\s+(?:and|&)\s+[A-Z][A-Za-z'’\-]+)?,?\s*(\()?((?:1[6-9]|20)\d{2})[a-z]?\b")
+    report, tally, unknown, second = [], Counter(), Counter(), Counter()
+    paras = [p for p in re.split(r"\n\s*\n", text) if p.strip()]
+    for pn, para in enumerate(paras, 1):
+        if re.match(r"\s*(#|```|\||!\[|\\begin|\\end|\\section|\\subsection|%)", para): continue
+        flat = " ".join(para.split())
+        for sn, sent in enumerate(draft_sentences(flat), 1):
+            if len(sent) < 12: continue
+            works, loose, bare = [], [], sent
+            for mo in AY.finditer(sent):
+                if mo.group(2) in NOT_SURNAMES: continue
+                hit = lookup(mo.group(2), mo.group(5))
+                strong = bool(mo.group(3) or mo.group(4) or mo.group(1)) or sent[mo.end():mo.end() + 1] in (")", ";", ",")
+                if hit: works += hit
+                elif strong: loose.append(f"{mo.group(2)}{(mo.group(3) or '').rstrip()} ({mo.group(5)})")
+                if hit or strong: bare = bare.replace(mo.group(0), " ")
+            for mo in re.finditer(r"\[(\d{1,3}(?:\s*[,–\-]\s*\d{1,3})*)\]", sent):
+                bare = bare.replace(mo.group(0), " ")
+                if not nums: loose.append(f"[{mo.group(1)}] (the draft has no reference list to resolve it)"); continue
+                for n in sorted(expand_nums(mo.group(1), max(nums))):
+                    if numworks.get(n): works += numworks[n]
+                    else: loose.append(f"[{n}] {one(nums.get(n, 'not in the reference list'), 60)}")
+            for mo in re.finditer(r"\\cite[a-zA-Z]*\*?(?:\[[^\]]*\])*\{([^}]+)\}|\[((?:[^\]]*?@[\w:.\-]+)+[^\]]*)\]", sent):
+                bare = bare.replace(mo.group(0), " ")
+                for key in (re.split(r"\s*,\s*", mo.group(1)) if mo.group(1) else re.findall(r"@([\w:.\-]+)", mo.group(2))):
+                    km = re.match(r"([A-Za-z]+?)(?:[_:\-]?et[_\-]?al)?[_:\-]?((?:1[6-9]|20)\d{2})", key)
+                    hit = [key] if key in m.cards and m.cards[key].fam in ("source", "reference") else (lookup(km.group(1), km.group(2)) if km else [])
+                    if hit: works += [held.get(h, h) for h in hit]
+                    else: loose.append(f"{key} (no such work in the brain)")
+            works = list(dict.fromkeys(works))
+            low = sent.lower()
+            found = [(cid, rx.search(sent)) for cid, rx, keys in concepts if rx is not None and (not keys or any(k_ in low for k_ in keys))]
+            found = [(cid, mo.span()) for cid, mo in found if mo]
+            cs = [cid for cid, (a, z) in found if not any((a2 <= a and z <= z2) and (a2, z2) != (a, z) for _c, (a2, z2) in found)]  # a name inside a longer name is not a second concept
+            numbers = [(t, fnum(t)) for t in result_numbers(bare)]
+            numbers = [(t, x) for t, x in numbers if x is not None]
+            if not cs and not works and not loose and not numbers: continue
+            cited_src = {x for x in works if m.cards[x].fam == "source"}
+            st = toks(bare); scored = []
+            for c in pool:
+                sh = set(cs) & m.terms(c)
+                insrc = c.id[:4] in cited_src
+                if not sh and not (insrc and cnums[c.id] & {x for _t, x in numbers}): continue
+                tt = toks(c.title)
+                scored.append((sum(w(t) for t in sh) + (2.0 if insrc else 0) + 1.5 * len(cnums[c.id] & {x for _t, x in numbers}) + 3 * len(tt & st) / max(4, min(len(tt), len(st))), c))
+            scored.sort(key=lambda r: (-r[0], r[1].id))
+            near = [c for _s, c in scored]
+            flags, numline = [], []
+            for t, x in numbers:
+                exact = [c.id for c in near if x in cnums[c.id]]
+                dec = len(t.split(".")[1]) if "." in t and "," not in t else 0
+                rnd = [(c.id, y) for c in near for y in cnums[c.id] if y != x and round(y, dec) == x and abs(y - x) <= 0.5 * 10 ** -dec]
+                if exact: numline.append(f"{t} on {' '.join(exact[:3])}")
+                elif rnd: numline.append(f"{t} is {rnd[0][1]:g} on {rnd[0][0]} (rounded)"); tally["numbers rounded from a card"] += 1
+                else: numline.append(f"{t} on NO card that shares its concepts or source"); flags.append(f"number {t} is on no card: check it on the page or mark it unverified"); tally["numbers on no card"] += 1
+            cm = CAUSAL.search(bare)
+            if cm and len(cs) >= 2:
+                rels = [(x, y, eff[(x, y)]) for x in cs for y in cs if x != y and (x, y) in eff]
+                weak = [(x, y, e.get("rel") or "data") for x, y, e in rels if (e.get("rel") or "data") != "tested"]
+                if weak: flags.append(f"causal wording ('{cm.group(0)}'): the brain records {weak[0][0]} → {weak[0][1]} " + ("with no basis stated" if weak[0][2] == "unstated" else f"as {weak[0][2]}, not tested")); tally["causal wording beyond the recorded basis"] += 1
+                elif not rels: flags.append(f"causal wording ('{cm.group(0)}'): the brain records no relation between {', '.join(cs[:4])}"); tally["causal wording with no recorded relation"] += 1
+            for x in works:
+                if m.cards[x].fam == "reference": flags.append(f"{x} is cited second-hand: the brain has not read it"); second[x] += 1; tally["second-hand citations"] += 1
+                elif m.cards[x].get("retracted"): flags.append(f"{x} is retracted"); tally["retracted sources cited"] += 1
+                elif cs and not any(c.id.startswith(x) for c in near): flags.append(f"no card of {x} shares these concepts: the citation may not support the sentence, or the passage is not carded (check {x}'s coverage)"); tally["citations with no supporting card"] += 1
+            for l_ in loose: flags.append(f"cites {l_}: not in the brain, so it cannot be checked here"); unknown[l_] += 1; tally["citations not in the brain"] += 1
+            clash = {v_ for c in near[:6] for v_ in free.get(c.id, ())}
+            touched = False
+            for p_ in live_vx:
+                sides_ = [m.cards[t] for v in p_.all("sides") for t in m.ids(v)[0]]
+                if p_.id in clash or any(len(set(cs) & (m.terms(x) if x.fam != "concept" else {x.id})) >= 2 for x in sides_):
+                    flags.append(f"{p_.id} [{p_.status}], a logged {'contradiction' if p_.id[0] == 'V' else 'tension'}, bears on this: {one(p_.title, 90)}"); touched = True
+            if touched: tally["sentences a logged contradiction or tension bears on"] += 1
+            for c in near[:3]:
+                if c.id[0] == "K" and c.status in ("tentative", "single-source", "contested"): flags.append(f"{c.id} is graded {c.status}: wording stronger than that overstates it")
+            if cs and not works and not loose and (numbers or cm): tally["claims with no citation"] += 1; flags.append("no citation")
+            lines = [f"§{pn}.{sn}  {one(sent, 300)}"]
+            if works or loose: lines.append("   cites: " + " · ".join([work_line(x) for x in works] + [f"{l_}: not in the brain" for l_ in loose]))
+            if cs: lines.append("   concepts: " + ", ".join(cs))
+            if numline: lines.append("   numbers: " + " · ".join(numline))
+            for c in near[:4]:
+                lines.append(f"   card: {c.id} [{c.type}, {c.status}] {one(c.title, 110)}" + (f" | {'; '.join(one(plain(v), 60) for v in c.all('value')[:2])}" if c.get("value") else "")
+                             + (f" | when {'; '.join(f'{w_}={v_}' for w_, v_, _t in m.whens(c)[:4])}" if c.all("when") else "") + (f" | {page_of(m, c)}" if c.fam == "evidence" and page_of(m, c) else ""))
+            if cs and not near: lines.append("   card: none shares these concepts: not in the brain")
+            if flags: lines.append("   check: " + " · ".join(dict.fromkeys(flags)))
+            report.append("\n".join(lines)); tally["sentences to judge"] += 1
+    head = [f"Draft audit worklist: {os.path.basename(path)} against {m.cfg.get('name', 'the brain')} ({TODAY})", ""]
+    head += [f"{tally.pop('sentences to judge', 0)} sentences name a concept, cite a work or give a number." + (f" The draft's reference list has {len(nums) or len(named)} entries." if nums or named else "")]
+    head += [f"  {n} {k_}" for k_, n in sorted(tally.items(), key=lambda r: -r[1])]
+    if second: head += ["", "Cited second-hand (the brain knows these works only from what its sources say of them; read the original or cite it 'as cited in'): " + "; ".join(f"{x} {short_cite(m.cards[x])}" for x in sorted(second))]
+    if unknown: head += ["", "Cited and not in the brain at all: " + "; ".join(sorted(unknown))]
+    head += ["", "Give each sentence a verdict (supported, overstated, contradicted, not in the brain) after reading the cards, and the page where a value or wording matters. The cards listed are the likeliest, not the only ones: search with `find` and `facts` before calling a claim unsupported.", ""]
+    out = "\n".join(head) + "\n\n".join(report) + "\n"
+    if out_file: wr(out_file, out); print(f"written: {out_file} ({len(report)} sentences)")
+    else: print(out, end="")
 
 
 def rarity(m):
@@ -3918,6 +4401,7 @@ MINER_DESC = {
     "contradictions": "possible contradictions in the Codes not yet on the register, and open contradictions nothing yet works on (a source of theories, hypotheses and experiments)",
     "bridges": "concept pairs that no card holds together, joined through other concepts in different sources (Swanson's ABC)",
     "moderators": "what differs between the sides of a disagreement: conditions, methods, materials",
+    "definitions": "one term defined or measured differently across sources, two names for one thing, and disagreements whose sides differ in definition or measure",
     "transfer": "outcomes, methods and findings established at one value of a categorical variable (species, level, solvent …) and never tried at another",
     "implied": "effects that follow from chaining recorded or measured effects; loops; effects in the data that no concept card records",
     "constraints": "every value of one quantity pooled across sources and grouped by conditions: agreement, spread and units, for arithmetic across papers",
@@ -3961,7 +4445,7 @@ def effects(m):
             if not tgt: continue
             r = reason(v); up, dn = bool(SIGN_UP.search(r)), bool(SIGN_DOWN.search(r))
             sg = "+" if up and not dn else "-" if dn and not up else "?"
-            out[(con.id, tgt)] = {"sign": sg, "recorded_sign": sg, "how": "recorded", "basis": sorted(t for t in g if m.cards[t].fam != "concept")}
+            out[(con.id, tgt)] = {"sign": sg, "recorded_sign": sg, "how": "recorded", "rel": rel_basis(v) or "unstated", "basis": sorted(t for t in g if m.cards[t].fam != "concept")}
     groups, num = defaultdict(list), lambda t: (lambda mo: float(mo.group(0)) if mo else None)(re.search(r"[-+]?\d+(?:\.\d+)?", t.replace("−", "-")))
     for c in m.evidence():
         if c.type != "observation" or not c.get("value"): continue
@@ -3988,7 +4472,7 @@ def effects(m):
         if e:
             e.setdefault("recorded_sign", e["sign"])
             e.update(how="both", basis=sorted(set(e["basis"]) | basis), sign=sg if sg != "?" else e["sign"], data_sign=sg, data_basis=sorted(set(e.get("data_basis", [])) | basis), opposite=e.get("opposite", []) + opp)
-        else: out[(x, y)] = {"sign": sg, "how": "data", "basis": sorted(basis), "data_sign": sg, "data_basis": sorted(basis), "opposite": opp}
+        else: out[(x, y)] = {"sign": sg, "how": "data", "rel": "data", "basis": sorted(basis), "data_sign": sg, "data_basis": sorted(basis), "opposite": opp}
     return out
 
 
@@ -4012,7 +4496,7 @@ def mine(m, want):
         k = f"{miner}:{key}"
         if k in seen: return
         seen.add(k); rows[miner].append((round(score, 2), k, text, lines, tuple(sorted(set(cs))), tuple(sorted(srcs_of(m, basis)))))
-    def eff_line(a, b, e): return f"{a} → {b} ({e['sign']}): {e['how']}, {' '.join(e['basis'][:5]) or 'no basis cited on the concept card'}"
+    def eff_line(a, b, e): return f"{a} → {b} ({e['sign']}, basis {e.get('rel') or 'data'}): {e['how']}, {' '.join(e['basis'][:5]) or 'no basis cited on the concept card'}"
     nulls, (_ag, free) = null_results(m), logged_pairs(m)
     withheld = Counter()
     def veto(miner, a, c):
@@ -4041,6 +4525,53 @@ def mine(m, want):
             for v in con.all(k):
                 for t in m.ids(v)[0]:
                     if m.cards[t].fam == "concept": crel.add((con.id, k, t))
+    if "definitions" in want:
+        cons_ = sorted((c for c in m.cards.values() if c.fam == "concept" and not c.get("retired")), key=lambda c: c.id)
+        used_in, together, differ = defaultdict(set), set(), {}
+        for c in ev:
+            ts = sorted(m.terms(c))
+            for t in ts: used_in[t].add(c.id[:4])
+            together |= set(itertools.combinations(ts, 2))
+        for con in cons_:
+            if con.priority == "low" or con.get("kind") == "count": continue  # low-priority concepts are never raised; counts are never compared
+            r = measures(m, con.id)
+            dsrc = sorted(p_ for p_, x in r.items() if x["defs"]); dcards = [d for p_ in dsrc for d in r[p_]["defs"]]
+            if len(dsrc) >= 2:
+                add("definitions", 2 + 0.5 * len(dsrc) + 0.3 * w(con.id), f"term:{con.id}", f"[[{con.id}]] is defined or operationalised in its own way by {len(dsrc)} sources ({', '.join(dsrc)}): do they mean the same thing, and can their results be compared?",
+                    [f"{d.id}: {one(d.title, 100)}" for d in dcards[:5]] + [f"table: mesh.py table {con.id} definitions"], (con.id,), [d.id for d in dcards])
+            elif dsrc and used_in[con.id] - set(dsrc):
+                add("definitions", 1.2 + 0.3 * w(con.id), f"term:{con.id}", f"{dsrc[0]} gives [[{con.id}]] its own definition, which differs from the concept card's; {', '.join(sorted(used_in[con.id] - set(dsrc)))} use{'s' if len(used_in[con.id] - set(dsrc)) == 1 else ''} the term with none carded: the same sense?",
+                    [f"{d.id}: {one(d.title, 100)}" for d in dcards[:3]] + [f"table: mesh.py table {con.id} definitions"], (con.id,), [d.id for d in dcards])
+            if dsrc: differ[con.id] = ("definition cards " + " ".join(d.id for d in dcards[:4]), set(dsrc))
+            tsrc = {p_: x["techniques"] for p_, x in r.items() if x["techniques"] and x["example"]}
+            apart = [(a, b) for a, b in itertools.combinations(sorted(tsrc), 2) if not tsrc[a] & tsrc[b]]
+            if apart:
+                a, b = apart[0]
+                add("definitions", 2 + 0.5 * len(apart) + 0.3 * w(con.id), f"measure:{con.id}", f"[[{con.id}]] is measured differently in {a} ({', '.join(sorted(tsrc[a]))}) and {b} ({', '.join(sorted(tsrc[b]))}): their values compare only if the two measures agree",
+                    [f"{p_}: {r[p_]['example'].id} {one(plain(r[p_]['example'].get('value')), 70)}" for p_ in (a, b)] + [f"table: mesh.py table {con.id} definitions"], (con.id,), [r[a]["example"].id, r[b]["example"].id])
+                differ.setdefault(con.id, (f"measured differently in {a} and {b}", {a, b}))
+            mb = [t for v in con.all("measured_by") for t in m.ids(v)[0] if m.cards[t].fam == "concept"]
+            if len(mb) >= 2 and not apart: add("definitions", 1.2, f"measures:{con.id}", f"[[{con.id}]] has {len(mb)} recorded measures ({', '.join(mb)}): has anything compared them on the same samples?", [], [con.id] + mb, [])
+        dtok = {c.id: {t.strip(".") for t in toks(definition_of(c)) if len(t.strip(".")) > 3} for c in cons_}
+        rel_ = {(c.id, t) for c in cons_ for k_ in CONCEPT_RELS for v in c.all(k_) for t in m.ids(v)[0]}
+        nmw = lambda c: {x for x in c.id.split("-") if len(x) >= 5 and x not in STOP}
+        for a, b in itertools.combinations(cons_, 2):
+            if a.get("kind") != b.get("kind") or (a.id, b.id) in rel_ or (b.id, a.id) in rel_ or (a.id, b.id) in together: continue
+            ua, ub = used_in[a.id], used_in[b.id]
+            if not ua or not ub or ua & ub: continue
+            jd, shared = jac(dtok[a.id], dtok[b.id]), nmw(a) & nmw(b)
+            if jd >= 0.4 or (shared and jd >= 0.2):
+                add("definitions", 1.5 + 3 * jd + (0.5 if shared else 0), f"names:{a.id}~{b.id}", f"[[{a.id}]] (used only by {', '.join(sorted(ua))}) and [[{b.id}]] (used only by {', '.join(sorted(ub))}) may be two names for one thing: their definitions overlap and no card uses both",
+                    [f"{a.id}: {one(definition_of(a), 110)}", f"{b.id}: {one(definition_of(b), 110)}"], (a.id, b.id), [])
+        for p_ in [x for x in pg if x.id[0] in "VX" and x.status in ("open", "explained")]:
+            sides = [t for v in p_.all("sides") for t in m.ids(v)[0] if m.cards[t].fam == "evidence"]
+            ss = {t[:4] for t in sides}
+            hit = sorted(c for c in m.terms(p_) if c in differ and differ[c][1] & ss)
+            if len(ss) < 2 or not hit: continue
+            vars_ = {m.pair(m.cards[t].get("value"))[0] for t in sides if m.cards[t].get("value")}
+            c0 = next((c for c in hit if c in vars_), hit[0])
+            add("definitions", 2.5, f"clash:{p_.id}", f"{'Contradiction' if p_.id[0] == 'V' else 'Tension'} {p_.id} sets sources against each other on [[{c0}]], which they do not define or measure alike ({differ[c0][0]}): check that way out before any other",
+                [one(p_.title, 110), f"table: mesh.py table {c0} definitions"], m.terms(p_), sides)
     if "bridges" in want:
         nb = defaultdict(dict)
         for (a, b), ss in co.items(): nb[a][b] = ss; nb[b][a] = ss
@@ -4461,6 +4992,10 @@ find <words> [--type t] [--source P###] [--limit n]   search all cards (concept 
 show <id|concept>             a card, its source paragraphs and what links to it
 link <id> [<id> ...]          the full [[file name]] link for each id
 matrix <var> [<var>] [--all]  cross-tab observations by condition (also: type, source)
+table <concept ...|K###|X###|V###|G###> [evidence|relations|definitions] [--type t] [--source P###] [--all] [--out file]
+                              evidence table (one row per card: study, design, sample, result, conditions, limits, page); the relations a concept has, with basis; how each source defines and measures it
+independence [K###|P### P### ...]  the independent groups of sources behind each finding (shared data sets or authors count once)
+draft <file> [--out file]     worklist for auditing a draft against the brain: per sentence, the works cited, concepts, numbers, likeliest cards and what to check
 sample <P###> [n]             random cards beside their source text, for spot checks
 unread <P###> [min chars]     paragraphs of a source that no card is anchored to, for finding missed cards
 progress <P###>               where the extraction of a source stands, for resuming it
@@ -4505,7 +5040,7 @@ def main():
     if c == "version": print(VERSION); return
     if c == "upgrade": return cmd_upgrade(a[0])
     if c == "schema":
-        print(json.dumps({"schema": SCHEMA, "evidence_types": EVIDENCE_TYPES, "evidence_status": EVIDENCE_STATUS, "origin (default authors)": ORIGIN, "via (default text)": VIA, "evidence_relations": EVIDENCE_RELS, "pages (folder, type, status, link keys)": PAGES, "gap_kinds": GAP_KINDS, "concept_kinds": CONCEPT_KINDS, "concept_relations": CONCEPT_RELS, "inverse_labels_in_linked_from": INVERSE, "source_status": SOURCE_STATUS, "coverage_depths": DEPTHS, "source_kinds": SOURCE_KINDS, "reference_status": REF_STATUS, "reference_fields": REF_FIELDS, "priority": PRIORITY, "data_and_code_status": ACCESS, "claims_status": CLAIMS_STATUS}, indent=1)); return
+        print(json.dumps({"schema": SCHEMA, "study_designs (what each can establish)": {d: t for d, (t, _b) in DESIGNS.items()}, "relation_basis": BASES, "evidence_types": EVIDENCE_TYPES, "evidence_status": EVIDENCE_STATUS, "origin (default authors)": ORIGIN, "via (default text)": VIA, "evidence_relations": EVIDENCE_RELS, "pages (folder, type, status, link keys)": PAGES, "gap_kinds": GAP_KINDS, "concept_kinds": CONCEPT_KINDS, "concept_relations": CONCEPT_RELS, "inverse_labels_in_linked_from": INVERSE, "source_status": SOURCE_STATUS, "coverage_depths": DEPTHS, "source_kinds": SOURCE_KINDS, "reference_status": REF_STATUS, "reference_fields": REF_FIELDS, "priority": PRIORITY, "data_and_code_status": ACCESS, "claims_status": CLAIMS_STATUS}, indent=1)); return
     if c == "repoinfo": return cmd_repoinfo(a[0])
     root = find_root()
     if c == "build": return cmd_build(root)
@@ -4528,6 +5063,9 @@ def main():
     elif c == "propose": cmd_propose(m, a)
     elif c == "contradictions": cmd_contradictions(m, a)
     elif c == "facts": cmd_facts(m, a)
+    elif c == "table": cmd_table(m, a)
+    elif c == "independence": cmd_independence(m, a)
+    elif c == "draft": cmd_draft(m, a)
     elif c == "reject": cmd_reject(m, a)
     elif c == "scan":
         if len(a) > 1 and all(re.fullmatch(r"P\d{3}", x) for x in a):

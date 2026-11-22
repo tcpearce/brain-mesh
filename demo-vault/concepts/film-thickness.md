@@ -18,7 +18,7 @@ updated: 2026-11-20
 - [[P002-007-single-film-thickness-tested|Only one film thickness, 200 nm, was tested]] · limitation
 
 **Linked from other concepts**
-- affected_by:: [[temperature|Temperature]] — [[P001-005-film-thickens-18-percent]]
+- affected_by:: [[temperature|Temperature]] — tested: [[P001-005-film-thickens-18-percent]]
 
 **Appears alongside:** [[imprinted-polymer-film]] (3) · [[swelling]] (3) · [[temperature]] (3) · [[acetonitrile]] (2) · [[solvent]] (2) · [[water]] (2) · [[binding-capacity]] (1)
 

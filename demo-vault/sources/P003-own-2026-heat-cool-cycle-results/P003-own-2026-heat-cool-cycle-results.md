@@ -31,6 +31,10 @@ updated: 2026-11-20
 - kind:: own-result
 - authors:: own group
 - year:: 2026
+- question:: Does binding capacity recover on cooling, and does the loss on heating depend on the solvent?
+- design:: experiment — heat-cool cycle in water and acetonitrile, capacity by batch rebinding
+- sample:: imprinted polymer films, four per condition
+- framework:: none stated
 - experiment:: [[E001-heat-cool-cycle-two-solvents]]
 - coverage:: all | full | five capacity values and the method line
 - coverage:: Supplementary material | none | not applicable

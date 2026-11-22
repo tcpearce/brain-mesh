@@ -55,6 +55,10 @@ updated: 2026-11-20
 - year:: 2021
 - venue:: Journal of Test Materials 12, 100-108
 - doi:: 10.0000/jtm.2021.001
+- question:: Does heating lower the binding capacity of an imprinted polymer film in water, and if so why?
+- design:: experiment — binding capacity and film thickness measured at 25 and 45 °C in water
+- sample:: imprinted polymer films, three per condition
+- framework:: molecular imprinting: binding depends on the shape of the imprinted cavities
 - coverage:: Abstract | full | aim and headline result
 - coverage:: Methods | full | film preparation and rebinding assay
 - coverage:: Results | full | capacity at two temperatures, thickness change, one anomaly

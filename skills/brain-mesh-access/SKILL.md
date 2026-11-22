@@ -51,6 +51,8 @@ Tools:
 | Find cards | `find <words>`, with `--type observation`, `--source P012` |
 | See a card, its source paragraph and everything linked to it | `show <id>` |
 | See a concept | `show <concept>`, or `concept <name>` to find it by any of its names |
+| Lay the evidence on a concept or finding side by side | `table <concept or K001>`: one row per card with the study, its design and sample, the result, its conditions, how it was obtained, what limits it and the page. `table <concept> relations` for the relations it has and their basis; `table <concept> definitions` for how each source defines and measures it. `--out notes/tables/<name>.md` saves one with links. |
+| See how many independent groups of sources stand behind a finding | `independence K001` |
 | Everything that rests on a card or source | `impact <id>` |
 | Which combinations of conditions were measured | `matrix <variable> <variable>` |
 | Cards in other sources to link | `neighbours <id>` |
@@ -63,7 +65,9 @@ Principles:
 - **Cite as you answer.** Give card ids, and the page for anything quoted, so every statement can be checked. Prefer findings to single evidence cards, and evidence cards to memory.
 - **Say what the brain does not know.** Check the source cards' `coverage::` lines (unread sections) and the gaps before saying something is not known. "Not in the brain" is not "not in the literature".
 - **Label anything from outside the brain.** Knowledge from memory or the web goes in the answer marked as such, never silently into a card.
-- **Grades matter.** A `single-source` finding is not a fact. A `contested` one has a tension card that says why.
+- **Grades matter.** A `single-source` finding is not a fact. A `contested` one has a tension card that says why. Two papers from one group or on one data set are one piece of evidence (`independence`).
+- **Design matters.** A source's `design::` says what its results can establish. Use causal wording only for relations whose basis is `tested`; say "is associated with" or "predicts" otherwise.
+- **Writing something to keep** (a review, a background section, a paragraph for a paper or a bid) or **checking a draft** against the brain: `brain-mesh-write`.
 
 ## 3. Adding to the brain
 

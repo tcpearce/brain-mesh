@@ -23,7 +23,7 @@ Skipping a rung is the main way this goes wrong: proposing an experiment that pa
 
 | signal in the scan | kind of gap it may indicate |
 |---|---|
-| findings resting on one source | `unreplicated` |
+| findings resting on one source, or on sources that are not independent of each other (shared data set or authors) | `unreplicated` |
 | open tensions | `unresolved-tension` |
 | authors' open questions not taken up | `open-question` |
 | oddities not taken up | `unexplained` |

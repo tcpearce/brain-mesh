@@ -1074,4 +1074,104 @@ how() { python3 -c "import json,sys; print(json.load(open('index/marks.json'))[s
 (python3 tools/mesh.py check || true) > c.txt; ! grep -q "P001-001: its loc phrase could not be found" c.txt && pass "a loc highlighted in one of a source's PDFs is not reported missing" || { cat c.txt; fail "two-part check"; }
 ! grep -q "P001-003: its loc phrase could not be found" c.txt && pass "a card with no loc phrase is not told its loc phrase is missing (1.14.7)" || { cat c.txt; fail "no-loc check"; }
 fi
+# 20. study profiles, independence of sources, the basis of relations, tables, the definitions miner, draft audit (1.15.0)
+cp -r "$ROOT/demo-vault" "$T/sx"; cd "$T/sx"; cp "$MESH" tools/mesh.py
+S1=$(ls -d sources/P001*); S2=$(ls -d sources/P002*); S3=$(ls -d sources/P003*)
+SRC1=$(ls $S1/P001-smith-*.md); SRC2=$(ls $S2/P002-garcia-*.md); SRC3=$(ls $S3/P003-own-*.md); K=$(ls findings/K001-*.md)
+python3 tools/mesh.py build > build.txt; grep -q "check: 0 errors, 0 warnings" build.txt && pass "a vault whose sources carry study profiles and whose relations state a basis is clean" || { cat build.txt; fail "1.15 clean"; }
+sed -i '/^- design::/d;/^- sample::/d' $SRC2
+(python3 tools/mesh.py check || true) > c.txt; grep -q "P002: study profile incomplete: add '- design::', '- sample::'" c.txt && pass "check asks an extracted paper for its study profile" || { cat c.txt; fail "study profile"; }
+sed -i 's/^- doi:: \(.*\)$/- doi:: \1\n- design:: trial — capacity by microbalance\n- sample:: films of one thickness/' $SRC2
+(python3 tools/mesh.py check || true) > c.txt; grep -q "P002: design 'trial' is not one of experiment, observational, reanalysis" c.txt && pass "check names the designs when one is not in the list" || { cat c.txt; fail "design vocabulary"; }
+sed -i 's/^- design:: trial/- design:: experiment/' $SRC2
+python3 tools/mesh.py schema | grep -q '"study_designs (what each can establish)"' && pass "schema lists the study designs and what each can establish" || fail "schema designs"
+python3 tools/mesh.py independence K001 > i.txt; grep -q "2 sources, 2 independent groups: P001 | P003" i.txt && pass "independence counts the groups behind a finding" || { cat i.txt; fail "independence"; }
+sed -i 's/^- authors:: own group$/- authors:: Smith A; Jones B/' $SRC3
+(python3 tools/mesh.py check || true) > c.txt; grep -q "K001: graded probable, but its 2 supporting sources are not independent (P001 and P003 share authors Smith A, Jones B), so they count once" c.txt && pass "a finding above tentative whose sources share authors is flagged" || { cat c.txt; fail "shared authors"; }
+python3 tools/mesh.py independence P001 P002 P003 | grep -q "^P001 + P003  (P001 and P003 share authors Smith A, Jones B)$" && pass "independence groups a set of sources" || { python3 tools/mesh.py independence P001 P002 P003; fail "independence sources"; }
+python3 tools/mesh.py health > h.txt; grep -q "K001 .*probable, but its 2 sources are not independent" h.txt && pass "health lists the finding for regrading" || { grep -n "K001" h.txt; fail "health independence"; }
+sed -i 's/^- authors:: Smith A; Jones B$/- authors:: own group/' $SRC3
+mkdir -p data-sets; cat > data-sets/D001-batch-rebinding-results.md <<'CARD'
+---
+type: dataset
+status: on-request
+updated: 2026-11-22
+---
+# Batch rebinding capacities of imprinted films in water
+
+**What it is.** Binding capacities for [[analyte-x]] measured by batch rebinding on imprinted films in [[water]], used by both studies.
+
+## Codes
+- id:: D001
+- name:: Shared rebinding data
+- size:: 9 films
+- access:: from the authors on request
+- concepts:: [[binding-capacity]], [[temperature]]
+- used_by:: [[P001]] — the measurements behind its capacity results
+- used_by:: [[P003]] — reanalysed
+CARD
+(python3 tools/mesh.py check || true) > c.txt; grep -q "K001: graded probable, but its 2 supporting sources are not independent (P001 and P003 both use the data set D001 (Shared rebinding data))" c.txt && pass "sources that share a data-set card count once" || { cat c.txt; fail "shared data"; }
+grep -q "P003-002: 'replicates:: P001-004', but P001 and P003 both use the data set D001 (Shared rebinding data): a result from the same data is not an independent replication" c.txt && pass "a replication from the same data is questioned" || { cat c.txt; fail "replicates same data"; }
+sed -i 's/^- against::$/- against::\n- independent:: [[P001]], [[P003]] — separate films measured in separate runs; the shared file only pools them/' $K
+(python3 tools/mesh.py check || true) > c.txt; ! grep -q "K001: graded probable, but" c.txt && python3 tools/mesh.py independence K001 | grep -q "2 independent groups: P001 | P003" && pass "a finding can declare two sources independent, with the reason" || { cat c.txt; fail "independent waiver"; }
+rm data-sets/D001-*.md; sed -i '/^- independent::/d' $K
+sed -i 's/^- affects:: \[\[film-thickness\]\] — tested: /- affects:: [[film-thickness]] — /' concepts/temperature.md
+(python3 tools/mesh.py check || true) > c.txt; grep -q "temperature: 'affects::' film-thickness states no basis: start the reason with tested, correlational, proposed or inferred" c.txt && pass "a relation with no stated basis is flagged" || { cat c.txt; fail "relation basis"; }
+sed -i 's/^- affects:: \[\[film-thickness\]\] — /- affects:: [[film-thickness]] — tested: /' concepts/temperature.md
+sed -i 's/^- design:: experiment/- design:: observational/' $SRC1
+(python3 tools/mesh.py check || true) > c.txt; grep -q "temperature: 'affects::' film-thickness says tested, but no source it cites is recorded as an experiment (P001 observational)" c.txt && pass "'tested' needs a source that is an experiment" || { cat c.txt; fail "tested needs experiment"; }
+sed -i 's/^- design:: observational/- design:: experiment/' $SRC1
+python3 tools/mesh.py facts temperature | grep -q "^effect: temperature → film-thickness (.*basis tested) P001-005" && python3 tools/mesh.py facts swelling | grep -q "^effect: swelling → binding-capacity (.*basis proposed)" && pass "facts shows the basis of each relation" || { python3 tools/mesh.py facts temperature swelling | grep effect; fail "facts basis"; }
+python3 tools/mesh.py build > /dev/null
+python3 tools/mesh.py table K001 > t.txt
+grep -q "^# Evidence table: K001 " t.txt && grep -q "^| Smith & Jones (2021) P001 | experiment | imprinted polymer films, three per condition | P001-003 | for | .* | binding-capacity = 4.2 ± 0.3 (± unspecified, n = 3) | temperature = 25 degC; solvent = water | P001-002 | .* | p. 1 |$" t.txt && pass "table gives one row per evidence card with study, design, sample, result, conditions, method and page" || { cat t.txt; fail "evidence table"; }
+grep -q "^\*\*Independence.\*\* 2 sources in 2 independent groups: P001 | P003\.$" t.txt && grep -q "^- experiment: the investigators set the conditions" t.txt && pass "the evidence table states independence and what each design can establish" || { cat t.txt; fail "table footer"; }
+python3 tools/mesh.py table binding-capacity relations > t.txt
+grep -q "^| temperature | binding-capacity | .* | tested | " t.txt && grep -q "^| swelling | binding-capacity | .* | proposed | P001-007 | P001 experiment | " t.txt && grep -q "^- X001 \[explained\]" t.txt && pass "the relations table gives direction, basis, evidence and designs, and what is unresolved" || { cat t.txt; fail "relations table"; }
+python3 tools/mesh.py table binding-capacity definitions --out notes/tables/binding-capacity.md > /dev/null
+grep -q "^| Garcia & Chen (2023) \[\[P002-garcia-2023-binding-retained-acetonitrile\\\\|P002\]\] | none carded | \[\[P002-001-capacity-measured-by-qcm\\\\|P002-001\]\]: .* | quartz-crystal-microbalance | " notes/tables/binding-capacity.md && pass "the definitions table says how each source measures a concept, and --out writes it with links" || { cat notes/tables/binding-capacity.md; fail "definitions table"; }
+python3 tools/mesh.py build > build.txt; grep -q "check: 0 errors, 0 warnings" build.txt && pass "a saved table in notes/ leaves the vault clean" || { cat build.txt; fail "table in notes"; }
+python3 tools/mesh.py discover definitions > d.txt
+grep -q "binding-capacity is measured differently in P001 (batch-rebinding-assay) and P002 (quartz-crystal-microbalance): their values compare only if the two measures agree" d.txt && pass "the definitions miner finds a quantity measured differently across sources" || { cat d.txt; fail "definitions measure"; }
+grep -q "Tension X001 sets sources against each other on binding-capacity, which they do not define or measure alike (measured differently in P001 and P002)" d.txt && pass "it points a tension at the difference in measure between its sides" || { cat d.txt; fail "definitions clash"; }
+printf -- '---\ntype: definition\nstatus: reported\nupdated: 2026-11-22\n---\n# Binding capacity is defined as mass uptake per unit area of film\n\n[[binding-capacity|Binding capacity]] is taken as the mass of analyte taken up per unit area. **Source:** Garcia & Chen 2023, p. 1.\n\n## Codes\n- id:: P002-009\n- concepts:: [[binding-capacity]]\n- anchor:: [[P002_text#^b0002]]\n' > $S2/P002-009-capacity-defined-per-area.md
+printf -- '---\ntype: definition\nstatus: reported\nupdated: 2026-11-22\n---\n# Binding capacity is defined as analyte removed from solution per gram of film\n\n[[binding-capacity|Binding capacity]] is taken as the amount removed from solution per gram. **Source:** Smith & Jones 2021, p. 1.\n\n## Codes\n- id:: P001-012\n- concepts:: [[binding-capacity]]\n- anchor:: [[P001_text#^b0003]]\n' > $S1/P001-012-capacity-defined-per-gram.md
+for c in film-swelling-ratio:"The fractional increase in film thickness on taking up solvent." swelling-degree:"The fractional increase in film thickness when solvent is taken up."; do n=${c%%:*}; printf -- '---\ntype: concept\naliases: ["%s"]\nupdated: 2026-11-22\n---\n# %s\n\n**Definition.** %s\n\n## Where it appears\n<!--AUTO:START-->\n<!--AUTO:END-->\n\n## Codes\n- id:: %s\n- kind:: variable\n- unit:: 1\n' "$n" "$n" "${c#*:}" "$n" > concepts/$n.md; done
+sed -i 's/^\(- concepts:: .*\)$/\1, [[film-swelling-ratio]]/' $S1/P001-005-*.md; sed -i 's/^\(- concepts:: .*\)$/\1, [[swelling-degree]]/' $S2/P002-007-*.md
+python3 tools/mesh.py discover definitions > d.txt
+grep -q "binding-capacity is defined or operationalised in its own way by 2 sources (P001, P002): do they mean the same thing" d.txt && pass "it finds one term defined differently by two sources" || { cat d.txt; fail "definitions term"; }
+grep -q "film-swelling-ratio (used only by P001) and swelling-degree (used only by P002) may be two names for one thing" d.txt && pass "it finds two names that may be one thing" || { cat d.txt; fail "definitions names"; }
+python3 tools/mesh.py table binding-capacity definitions | grep -q "| P002-009: Binding capacity is defined as mass uptake per unit area of film | " && pass "the definitions table lists each source's definition cards" || fail "definitions table defs"
+cat > $S1/P001_refs.md <<'TXT'
+# P001 references
+
+## 1
+- authors:: Lee, K.; Park, J.
+- year:: 2015
+- title:: Hydrogel swelling scales with temperature
+- journal:: J. Appl. Polym. Sci.
+- volume:: 98
+- pages:: 101--109
+- kind:: article
+- cited_at:: b0005
+TXT
+python3 tools/mesh.py cite P001 > /dev/null; python3 tools/mesh.py build > /dev/null
+cat > "$T/draft.md" <<'TXT'
+# Background
+
+Smith and Jones (2021) reported a binding capacity of 4.2 at 25 °C in water. Garcia and Chen (2023) found a capacity of 2.9 in acetonitrile. Swelling causes the loss of binding capacity (Smith and Jones, 2021).
+
+Hydrogels swell more when warm (Lee and Park, 2015). Others disagree (Nobody et al., 2019). The capacity in water was confirmed later [1].
+
+## References
+
+1. Smith, A. & Jones, B. Temperature dependence of analyte X binding by an imprinted polymer film. J. Test Mater. 12, 100-108 (2021).
+TXT
+python3 tools/mesh.py draft "$T/draft.md" > a.txt
+grep -q "^§2.1  Smith and Jones (2021) reported a binding capacity of 4.2 at 25 °C in water\.$" a.txt && grep -A3 "^§2.1 " a.txt | grep -q "cites: P001 Smith & Jones (2021): in the brain" && grep -A4 "^§2.1 " a.txt | grep -q "numbers: 4.2 on P001-003" && pass "draft finds the cited source, the concepts and the card that holds a number" || { cat a.txt; fail "draft supported"; }
+grep -A8 "^§2.2 " a.txt | grep -q "number 2.9 is on no card: check it on the page or mark it unverified" && pass "draft flags a number that is on no card" || { cat a.txt; fail "draft number"; }
+grep -A8 "^§2.3 " a.txt | grep -q "causal wording ('causes'): the brain records swelling → binding-capacity as proposed, not tested" && pass "draft flags causal wording beyond the recorded basis" || { cat a.txt; fail "draft causal"; }
+grep -A3 "^§3.1 " a.txt | grep -q "R0001 Lee & Park (2015): NOT in the brain, known only through P001" && grep -q "^Cited second-hand .*R0001 Lee & Park (2015)" a.txt && pass "draft flags a work the brain knows only second-hand" || { cat a.txt; fail "draft second-hand"; }
+grep -A3 "^§3.2 " a.txt | grep -q "cites Nobody et al. (2019): not in the brain, so it cannot be checked here" && pass "draft flags a citation that is not in the brain" || { cat a.txt; fail "draft unknown"; }
+grep -A3 "^§3.3 " a.txt | grep -q "cites: P001 Smith & Jones (2021): in the brain" && pass "draft resolves a numbered citation through the draft's own reference list" || { cat a.txt; fail "draft numbered"; }
 echo "ALL TESTS PASSED"

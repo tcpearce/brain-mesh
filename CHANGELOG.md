@@ -2,6 +2,18 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.15.0 (2026-11-22)
+
+What kind of study each source is, whether sources are independent, how far a relation is causal, and writing from the brain.
+
+- **Study profile on every source card:** `question::`, `design::` (experiment, observational, reanalysis, computational-model, simulation, theory, review, method, case, other; one line per study, with what was done), `sample::`, `framework::`. `check` asks every extracted paper and own result for them; `schema` lists the designs and what each can establish.
+- **Independence.** Sources that share a data-set card, two or more authors, or an author who is first or last on both, count once. `independence [K001 | P001 P003 ...]` shows the groups. `check` warns when a `probable` or `established` finding rests on one group and questions a `replicates::` link between sources on the same data; `health` and the gap scan count groups, not papers. `- independent:: [[P001]], [[P003]] — <why>` on a finding declares two sources independent for it.
+- **Basis of relations.** Every `affects::` line starts its reason with `tested`, `correlational`, `proposed` or `inferred`. `check` warns about a line with none, and about `tested` where no cited source is an experiment. `facts`, the miners and the tables show the basis. Causal wording only for `tested` relations.
+- **`definitions` miner:** one term defined or operationalised differently by several sources, one quantity measured by different techniques, two concepts that may be one thing, and open contradictions and tensions whose sides do not define or measure the quantity alike.
+- **`table <concept ...|K001|X001|V001|G001> [evidence|relations|definitions]`:** the evidence, one row per card (study, design, sample, result, conditions, how obtained, limits, page) with the independent groups and what each design can establish; the relations a concept has, with direction, basis, evidence and what is unresolved; how each source defines and measures a concept. `--out` saves one with links.
+- **`draft <file>`:** a worklist for auditing a draft against the brain. Per sentence: the works cited and whether the brain holds them (author-year, numbers against the draft's reference list, citation keys), the concepts, each number and the card that holds it, the likeliest cards, and what to check: a number on no card, causal wording beyond the recorded basis, a work known only second-hand, a logged contradiction that bears on it.
+- **New skill `brain-mesh-write`:** writing a literature review or background section from the brain with every claim traced to a card and page, and auditing a draft claim by claim (supported, overstated, contradicted, not in the brain) with a corrected draft. The main skill, add-paper, batch, discover, access, gaps and housekeeping follow.
+
 ## 1.14.8 (2026-11-21)
 
 - `contradictions add` writes the `sides::` lines of a new V card with the sides' card names, as every other typed link in Codes is written. Before, it wrote the bare ids (`[[P002-033]]`), which Obsidian cannot open (issue #19).

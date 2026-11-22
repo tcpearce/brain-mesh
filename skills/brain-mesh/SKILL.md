@@ -35,6 +35,7 @@ These instructions and the tooling live in the GitHub repository `tcpearce/brain
 | Find knowledge gaps, hunt papers that fill them, maintain the research-gaps document | `brain-mesh-gaps` |
 | Hypotheses, experiment design, registered predictions, judging outcomes | `brain-mesh-experiment` |
 | Mine the brain for new hypotheses and links with the user; theory, analogy and seed cards; recheck them as sources arrive | `brain-mesh-discover` |
+| Write from the brain (a literature review, a background or related-work section) or audit a draft against it, claim by claim | `brain-mesh-write` |
 | Health checks, merges, corrections, retractions, periodic audits | `brain-mesh-housekeeping` |
 
 ## Finding the vault
@@ -175,7 +176,17 @@ updated: 2026-11-20
 ```
 
 - `kind` is `entity`, `variable`, `count`, `technique` or `concept`. A `count` is a variable that only says how many items a result rests on (`sample-size`). A variable needs `unit`: a unit, `1` for dimensionless, or `categorical` when its values are themselves concept cards (solvent = water).
-- Concept-to-concept relations in Codes: `broader` (is a kind of), `part_of`, `measured_by`, `affects`, `related`. Write the relation on the card of the concept that does the affecting or belonging, for example on the temperature card: `- affects:: [[binding-capacity]] — in water only, [[K001]]`. An `affects` line must cite the finding or evidence card it rests on, because it is a scientific claim and not vocabulary.
+- Concept-to-concept relations in Codes: `broader` (is a kind of), `part_of`, `measured_by`, `affects`, `related`. Write the relation on the card of the concept that does the affecting or belonging, for example on the temperature card: `- affects:: [[binding-capacity]] — tested: in water only, [[K001]]`. An `affects` line must cite the finding or evidence card it rests on, because it is a scientific claim and not vocabulary.
+- **Every `affects` line states its basis,** as the first word of its reason:
+
+  | basis | means |
+  |---|---|
+  | `tested` | an experiment set the cause and measured the outcome |
+  | `correlational` | the two vary together in observational data, a reanalysis or a fitted model; nothing was manipulated |
+  | `proposed` | the cited authors say so (theory, mechanism, discussion) without testing it in the cited work |
+  | `inferred` | the brain's own inference, from chaining relations or comparing sources |
+
+  `check` warns about a line with no basis, and about `tested` where no cited source is recorded as an experiment. **Causal wording follows the basis:** "causes", "raises", "lowers", "leads to", "drives" only for `tested` relations; "is associated with", "predicts", "is higher where" for `correlational`; "is proposed to" for `proposed`; "the evidence suggests" for `inferred`. This holds in hubs, findings, answers and anything written from the brain.
 - **Key equations and figures** (optional) shows the equations and figure panels that define or measure the concept: the LaTeX or the embedded image, a sentence on what it shows, the evidence card it comes from, and the works that card cites, each with a `cites::` line. `scan` lists the candidates (`brain-mesh-concept-scan` step 7).
 - The block under **Where it appears** is generated: every finding, tension, gap, hypothesis and experiment that uses the concept, its evidence cards, relations pointing at it from other concepts, and the concepts it most often appears with. Keep the two AUTO marker lines in the card.
 - Before proposing a concept run `python3 tools/mesh.py concept "<name>"`. If an existing concept covers it, add the new name to that card's `aliases` instead. If another agent has proposed it, link that name.
@@ -191,6 +202,29 @@ One per paper, preprint, thesis, report, dataset or own result. Name it `P012-<f
 Human part: `# Authors (year) Title`, then **Citation.** (with links `[[P012.pdf|original PDF]]`, `[[P012_marked.pdf|marked PDF]]` and `[[P012_text|anchored text]]`), **What they did.**, **What they found.**, **Weaknesses.**, **Extraction.** (one sentence on what has and has not been extracted), then a `## Cards from this source` heading followed by the two AUTO marker lines.
 
 Codes: `kind` (paper, preprint, thesis, report, dataset, own-result, other), `authors` (separated by `;`), `year`, `venue`, `doi`, one `coverage:: unit | depth | what it holds` line for every section, table, figure and supplementary item (depth is `full`, `skim`, `none` or `missing`), and one `pass:: date | kind | cards | verification` line per extraction pass. Status is `registered`, `extracted` or `integrated`.
+
+**The study profile.** Four more Codes lines say what kind of study the source is, because that sets what its results can establish:
+
+- `question::` the question the study asks, in one sentence.
+- `design::` one line per study in the paper: a design from the list, then ` — ` and what was done. `- design:: experiment — intensity rated by a trained panel at seven concentrations of 62 odorants`.
+
+  | design | what it can establish |
+  |---|---|
+  | `experiment` | the investigators set the conditions and measured the outcome: that a variable they changed changes the outcome, within the conditions tested |
+  | `observational` | measured without intervening: that things vary together, not which causes which |
+  | `reanalysis` | a new analysis of data others collected: as strong as those data, and not independent of the work that produced them |
+  | `computational-model` | a model fitted or trained on data and tested on data: what predicts the outcome, not what causes it |
+  | `simulation` | a model run from stated assumptions: what follows from them |
+  | `theory` | argument or derivation with no new data: a proposal |
+  | `review` | a summary of others' work: the evidence is in the original studies |
+  | `method` | a technique, instrument, data set or software introduced or validated: that it works as characterised |
+  | `case` | one or a few cases described: that something can happen |
+  | `other` | say what after the dash |
+
+- `sample::` what was studied and how many: molecules, animals, participants, films, data sets.
+- `framework::` the theory or model the study works within, or `none stated`.
+
+`check` asks every extracted paper, preprint, thesis, report and own result for all four. They feed the tables (`table`), the independence check, the basis of relations and the writing skill.
 
 The coverage lines are the record of what has not been read closely. They are what stops "not in the brain" being mistaken for "not in the paper".
 
@@ -269,6 +303,7 @@ Concept hubs should cite the closely relevant works in their text: `build` lists
 Written by Claude across sources. One proposition, disagreement or unknown per card. Each cites evidence cards and lists its concepts in `concepts::`.
 
 - **Finding `K`.** `# <the proposition, with its scope>`, **In brief.**, `## Evidence` (for and against, in words, with links), `## Where it holds and where it breaks`, `## What would change this`. Codes: `support::`, `against::`, and the scope as `when::` lines like those on evidence cards (`- when:: [[solvent]] = [[water]]`, `- when:: [[temperature]] = 25 to 45 degC`; several lines for one variable allow several values). The scope in Codes must match the scope in the title. Status: `single-source`, `tentative`, `probable`, `established`, `contested`. Grade on independent sources, directness and replication, not on how confident the authors sound.
+  - **Independent means independent.** Sources that share a data-set card, or two or more authors, or an author who is first or last on both, count once. `python3 tools/mesh.py independence K001` shows the groups behind a finding. `check` warns when a `probable` or `established` finding rests on one group, and questions a `replicates::` link between sources that use the same data. When two grouped sources are independent for this finding (different data, different laboratories' work), say so on the finding: `- independent:: [[P001]], [[P003]] — <why>`.
 - **Tension `X`.** **The disagreement.**, `## Sides`, `## Possible explanations` (differing conditions, methods or definitions first), `## What would settle it`. Codes: `sides::`, and once it changes status `explained_by::` (the hypothesis or evidence that accounts for both sides, or a hypothesis that `explains::` it) or `resolved_by::` (the evidence that settled it). Status: `open`, `explained`, `resolved`.
 - **Gap `G`.** See `brain-mesh-gaps`.
 - **Contradiction `V`: the contradictions register.** Two or more cards that cannot both hold as stated: values of one quantity that disagree beyond error under the same conditions, opposite directions of one effect, a null result against an effect, evidence against a finding, a concept fact the evidence denies, or statements that exclude each other in words. One clash per card, light to write: `# <the clash in one sentence>`, **The clash.**, **Sides.**, **Why both cannot hold.**, **Ways out.** (different conditions, methods or definitions; an error on one side; a moderator: each a candidate hypothesis or experiment). Codes: one `sides::` line per side (evidence, findings or concepts), `concepts::`, `kind::` (`values`, `direction`, `null`, `against`, `link`, `mechanism`, `definition`, `scope`, `other`), `logged_by::` (the import of P012, a concept scan, a discovery miner, the user), and a `graded::` history. Status: `open`, `explained` (`explained_by::` a hypothesis, theory or evidence that makes both sides true), `resolved` (`resolved_by::` evidence showing one side wrong), `dissolved` (`dissolved:: <why it was not a contradiction after all>`, with the cards fixed). A tension (`X`) is a disagreement worked up into a question; several contradictions can feed one (`tension::`).

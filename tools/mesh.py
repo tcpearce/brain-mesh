@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.19.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.20.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -354,6 +354,20 @@ def journal_start(prefix):
         start = k
     while start is not None and start < len(toks) and toks[start].group(0).lower() in JFUNC: start += 1
     return toks[start].start() if start is not None and start < len(toks) else None
+
+
+FURNITURE = [r"\s*Downloaded from \S+ by \S+ on [A-Z][a-z]+ \d{1,2}, \d{4}(?: from IP address \S+?)?\.?(?=\s|$)",  # a publisher's download stamp
+             r"\s*\b[A-Z][\w.]* Author manuscript; available in PMC \d{4} [A-Z][a-z]+ \d{1,2}\.?", r"\s*\bAuthor Manuscript\b", r"\s*\bHHS Public Access\b",
+             r"\s+pnas\.org(?=\s|$)",
+             r"\s\d{1,3} of \d{1,3}(?=\s+https?://|\s*$)"]  # a page counter, "6 of 6", once what followed it is gone
+
+def strip_furniture(raw, own_doi=""):
+    """A reference with the page furniture a PDF puts beside it removed: page counters, download stamps, running heads
+    of author manuscripts, and the citing paper's own DOI, which otherwise becomes the reference's DOI (issue #26)."""
+    t = raw
+    if own_doi: t = re.sub(r"\s*(?:https?://(?:dx\.)?doi\.org/|doi:\s?)?" + re.escape(own_doi) + r"\.?(?=\s|$)", "", t, flags=re.I)
+    for p in FURNITURE: t = re.sub(p, "", t)
+    return " ".join(t.split())
 
 
 def parse_ref(raw):
@@ -5098,6 +5112,8 @@ def cmd_refs(m, pid, force=False):
     at = cite_places(m, pid, main, len(refs))
     lines = [f"# {pid} reference list", "", "Extracted by `mesh.py refs`. Correct the fields against the paper (titles, authors, DOIs), then run `mesh.py cite " + pid + "`.",
              "`cited_at` lists the paragraphs where the reference is cited, found automatically.", ""]
+    own_doi = ((m.cards[pid].get("doi") if pid in m.cards else "") or "").strip()
+    refs = [(n, strip_furniture(raw, own_doi)) for n, raw in refs]  # page counters, download stamps and the paper's own DOI (issue #26)
     for n, raw in refs:
         f = parse_ref(raw)
         lines += [f"## {n}", f"- raw:: {raw}"] + [f"- {k}:: {f.get(k, '')}" for k in REF_FIELDS if f.get(k)]
@@ -5174,49 +5190,98 @@ def read_refs(path):
     return out
 
 
-def cmd_cite(m, pid):
+def ref_title(f):
+    """The heading of a reference card: 'Surname et al. (year) Title'."""
+    sur = ascii_fold(first_surname(f.get("authors"))).strip() or "anon"
+    others = len([a for a in (f.get("authors") or "").split(";") if a.strip()])
+    who = sur + (" et al." if others > 2 or "others" in (f.get("authors") or "") else (" & " + (f.get("authors") or "").split(";")[1].split(",")[0].strip() if others == 2 else ""))
+    return f"{who} ({f.get('year') or 'n.d.'}) " + (f.get("title") or (("in " + f["booktitle"]) if f.get("booktitle") else "") or " ".join(x for x in (f.get("journal"), f.get("volume"), (f.get("pages") or "").split("--")[0]) if x) or f.get("raw", "")[:80])
+
+
+def cmd_cite(m, pid, update=False):
     """Turn a source's checked reference list into reference cards: one card per cited work, shared by every source
-    that cites it, matched by DOI, arXiv id, first author + year + volume + page, or first author + year + title."""
+    that cites it, matched by DOI, arXiv id, first author + year + volume + page, or first author + year + title.
+    Without --update, fields a card already has are never overwritten. With --update (after the list has been checked,
+    issue #27) the list is the truth for the cards only this source cites: their fields and heading are rewritten
+    from it; a card that now turns out to be another work's twin is merged into that card; and a citation that has
+    moved to another card is taken off the old one. An entry carrying the citing source's own identifiers is refused
+    (a page footer swallowed into it, issue #26). Last, the source's cards that cite by number (`- cites:: ref 12 —
+    ...`, written where the cards came before the reference cards) are linked to the cards."""
     path = J(SRC(m.root, pid), pid + "_refs.md")
     if not os.path.exists(path): sys.exit(f"cite: no {pid}_refs.md; run `mesh.py refs {pid}` first")
-    index, byref = {}, {}
+    index, byref = defaultdict(list), {}
     for r in [c for c in m.cards.values() if c.fam == "reference" and not c.get("retired")]:
-        for k in ref_keys(r.fields()): index.setdefault(k, r)
+        for k in ref_keys(r.fields()): index[k].append(r)
         for p, n, _b in ref_cites(r): byref.setdefault((p, int(n)), r)  # a card already made for this source's ref n (issue #20)
     srcs = {k: c for c in m.cards.values() if c.fam == "source" for k in ref_keys(source_fields(c))}
+    own = m.cards.get(pid); ownkeys = set(ref_keys(source_fields(own))) if own and own.fam == "source" else set()
+    def only_ours(c):  # a card this source alone cites, and not a work held in the brain: the checked list may rewrite it
+        return bool(ref_cites(c)) and all(p == pid for p, _n, _b in ref_cites(c)) and not c.get("held") and c.status != "held"
+    def drop_line(c, n):  # take this source's citation of ref n off a card
+        t = rd(c.path); t2 = re.sub(r"(?m)^- cited_by:: \[\[" + pid + r"(?:-[^\]|]*)?(?:\|[^\]]*)?\]\] ref " + str(n) + r"\b[^\n]*\n?", "", t)
+        if t2 != t: wr(c.path, t2); c.raw = t2
     nxt = max([int(c.id[1:]) for c in m.cards.values() if c.fam == "reference"] or [0]) + 1
-    made, merged = 0, 0
+    made, merged, fixed, retired, refused, placed = 0, 0, 0, 0, [], {}
     os.makedirs(J(m.root, "references"), exist_ok=True)
     for n, f in read_refs(path):
         line = f"- cited_by:: [[{pid}]] ref {n}" + (f" — {f['cited_at']}" if f.get("cited_at") else "")
-        keys = ref_keys(f); hit = next((index[k] for k in keys if k in index), None) or byref.get((pid, n))
+        keys = ref_keys(f)
+        cands = [c for k in keys for c in index.get(k, [])]
+        keyhit = next((c for c in cands if not only_ours(c)), None) or (cands[0] if cands else None)
+        old = byref.get((pid, n))
+        selfish = (ownkeys & set(keys)) or (keyhit is not None and pid in (keyhit.get("held") or ""))
+        if selfish:  # the citing paper's own DOI or card: page furniture swallowed into the entry (issue #26)
+            refused.append(n)
+            if update and old is not None: drop_line(old, n)
+            continue
+        hit = keyhit or old
+        if update and old is not None and hit is not old:  # the corrected entry is another card's work
+            drop_line(old, n)
+            if not ref_cites(Card(old.path, old.fam, old.id)) and not old.get("held") and old.status != "held":
+                cmd_merge(m, hit.id, old.id); retired += 1
         held = next((srcs[k] for k in keys if k in srcs), None)
         if hit:
+            mine = update and only_ours(Card(hit.path, hit.fam, hit.id))
             raw = rd(hit.path); codes = [l for l in raw.split("\n## Codes", 1)[1].split("\n") if l.startswith(f"- cited_by:: [[{pid}") or l.startswith(f"- cited_by:: [[{pid}-")] if "\n## Codes" in raw else []
             new = raw
             for l in codes: new = new.replace(l + "\n", "", 1)
-            for k, v in f.items():  # fill fields the card lacks; never overwrite checked ones
-                if k in REF_FIELDS and v and not hit.get(k):
-                    new = new.replace("\n## Codes\n", f"\n## Codes\n- {k}:: {v}\n", 1)
+            if mine:  # rewrite the card's fields and heading from the checked entry
+                head, sep, rest = new.partition("\n## Codes\n")
+                rest = "\n".join(l for l in rest.split("\n") if not re.match(r"- (" + "|".join(REF_FIELDS) + r")::", l))
+                head = re.sub(r"(?m)^# .*$", "# " + ref_title(f).replace("\\", "\\\\"), head, count=1)
+                new = head + sep + "".join(f"- {k}:: {f[k]}\n" for k in REF_FIELDS if f.get(k)) + rest.lstrip("\n")
+                if new != raw: fixed += 1
+            else:
+                for k, v in f.items():  # fill fields the card lacks; never overwrite checked ones
+                    if k in REF_FIELDS and v and not hit.get(k):
+                        new = new.replace("\n## Codes\n", f"\n## Codes\n- {k}:: {v}\n", 1)
             new = new.rstrip("\n") + "\n" + line + "\n"
             if new != raw: wr(hit.path, new); hit.raw = new
-            merged += 1
+            placed[n] = hit.name; merged += 1
             continue
         rid = f"R{nxt:04d}"; nxt += 1
         sur = ascii_fold(first_surname(f.get("authors"))).strip() or "anon"
         words = [w for w in re.findall(r"[a-z0-9]+", ascii_fold(f.get("title") or f.get("journal") or f.get("publisher") or "").lower()) if w not in STOP][:4]
         name = re.sub(r"-+", "-", f"{rid}-{re.sub(r'[^a-z]', '', sur.lower())}-{f.get('year') or 'nd'}-{'-'.join(words)}").strip("-")
-        others = len([a for a in (f.get("authors") or "").split(";") if a.strip()])
-        who = sur + (" et al." if others > 2 or "others" in (f.get("authors") or "") else (" & " + (f.get("authors") or "").split(";")[1].split(",")[0].strip() if others == 2 else ""))
-        title = f"{who} ({f.get('year') or 'n.d.'}) " + (f.get("title") or (("in " + f["booktitle"]) if f.get("booktitle") else "") or " ".join(x for x in (f.get("journal"), f.get("volume"), (f.get("pages") or "").split("--")[0]) if x) or f.get("raw", "")[:80])
         status = "held" if held else "not-held"
         codes = [f"- id:: {rid}"] + [f"- {k}:: {f[k]}" for k in REF_FIELDS if f.get(k)]
         codes += [f"- held:: [[{held.id}]]"] if held else []
         codes += [line]
-        wr(J(m.root, "references", name + ".md"), f"---\ntype: reference\nstatus: {status}\nupdated: {TODAY}\n---\n# {title}\n\n<!--AUTO:START-->\n<!--AUTO:END-->\n\n## Notes\n\n## Codes\n" + "\n".join(codes) + "\n")
-        index.update({k: m.cards.setdefault(rid, Card(J(m.root, "references", name + ".md"), "reference", rid)) for k in keys})
-        made += 1
-    print(f"{pid}: {made} new reference cards, {merged} references matched to existing cards. Run `mesh.py build` to write the BibTeX and the reading queue.")
+        wr(J(m.root, "references", name + ".md"), f"---\ntype: reference\nstatus: {status}\nupdated: {TODAY}\n---\n# {ref_title(f)}\n\n<!--AUTO:START-->\n<!--AUTO:END-->\n\n## Notes\n\n## Codes\n" + "\n".join(codes) + "\n")
+        card = m.cards.setdefault(rid, Card(J(m.root, "references", name + ".md"), "reference", rid))
+        for k in keys: index[k].append(card)
+        placed[n] = name; made += 1
+    conv, left = 0, 0
+    for c in [c for c in m.cards.values() if c.id.startswith(pid + "-") and not c.get("retired")]:  # every card of the source, cited cards too: `- cites:: ref 12 — why` becomes a link to ref 12's card
+        t = rd(c.path)
+        t2, k_ = re.subn(r"(?m)^- cites:: ref (\d+)\b", lambda mo: f"- cites:: [[{placed[int(mo.group(1))]}]]" if int(mo.group(1)) in placed else mo.group(0), t)
+        left += len(re.findall(r"(?m)^- cites:: ref \d+\b", t2))
+        if t2 != t: wr(c.path, t2); conv += k_ - len(re.findall(r"(?m)^- cites:: ref \d+\b", t2))
+    print(f"{pid}: {made} new reference cards, {merged} references matched to existing cards"
+          + (f"; {fixed} cards rewritten from the checked list, {retired} duplicates merged into the card of the same work" if update else "")
+          + (f"; {conv} 'cites:: ref N' lines linked" if conv else "") + ". Run `mesh.py build` to write the BibTeX and the reading queue.")
+    if refused: print(f"cite: {pid} refs {', '.join(map(str, refused))} carry {pid}'s own identifiers (DOI or card), so they were not cited: most likely a page footer swallowed into the entry (issue #26). Correct {pid}_refs.md and run `cite {pid} --update`.")
+    if left: print(f"cite: {left} 'cites:: ref N' lines in {pid}'s cards name references that have no card; check their numbers against {pid}_refs.md")
 
 
 def concept_refs(m, con, at, top=6):
@@ -6361,7 +6426,7 @@ remove <id> [--force] [--why "<reason>"]  delete a card for good (retiring is th
 priority [<id> <high|normal|low> "<why>" [--sync]]  set a card's priority with its reason, or list high and low cards
 sync ["<message>"]            pull from GitHub, build, commit and push: at the start and end of every session
 refs <P###> [--force]         extract a source's reference list into P###_refs.md, with where each reference is cited
-cite <P###>                   turn the checked reference list into reference cards (references/R####), one per cited work
+cite <P###> [--update]       turn the checked reference list into reference cards (references/R####), one per cited work; --update rewrites the cards only this source cites from the checked list
 place <P###|id> [--by-card]   where new evidence goes: findings, tensions, gaps and hypotheses each card bears on, and what each match calls for
 equations <P###> [--si]       displayed equations of a source, with boxes to crop (figure ... eq4) and transcribe into LaTeX
 latex <card id>               render a card's equation:: lines beside the cropped original, to check the transcription
@@ -6413,7 +6478,7 @@ def main():
     elif c == "priority": cmd_priority(m, a)
     elif c == "mentions": cmd_mentions(m, a[0])
     elif c == "remove": cmd_remove(m, a[0], "--force" in a, a[a.index("--why") + 1] if "--why" in a else "")
-    elif c == "cite": cmd_cite(m, a[0])
+    elif c == "cite": cmd_cite(m, a[0], "--update" in a)
     elif c == "equations": cmd_equations(m, a[0], "_SI" if "--si" in a else "")
     elif c == "latex": cmd_latex(m, a[0])
     elif c == "staged": cmd_staged(m)

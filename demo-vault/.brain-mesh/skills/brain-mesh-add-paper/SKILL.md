@@ -33,6 +33,8 @@ Ask also for the paper's priority (`brain-mesh`): normal unless the user says ot
 
 When it arrives: `python3 tools/mesh.py anchor P012 --si <files...>`. Supplementary PDFs are merged in the order given and anchored as `P012_SI_text.md` (paragraphs `^s0001` ...); data files and code are sealed as `P012_SI-<name>.<ext>`. Then card it like the main text, and re-check every `missing::` line recorded before it arrived.
 
+Ask the user to put new papers and their supplementary files in the vault's `ingest/` folder, which git ignores, and give the files clear names before anchoring (publisher names such as `MOESM3_ESM.xlsx` become the `SI-` anchors). A file over the vault's size limit (`large_file_mb` in `MESH.json`, 10 MB unless set) is linked rather than committed: `anchor` says so, and the file stays usable in this copy of the vault (`brain-mesh-setup`, **Large files are linked**).
+
 ## 1. Register and anchor
 
 1. **Is it already here?** `python3 tools/mesh.py find <DOI>` and `find <distinctive title words>`. A preprint and its published version are one source: keep the published one and note the other in its Citation line.

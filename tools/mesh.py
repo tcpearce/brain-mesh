@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.16.2"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.17.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -113,6 +113,71 @@ def seal(root, path):
     p, name = J(root, "ledger", "checksums.txt"), os.path.basename(path)
     keep = [l for l in (rd(p).splitlines() if os.path.exists(p) else ["# Checksums of the source files as registered. The sources are the ground truth; they must never change."]) if l.split()[:1] != [name]]
     wr(p, "\n".join(keep + [f"{name} {sha(path)} {TODAY}"]) + "\n")
+
+
+# Linked files: a source file over the vault's size limit is kept out of git (listed in .gitignore) and recorded in
+# ledger/linked-files.md with its size, checksum and where to get it again. It stays at its place in this copy of the
+# vault, so every command works as before; another copy puts the file back and runs `linked --verify`.
+LINK_START, LINK_END = "# brain-mesh linked files (start): written by mesh.py, see ledger/linked-files.md", "# brain-mesh linked files (end)"
+INGEST_IGNORE = "# a drop folder for papers and supplementary files waiting to be anchored; the anchored copies live in sources/\ningest/\n"
+
+LINKABLE = re.compile(r"P\d{3}(\.pdf|_marked\.pdf|_SI\.pdf|_SI_marked\.pdf|_SI-[\w.-]+\.\w+|_original(\.\w+)?|_correction\.pdf|_correction_marked\.pdf)")
+
+TEXT_EXT = {".md", ".json", ".csv", ".tsv", ".txt", ".bib", ".py", ".yml", ".yaml", ".css", ".js", ".html", ""}
+
+def large_limit(root):
+    """The size, in MB, above which a source file is linked rather than committed (MESH.json `large_file_mb`; 10)."""
+    try: return float(json.loads(rd(J(root, "MESH.json"))).get("large_file_mb", 10))
+    except (OSError, ValueError, TypeError): return 10.0
+
+def linked_files(root):
+    """ledger/linked-files.md as {file name: {"mb", "sha256", "from"}}."""
+    p, out = J(root, "ledger", "linked-files.md"), {}
+    if os.path.exists(p):
+        for l in rd(p).splitlines():
+            c = [x.strip() for x in l.strip().strip("|").split("|")]
+            if len(c) == 4 and re.fullmatch(r"P\d{3}\S*", c[0]): out[c[0]] = {"mb": c[1], "sha256": c[2], "from": c[3]}
+    return out
+
+def write_linked(root, rows):
+    lines = ["# Linked files", "",
+             "Source files over the vault's size limit (`large_file_mb` in MESH.json; 10 MB unless set) are kept out of git, so the "
+             "repository does not grow by a full copy of the file each time it is added or a marked copy is rewritten. Each stays "
+             "in its source folder in this copy of the vault, is listed in `.gitignore`, and is recorded here with its size, "
+             "checksum and where to get it again. In another copy of the vault, put each original back in its source folder "
+             "and run `mesh.py linked --verify`; `mesh.py build` then rebuilds the marked copies.", "",
+             "| file | MB | sha256 | get it from |", "|---|---|---|---|"]
+    lines += [f"| {k} | {v['mb']} | {v['sha256']} | {v['from']} |" for k, v in sorted(rows.items())]
+    wr(J(root, "ledger", "linked-files.md"), "\n".join(lines) + "\n")
+    gi = J(root, ".gitignore"); t = rd(gi) if os.path.exists(gi) else ""
+    t = re.sub(re.escape(LINK_START) + r".*?" + re.escape(LINK_END) + r"\n?", "", t, flags=re.S).rstrip("\n")
+    if rows: t += "\n" + LINK_START + "\n" + "\n".join(f"sources/{k[:4]}*/{k}" for k in sorted(rows)) + "\n" + LINK_END
+    wr(gi, t + "\n")
+
+def link_file(root, path, origin=None, say=True):
+    """Keep one source file out of git and record it (see LINK_START). Returns True if it is linked."""
+    name = os.path.basename(path)
+    if not LINKABLE.fullmatch(name) or not os.path.isfile(path): return False  # source files only, never cards or figures
+    rows = linked_files(root)
+    row = {"mb": f"{os.path.getsize(path) / 2 ** 20:.1f}", "sha256": sha(path), "from": origin or rows.get(name, {}).get("from") or "the publisher's page"}
+    if rows.get(name) == row: return True
+    new = name not in rows; rows[name] = row; write_linked(root, rows)
+    if os.path.isdir(J(root, ".git")):  # stop tracking it if it was committed before; the history keeps old copies
+        subprocess.run(["git", "-C", root, "rm", "-q", "--cached", "--ignore-unmatch", "--", relp(path, root).replace(os.sep, "/")], capture_output=True)
+    if new and say: print(f"linked {name} ({row['mb']} MB, over the {large_limit(root):g} MB limit): kept out of git, recorded in ledger/linked-files.md")
+    return True
+
+def maybe_link(root, path, origin=None):
+    """Link a source file if it is over the size limit, and keep the record of a file already linked current."""
+    if not os.path.isfile(path): return False
+    if os.path.getsize(path) > large_limit(root) * 2 ** 20 or os.path.basename(path) in linked_files(root): return link_file(root, path, origin)
+    return False
+
+def source_origin(m, pid, si=False):
+    """Where a source's files can be had again: its DOI page, or the publisher's page."""
+    c = m.cards.get(pid) if hasattr(m, "cards") else None
+    doi = (c.get("doi") if c else "") or ""
+    return (("supplementary material at " if si else "") + f"https://doi.org/{doi}") if doi else "the publisher's page"
 
 def SRC(root, pid):
     """A source's folder. It is named after its source card (sources/P012-smith-2021-binding-in-water/), so sources
@@ -547,6 +612,9 @@ class Mesh:
     def sums(s):
         if not hasattr(s, "_sums"): s._sums = checksums(s.root)
         return s._sums
+    def linked_store(s):
+        if not hasattr(s, "_linked"): s._linked = linked_files(s.root)
+        return s._linked
     def focus(s):
         """Effective priority of every card: (level, cause). Explicit high and low stand; a normal card one link from
         an explicit high card is 'elevated': a high paper lifts its own cards, the references it cites and the data
@@ -717,7 +785,9 @@ class Mesh:
                     todo = scan_todo(s, i)
                     if todo: W.append(f"{i}: {len(todo)} concept{'s are' if len(todo) > 1 else ' is'} named in passages no card of {i} covers, with no decision: " + ", ".join(f"{cid} ({len(u)})" for cid, u in todo[:8]) + (" …" if len(todo) > 8 else "") + f" — run `mesh.py scan {i}`, then card the facts (with cites:: for the works cited) or write a decided:: line in {i}_scan.md")
                 files = source_files(s.root, i)
-                if not [f for f in files if "_SI" not in os.path.basename(f)]: W.append(f"{i}: the source file itself is not in the vault, so page links are dead")
+                lk = {k: v for k, v in s.linked_store().items() if k.startswith(i) and "_marked." not in k and not os.path.exists(J(SRC(s.root, i), k))}
+                for k, v in lk.items(): W.append(f"{i}: {k} is a linked file (kept out of git) and is not in this copy of the vault; get it from {v['from']}, put it in {relp(SRC(s.root, i), s.root)}, and run `mesh.py linked --verify`")
+                if not [f for f in files if "_SI" not in os.path.basename(f)] and not any("_SI" not in k for k in lk): W.append(f"{i}: the source file itself is not in the vault, so page links are dead")
                 si, gaps_ = s.si_state(i), sum(1 for c_ in s.evidence(i) if c_.get("missing"))
                 if si == "missing": W.append(f"{i}: supplementary material is listed as missing. Ask the user for it, or find it on the publisher's page, and anchor it with `mesh.py anchor {i} --si <files>`; until then methods and results may be incomplete" + (f", and the {gaps_} cards recording evidence as missing:: may be answered there" if gaps_ else ""))
                 elif si == "unstated": notes["sources not saying whether they have supplementary material"] += 1
@@ -1145,7 +1215,7 @@ def cmd_init(path, name, topic):
     wr(J(path, "SCHEMA.md"), SCHEMA_MD.format(v=SCHEMA))
     wr(J(path, "ledger", "CHANGELOG.md"), f"# Changelog (append only, newest last)\n\n- {TODAY} brain mesh created\n")
     wr(J(path, "ledger", "lenses.md"), "# Lens passes (targeted re-reads of the sources)\n")
-    wr(J(path, ".gitignore"), "# Everything a vault needs is versioned, including index/ and the marked PDFs, so a pull is enough to browse it.\n__pycache__/\n*.pyc\n*.tmp\n.DS_Store\n.trash/\nindex/.new.md\nindex/.scratch/\n.obsidian/workspace*.json\n")
+    wr(J(path, ".gitignore"), "# Everything a vault needs is versioned, including index/ and the marked PDFs, so a pull is enough to browse it.\n__pycache__/\n*.pyc\n*.tmp\n.DS_Store\n.trash/\nindex/.new.md\nindex/.scratch/\n.obsidian/workspace*.json\n" + INGEST_IGNORE)
     wr(J(path, ".gitattributes"), GITATTR)
     wr(J(path, "ledger", "reading-queue.md"), "# Reading queue (papers found that are not yet in the brain)\n\n| ref | would fill | priority | access | status |\n|---|---|---|---|---|\n")
     cmd_upgrade(path, quiet=True)
@@ -1168,6 +1238,7 @@ def cmd_upgrade(vault, quiet=False):
     write_claude_md(vault)
     gi = J(vault, ".gitignore")
     if os.path.exists(gi) and "index/.scratch/" not in rd(gi): wr(gi, rd(gi).rstrip("\n") + "\nindex/.scratch/\n")
+    if os.path.exists(gi) and not re.search(r"(?m)^/?ingest/?$", rd(gi)): wr(gi, rd(gi).rstrip("\n") + "\n" + INGEST_IGNORE)  # issue #22
     cfg = json.loads(rd(J(vault, "MESH.json")))
     if not cfg.get("obsidian_vault"):  # pin the name the PDF tags use, so clones in other folders do not re-mark the PDFs
         cfg["obsidian_vault"] = os.path.basename(os.path.abspath(vault)); wr(J(vault, "MESH.json"), json.dumps(cfg, indent=1) + "\n")
@@ -1211,7 +1282,7 @@ def anchor_correction(m, pid, srcs):
     if not pdfs: sys.exit("anchor --correction: give the correction notice as a PDF")
     doc = fitz.open(pdf) if os.path.exists(pdf) else fitz.open(); n0 = len(doc)
     for f in pdfs: doc.insert_pdf(fitz.open(f))
-    doc.save(pdf + ".tmp"); doc.close(); os.replace(pdf + ".tmp", pdf); seal(m.root, pdf)
+    doc.save(pdf + ".tmp"); doc.close(); os.replace(pdf + ".tmp", pdf); seal(m.root, pdf); maybe_link(m.root, pdf, source_origin(m, pid))
     old = rd(out) if os.path.exists(out) else f"# {pid} published corrections, anchored text\n\nAn index of paragraphs for anchors and checks. Each correction is appended; earlier paragraph numbers never change.\n"
     last = max([int(x) for x in re.findall(r"\^c(\d{4})\s*$", old, re.M)] or [0])
     tmp = fitz.open(); [tmp.insert_pdf(fitz.open(f)) for f in pdfs]; tmp.save(out + ".pdf"); tmp.close()
@@ -1242,7 +1313,7 @@ def cmd_anchor(m, pid, srcs, force=False, si=False, correction=False):
         for f in [f for f in srcs if not f.lower().endswith(".pdf")]:  # data files, spreadsheets, code: stored and sealed, cited as SI-<name>
             stem = re.sub(r"[^A-Za-z0-9.]+", "-", os.path.splitext(os.path.basename(f))[0]).strip("-").lower()
             dst = J(d, f"{pid}_SI-{stem}{os.path.splitext(f)[1].lower()}"); shutil.copy(f, dst); seal(m.root, dst)
-            print(f"stored {os.path.basename(dst)} (cite it as anchor SI-{stem})")
+            print(f"stored {os.path.basename(dst)} (cite it as anchor SI-{stem})"); maybe_link(m.root, dst, source_origin(m, pid, si=True))
         if not pdfs: return
         dst = J(d, pid + "_SI.pdf")
         if len(pdfs) == 1: shutil.copy(pdfs[0], dst)
@@ -1262,7 +1333,7 @@ def cmd_anchor(m, pid, srcs, force=False, si=False, correction=False):
         dst = J(d, f"{pid}_original{os.path.splitext(srcs[0])[1]}")
         if os.path.abspath(srcs[0]) != os.path.abspath(dst): shutil.copy(srcs[0], dst)
         pages, how = [re.split(r"\n\s*\n", rd(srcs[0]))], "plain text"
-    seal(m.root, dst)
+    seal(m.root, dst); maybe_link(m.root, dst, source_origin(m, pid, si=si))
     title = f"{pid} supplementary material" if si else pid
     lines, n, chars = [f"# {title} anchored text ({how})", "", "An index of paragraphs for anchors and checks. Read the source itself for figures, tables and equations." + (" " + note if note else ""), ""], 0, 0
     for pno, blks in enumerate(pages, 1):
@@ -1840,6 +1911,7 @@ def mark(m, only=None, force=False):
             if len(doc):
                 lg = doc[0].add_freetext_annot(fitz.Rect(30, 2, doc[0].rect.width - 30, 16), LEGEND, fontsize=5, text_color=(0.3, 0.3, 0.3)); lg.set_info(title="brain-mesh"); lg.update()
             doc.save(out + ".tmp", deflate=True, garbage=3); doc.close(); os.replace(out + ".tmp", out)
+            maybe_link(m.root, out, "rebuilt by `mesh.py build` from the original")  # a large marked copy is rewritten often: keep it out of git
             for c in ev:  # point the card's own link to this PDF at its highlight
                 k = cards[c.id]; frag = f"#page={k['page']}&annotation={k['annot']}R"
                 raw = rd(c.path); head, sep, tail = raw.partition("\n## Codes")
@@ -4868,6 +4940,62 @@ def git(root, *args, check=True):
     return r
 
 
+def cmd_linked(m, args):
+    """linked: list the linked files. linked --all: link every source file over the size limit (for a vault that had large
+    files before linking existed). linked <file> [--from <where>]: link one source file whatever its size, or change where
+    it can be had. linked --verify: check that every linked original is present and unchanged."""
+    root, rows = m.root, linked_files(m.root)
+    def where(name): return J(SRC(root, name[:4]), name)
+    if "--all" in args:
+        n = 0
+        for sid in sorted(c.id for c in m.cards.values() if c.fam == "source"):
+            for f in sorted(glob.glob(J(SRC(root, sid), sid + "*"))):
+                if LINKABLE.fullmatch(os.path.basename(f)) and os.path.isfile(f) and os.path.getsize(f) > large_limit(root) * 2 ** 20 and os.path.basename(f) not in rows:
+                    n += link_file(root, f, "rebuilt by `mesh.py build` from the original" if "_marked." in f else source_origin(m, sid, si="_SI" in os.path.basename(f)))
+        print(f"linked: {n} file(s) newly linked; {len(linked_files(root))} linked in all (limit {large_limit(root):g} MB). Run `mesh.py sync` to stop tracking them in git.")
+        return
+    if "--verify" in args:
+        bad = 0
+        for name, v in sorted(rows.items()):
+            p = where(name)
+            if not os.path.exists(p): print(f"missing  {name}: get it from {v['from']}"); bad += 1
+            elif "_marked." in name: print(f"ok       {name} (a marked copy; rebuilt by build)")
+            elif sha(p) != v["sha256"]: print(f"CHANGED  {name}: its checksum differs from the one recorded; restore the original"); bad += 1
+            else: print(f"ok       {name}")
+        print(f"linked --verify: {len(rows) - bad} of {len(rows)} linked files present and unchanged")
+        if bad: sys.exit(1)
+        return
+    files = [a for a in args if not a.startswith("--")]
+    origin = args[args.index("--from") + 1] if "--from" in args and args.index("--from") + 1 < len(args) else None
+    if origin: files = [f for f in files if f != origin]
+    if not files:
+        if not rows: print(f"no linked files (limit {large_limit(root):g} MB; `large_file_mb` in MESH.json)"); return
+        for name, v in sorted(rows.items()): print(f"{name}  {v['mb']} MB  {'present' if os.path.exists(where(name)) else 'MISSING'}  from: {v['from']}")
+        return
+    for f in files:
+        p = f if os.path.isfile(f) else where(os.path.basename(f))
+        if not link_file(root, p, origin): sys.exit(f"linked: {f} is not a source file (an original, supplementary or correction file, or a marked copy, in a source folder)")
+        if origin: print(f"{os.path.basename(p)}: get it from {origin}")
+
+
+def guard_large(root, m):
+    """Before committing: link source files over the size limit, and refuse to commit a binary file over it outside the
+    source folders, such as papers waiting in a folder git does not ignore (issue #22). Text files are always committed."""
+    lim, other = large_limit(root), []
+    for l in git(root, "status", "--porcelain", "-uall", check=False).stdout.splitlines():
+        path = l[3:].split(" -> ")[-1].strip()
+        if path.startswith('"') and path.endswith('"'): path = path[1:-1]
+        p = J(root, path)
+        if not os.path.isfile(p) or os.path.getsize(p) <= lim * 2 ** 20: continue
+        name = os.path.basename(path)
+        if path.startswith("sources/") and LINKABLE.fullmatch(name):
+            link_file(root, p, "rebuilt by `mesh.py build` from the original" if "_marked." in name else source_origin(m, name[:4], si="_SI" in name))
+        elif not path.startswith("sources/") and os.path.splitext(name)[1].lower() not in TEXT_EXT:  # a stray binary: a paper or data file left in the vault
+            other.append(f"{path} ({os.path.getsize(p) / 2 ** 20:.1f} MB)")
+    if other: sys.exit(f"sync: {len(other)} file(s) over the {lim:g} MB limit, outside the source folders, would be committed: {'; '.join(other[:8])}. "
+                       "Nothing was committed. Move them out of the vault or into ingest/ (which git ignores), or add them to .gitignore.")
+
+
 def cmd_sync(root, msg=None, push=True):
     """Bring a vault in step with GitHub: pull (rebasing local commits), build, refuse if the build has errors,
     commit everything, push. Run at the start and the end of every session that changes the vault."""
@@ -4904,6 +5032,7 @@ def cmd_sync(root, msg=None, push=True):
         cmd_build(root)
         m = Mesh(root); m.check()
         if m.err: sys.exit(f"sync: build has {len(m.err)} errors; fix them before syncing (nothing committed)")
+        guard_large(root, m)
         git(root, "add", "-A")
         if not git(root, "status", "--porcelain").stdout.strip():
             ahead = git(root, "rev-list", "--count", "@{u}..HEAD", check=False).stdout.strip() if push and has_remote else ""
@@ -4919,7 +5048,7 @@ def cmd_sync(root, msg=None, push=True):
         if push and has_remote:
             r = git(root, "push", "-q", check=False)
             if r.returncode:  # someone pushed meanwhile: rebase onto it and try once more
-                git(root, "pull", "--rebase", "--autostash"); cmd_build(root); git(root, "add", "-A")
+                git(root, "pull", "--rebase", "--autostash"); cmd_build(root); guard_large(root, Mesh(root)); git(root, "add", "-A")
                 if git(root, "status", "--porcelain").stdout.strip(): git(root, "commit", "-q", "-m", "rebuild after sync")
                 git(root, "push", "-q")
         print(f"sync: committed {changed} files" + (" and pushed" if push and has_remote else " (no remote to push to)"))
@@ -5631,6 +5760,7 @@ impact <id|P###>              everything that rests on a card or a source (for c
 merge <keep> <drop>           redirect links from one card to another and retire the second as a pointer
 mark [P###] [--force]         rewrite the marked PDF copies (build does this when cards change)
 seal [P###]                   record checksums for source files that have none
+linked [<file> [--from <where>] | --all | --verify]  source files over the size limit (MESH.json large_file_mb, 10) kept out of git: list, link, check
 gaps                          scan for candidate gaps (signals to judge)
 gapsdoc                       assemble gaps/RESEARCH-GAPS.md from the gap cards
 discover [miner ...] [--top n] [--focus concept] [--all]   mine the ontology for candidate cards: """ + ", ".join(MINERS) + """
@@ -5685,7 +5815,7 @@ def main():
     elif c == "split": cmd_split(m, a[0], "--update" in a)
     elif c == "check": notes = m.check(a[0] if a else None); report(m, notes); sys.exit(1 if m.err else 0)
     elif c == "show": cmd_show(m, " ".join(a))
-    elif c == "link": cmd_link(m, a)
+    elif c == "linked": cmd_linked(m, a)
     elif c == "find": cmd_find(m, a)
     elif c == "concept": cmd_concept(m, " ".join(a))
     elif c == "matrix": cmd_matrix(m, a)
@@ -5699,6 +5829,7 @@ def main():
     elif c == "mark":
         r = mark(m, next((x for x in a if x.startswith("P")), None), "--force" in a)
         print("PyMuPDF is not installed (pip install pymupdf)" if r is None else f"marked: {' '.join(r) or 'nothing to do'}")
+    elif c == "link": cmd_link(m, a)
     elif c == "seal":
         for s_ in [x for x in m.cards.values() if x.fam == "source" and (not a or x.id == a[0])]:
             for f in source_files(root, s_.id):

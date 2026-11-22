@@ -2,6 +2,15 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.17.1 (2026-11-22)
+
+Review fixes for 1.17.0 (linked files).
+
+- **Other copies of the vault get linked files back.** Stopping tracking a committed file makes git delete it from every other copy at its next pull. `sync` now restores, after the pull, each linked file still in the history, checking an original against its recorded checksum; `linked --restore` does the same by hand. Without this, `linked --all` on one computer took the large PDFs out of every other copy, cloud sessions included.
+- **An absent linked file is a note, not a warning.** It is true of one copy only, so counting it made `MAP.md` and `index/stats.json` differ between copies and each sync commit them back and forth. `check` prints it as a `note` line, uncounted.
+- A marked copy's checksum is no longer recorded in `ledger/linked-files.md` (it changed with every rebuild, rewriting the ledger each time).
+- `build` makes the standard folders when they are missing. Git keeps no empty folders, so a fresh clone could lack `data-sets/` or `code/`, and the test suite failed on a fresh checkout of this repository.
+
 ## 1.17.0 (2026-11-22)
 
 - **Large files are linked, not committed.** A source file over the vault's size limit (`large_file_mb` in `MESH.json`, 10 MB unless set), whether an original PDF, a supplementary PDF or data file, or a marked copy, is kept out of git: it stays in its source folder, so every command and Obsidian work as before; it is listed in a managed block of `.gitignore`; and `ledger/linked-files.md` records its size, checksum and where to get it again (the DOI page, or "rebuilt by build" for a marked copy). `anchor` and `build` link such files as they write them, and `sync` links any it finds before committing. Large marked copies, rewritten whenever a source's cards change, no longer add a full copy to the history each time.

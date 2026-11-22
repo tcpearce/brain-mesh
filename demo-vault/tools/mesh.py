@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.17.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.17.1"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -159,13 +159,36 @@ def link_file(root, path, origin=None, say=True):
     name = os.path.basename(path)
     if not LINKABLE.fullmatch(name) or not os.path.isfile(path): return False  # source files only, never cards or figures
     rows = linked_files(root)
-    row = {"mb": f"{os.path.getsize(path) / 2 ** 20:.1f}", "sha256": sha(path), "from": origin or rows.get(name, {}).get("from") or "the publisher's page"}
+    row = {"mb": f"{os.path.getsize(path) / 2 ** 20:.1f}", "sha256": "-" if "_marked." in name else sha(path),  # a marked copy changes with every rebuild
+           "from": origin or rows.get(name, {}).get("from") or "the publisher's page"}
     if rows.get(name) == row: return True
     new = name not in rows; rows[name] = row; write_linked(root, rows)
     if os.path.isdir(J(root, ".git")):  # stop tracking it if it was committed before; the history keeps old copies
         subprocess.run(["git", "-C", root, "rm", "-q", "--cached", "--ignore-unmatch", "--", relp(path, root).replace(os.sep, "/")], capture_output=True)
     if new and say: print(f"linked {name} ({row['mb']} MB, over the {large_limit(root):g} MB limit): kept out of git, recorded in ledger/linked-files.md")
     return True
+
+def restore_linked(root, say=True):
+    """Put back, from git history, linked files missing from this copy of the vault. A file committed before it was
+    linked is still in the history, and the pull that stops tracking it deletes it from every other copy of the vault;
+    this brings it back. An original comes back only if its checksum matches the record. Returns the names restored."""
+    if not os.path.isdir(J(root, ".git")): return []
+    out, run = [], lambda *a: subprocess.run(["git", "-C", root] + list(a), capture_output=True)
+    for name, v in sorted(linked_files(root).items()):
+        dst = J(SRC(root, name[:4]), name)
+        if os.path.exists(dst): continue
+        rev = run("log", "--format=%H", "--diff-filter=AM", "-n", "1", "--", f":(glob)sources/*/{name}").stdout.decode().strip()
+        path = next((x for x in run("ls-tree", "-r", "--name-only", rev, "--", "sources").stdout.decode().splitlines() if x.endswith("/" + name)), None) if rev else None
+        blob = run("show", f"{rev}:{path}") if path else None
+        if blob is None or blob.returncode: continue
+        if "_marked." not in name and v.get("sha256") not in ("", "-") and hashlib.sha256(blob.stdout).hexdigest() != v["sha256"]:
+            if say: print(f"linked: {name} in git history differs from the recorded checksum; not restored (get it from {v['from']})")
+            continue
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        with open(dst, "wb") as f: f.write(blob.stdout)
+        out.append(name)
+    if out and say: print(f"linked: restored {len(out)} linked file(s) from git history: {', '.join(out[:8])}" + (" …" if len(out) > 8 else ""))
+    return out
 
 def maybe_link(root, path, origin=None):
     """Link a source file if it is over the size limit, and keep the record of a file already linked current."""
@@ -484,7 +507,7 @@ class Card:
 
 class Mesh:
     def __init__(s, root):
-        s.root, s.err, s.warn, s._blocks, s._terms = root, [], [], {}, {}
+        s.root, s.err, s.warn, s._blocks, s._terms, s.absent = root, [], [], {}, {}, []
         s._hits, s._crx, s._clinks, s._citedat, s._proposed = {}, {}, {}, None, None
         s.cfg = json.loads(rd(J(root, "MESH.json")))
         s.cards, s.byname, s.alias = {}, {}, {}
@@ -786,7 +809,7 @@ class Mesh:
                     if todo: W.append(f"{i}: {len(todo)} concept{'s are' if len(todo) > 1 else ' is'} named in passages no card of {i} covers, with no decision: " + ", ".join(f"{cid} ({len(u)})" for cid, u in todo[:8]) + (" …" if len(todo) > 8 else "") + f" — run `mesh.py scan {i}`, then card the facts (with cites:: for the works cited) or write a decided:: line in {i}_scan.md")
                 files = source_files(s.root, i)
                 lk = {k: v for k, v in s.linked_store().items() if k.startswith(i) and "_marked." not in k and not os.path.exists(J(SRC(s.root, i), k))}
-                for k, v in lk.items(): W.append(f"{i}: {k} is a linked file (kept out of git) and is not in this copy of the vault; get it from {v['from']}, put it in {relp(SRC(s.root, i), s.root)}, and run `mesh.py linked --verify`")
+                for k, v in lk.items(): s.absent.append(f"{i}: {k} is a linked file (kept out of git) and is not in this copy of the vault; `mesh.py linked --restore` brings it back if it was ever committed, otherwise get it from {v['from']}, put it in {relp(SRC(s.root, i), s.root)}, and run `mesh.py linked --verify`")
                 if not [f for f in files if "_SI" not in os.path.basename(f)] and not any("_SI" not in k for k in lk): W.append(f"{i}: the source file itself is not in the vault, so page links are dead")
                 si, gaps_ = s.si_state(i), sum(1 for c_ in s.evidence(i) if c_.get("missing"))
                 if si == "missing": W.append(f"{i}: supplementary material is listed as missing. Ask the user for it, or find it on the publisher's page, and anchor it with `mesh.py anchor {i} --si <files>`; until then methods and results may be incomplete" + (f", and the {gaps_} cards recording evidence as missing:: may be answered there" if gaps_ else ""))
@@ -1157,6 +1180,7 @@ def report(m, notes):
     m.err, m.warn = list(dict.fromkeys(m.err)), list(dict.fromkeys(m.warn))
     for e in m.err: print("ERROR", e)
     for w in m.warn: print("warn ", w)
+    for a in dict.fromkeys(m.absent): print("note ", a)  # true of this copy of the vault only, so not counted in MAP.md
     print(f"check: {len(m.err)} errors, {len(m.warn)} warnings" + "".join(f"; {v} {k}" for k, v in notes.items()))
 
 # ---------- commands ----------
@@ -2005,6 +2029,7 @@ def write_backlinks(m):
 
 
 def cmd_build(root):
+    for d in ["concepts", "sources", "references", "ledger", "index"] + [v[0] for v in PAGES.values()]: os.makedirs(J(root, d), exist_ok=True)  # git keeps no empty folders
     fixconcepts(root); fixnames(root); fixfolders(root)
     seed_grades(Mesh(root)); seed_priority(root)
     n = fixlinks(Mesh(root))
@@ -4954,11 +4979,16 @@ def cmd_linked(m, args):
                     n += link_file(root, f, "rebuilt by `mesh.py build` from the original" if "_marked." in f else source_origin(m, sid, si="_SI" in os.path.basename(f)))
         print(f"linked: {n} file(s) newly linked; {len(linked_files(root))} linked in all (limit {large_limit(root):g} MB). Run `mesh.py sync` to stop tracking them in git.")
         return
+    if "--restore" in args:
+        got = restore_linked(root)
+        miss = [k for k in linked_files(root) if not os.path.exists(where(k)) and "_marked." not in k]
+        print(f"linked --restore: {len(got)} restored from git history" + (f"; still missing: {', '.join(miss)} (get each from where `mesh.py linked` says)" if miss else ""))
+        return
     if "--verify" in args:
         bad = 0
         for name, v in sorted(rows.items()):
             p = where(name)
-            if not os.path.exists(p): print(f"missing  {name}: get it from {v['from']}"); bad += 1
+            if not os.path.exists(p): print(f"missing  {name}: `linked --restore` if it was ever committed, otherwise get it from {v['from']}"); bad += 1
             elif "_marked." in name: print(f"ok       {name} (a marked copy; rebuilt by build)")
             elif sha(p) != v["sha256"]: print(f"CHANGED  {name}: its checksum differs from the one recorded; restore the original"); bad += 1
             else: print(f"ok       {name}")
@@ -5029,6 +5059,7 @@ def cmd_sync(root, msg=None, push=True):
             if kept: print(f"sync: your local edits to {len(kept)} files clashed with newer versions from GitHub ({', '.join(kept[:8])}). The GitHub versions are in place; your edits are kept in the git stash (`git stash show -p`; `git stash drop` once you are sure).")
             res = subprocess.run([sys.executable, disk, "sync"] + ([msg] if msg else []) + ([] if push else ["--no-push"]), cwd=root, env=dict(os.environ, MESH_SYNC_NEW_TOOLING="1"))
             sys.exit(res.returncode)
+        restore_linked(root)  # files the pull stopped tracking are deleted by git: bring back those still in the history
         cmd_build(root)
         m = Mesh(root); m.check()
         if m.err: sys.exit(f"sync: build has {len(m.err)} errors; fix them before syncing (nothing committed)")
@@ -5760,7 +5791,7 @@ impact <id|P###>              everything that rests on a card or a source (for c
 merge <keep> <drop>           redirect links from one card to another and retire the second as a pointer
 mark [P###] [--force]         rewrite the marked PDF copies (build does this when cards change)
 seal [P###]                   record checksums for source files that have none
-linked [<file> [--from <where>] | --all | --verify]  source files over the size limit (MESH.json large_file_mb, 10) kept out of git: list, link, check
+linked [<file> [--from <where>] | --all | --restore | --verify]  source files over the size limit (MESH.json large_file_mb, 10) kept out of git: list, link, restore from history, check
 gaps                          scan for candidate gaps (signals to judge)
 gapsdoc                       assemble gaps/RESEARCH-GAPS.md from the gap cards
 discover [miner ...] [--top n] [--focus concept] [--all]   mine the ontology for candidate cards: """ + ", ".join(MINERS) + """

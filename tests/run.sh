@@ -1293,4 +1293,75 @@ grep -A1 "topic:solvent —" z.txt | tail -1 | grep -q "explored $D$" && python3
 python3 tools/mesh.py build | grep -q "check: 0 errors" && pass "the vault builds with the explored log in it" || fail "build explored"
 sed -i "s/^- kind:: entity$/- kind:: entity\n- broader:: [[solvent]] — a solvent/" concepts/acetonitrile.md; python3 tools/mesh.py build > /dev/null
 python3 tools/mesh.py zoom acetonitrile | head -1 | grep -q "· topic:solvent ·" && pass "a broader:: link keeps a concept in its parent's topic" || { python3 tools/mesh.py zoom acetonitrile | head -2; fail "zoom broader"; }
+# 25. page furniture is stripped from references; cite --update applies the checked list; cites:: ref N is linked (issues #26, #27)
+cp -r "$ROOT/demo-vault" "$T/cu"; cd "$T/cu"; cp "$MESH" tools/mesh.py
+S2=$(ls -d sources/P002*); S1=$(ls -d sources/P001*)
+printf '\nREFERENCES AND NOTES ^b0090\n\n1. K. Lee, J. Park, J. Appl. Polym. Sci. 98, 101–109 (2015). 6 of 6 https://doi.org/10.0000/psl.2023.014 pnas.org Downloaded from https://www.pnas.org by 1.2.3.4 on April 5, 2024 from IP address 1.2.3.4. ^b0091\n' >> $S2/P002_text.md
+python3 tools/mesh.py refs P002 > r.txt 2>&1; grep -A2 "^## 1$" $S2/P002_refs.md | grep -q "^- raw:: K. Lee, J. Park, J. Appl. Polym. Sci. 98, 101–109 (2015).$" && ! grep -q "doi:: 10.0000/psl.2023.014" $S2/P002_refs.md && pass "refs strips a page counter, a download stamp and the paper's own DOI from a reference" || { cat r.txt; cat $S2/P002_refs.md; fail "refs furniture"; }
+cat > $S1/P001_refs.md <<'REFS'
+# P001 reference list
+
+## 1
+- raw:: K. Lee, J. Park, J. Appl. Polym. Sci. 98, 101–109 (2015).
+- authors:: Lee, K.; Park, J.
+- year:: 2015
+- title:: Hydrogel swelling scales with temperature
+- journal:: J. Appl. Polym. Sci.
+- volume:: 98
+- pages:: 101--109
+- doi:: 10.1000/lee.2015
+- kind:: article
+- cited_at:: b0001
+REFS
+cat > $S2/P002_refs.md <<'REFS'
+# P002 reference list
+
+## 1
+- raw:: K. Lee, Hydrogel swelling scales with temperature J. Appl. Polym. Sci. (2015)
+- authors:: Lee, K.
+- year:: 2015
+- title:: Hydrogel swelling scales with temperature J. Appl. Polym.
+- kind:: book
+- cited_at:: b0004
+
+## 2
+- raw:: P. Novak, Eur. Polym. J. 41, 230–238 (2005). https://doi.org/10.0000/psl.2023.014
+- authors:: Novak, P.
+- year:: 2005
+- journal:: Eur. Polym. J.
+- volume:: 41
+- pages:: 230--238
+- doi:: 10.0000/psl.2023.014
+- kind:: article
+- cited_at:: b0004
+
+## 3
+- raw:: D. Chen, Binding retainedx. Polymer Sensing Letters 4, 55–60 (2023).
+- authors:: Chen, D.
+- year:: 2023
+- title:: Binding retainedx
+- journal:: Polymer Sensing Letters
+- volume:: 4
+- pages:: 55--60
+- kind:: article
+- cited_at:: b0004
+REFS
+python3 tools/mesh.py cite P001 > /dev/null; python3 tools/mesh.py cite P002 > c.txt 2>&1
+grep -q "refs 2 carry P002's own identifiers" c.txt && ! grep -lq "cited_by:: \[\[P002\]\] ref 2" references/*.md && pass "cite refuses a reference that carries the citing paper's own DOI" || { cat c.txt; grep -l "P002\]\] ref 2" references/*.md; fail "self citation"; }
+DUP=$(grep -l "cited_by:: \[\[P002\]\] ref 1" references/*.md); [ "$(ls references/R*-lee-2015-* | wc -l)" = 2 ] && pass "an unchecked entry makes a duplicate card (the case --update repairs)" || { ls references; fail "duplicate setup"; }
+E=$(ls $S2/P002-007-*.md); sed -i 's/^- id:: P002-007$/- id:: P002-007\n- cites:: ref 3 — a test of linking by number/' $E
+python3 - <<'PY'
+import re, glob
+f = glob.glob("sources/P002*/P002_refs.md")[0]; t = open(f, encoding="utf-8").read()
+t = t.replace("- raw:: K. Lee, Hydrogel swelling scales with temperature J. Appl. Polym. Sci. (2015)\n- authors:: Lee, K.\n- year:: 2015\n- title:: Hydrogel swelling scales with temperature J. Appl. Polym.\n- kind:: book",
+              "- raw:: K. Lee, J. Park, J. Appl. Polym. Sci. 98, 101–109 (2015).\n- authors:: Lee, K.; Park, J.\n- year:: 2015\n- title:: Hydrogel swelling scales with temperature\n- journal:: J. Appl. Polym. Sci.\n- volume:: 98\n- pages:: 101--109\n- doi:: 10.1000/lee.2015\n- kind:: article")
+t = t.replace("https://doi.org/10.0000/psl.2023.014\n", "\n").replace("- doi:: 10.0000/psl.2023.014\n", "").replace("- title:: Binding retainedx", "- title:: Binding retained in acetonitrile")
+open(f, "w", encoding="utf-8").write(t)
+PY
+python3 tools/mesh.py cite P002 --update > c.txt 2>&1
+grep -q "retired:: merged into \[\[R0001-lee-2015" $DUP && grep -q "cited_by:: \[\[P002\]\] ref 1" references/R0001-lee-2015-*.md && pass "cite --update merges a card that turns out to be another card's work" || { cat c.txt; cat $DUP; fail "update merge"; }
+C=$(ls references/R*-chen-2023-*.md); grep -q "^- title:: Binding retained in acetonitrile$" $C && grep -q "^# Chen (2023) Binding retained in acetonitrile$" $C && ! grep -q "retainedx" $C && pass "cite --update rewrites the fields and heading of a card only this source cites" || { cat c.txt; cat $C; fail "update fields"; }
+grep -q "^- cited_by:: \[\[P002\]\] ref 2" references/R*-novak-2005-*.md && pass "cite --update cites the corrected entry once its own DOI is gone" || { cat c.txt; ls references; fail "update self fixed"; }
+grep -q "^- cites:: \[\[$(basename $C .md)\]\] — a test of linking by number$" $E && grep -q "1 'cites:: ref N' lines linked" c.txt && pass "cite links cites:: ref N lines to the reference cards" || { cat c.txt; grep cites $E; fail "ref N linked"; }
+python3 tools/mesh.py build > b.txt 2>&1; grep -q "check: 0 errors" b.txt && pass "the vault builds clean after cite --update" || { grep -E "^error" b.txt | head; fail "build after update"; }
 echo "ALL TESTS PASSED"

@@ -2,6 +2,15 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.20.0 (2026-11-22)
+
+- **`cite --update` applies a checked reference list to the cards made before it was checked** (issue #27). In a batch, `cite` runs at registration, before the extraction agents correct each `P012_refs.md`, and `cite` never overwrites a field. With `--update` the checked list becomes the truth for the cards only this source cites, and is not applied to works held in the brain:
+  - their fields and heading are rewritten from it;
+  - a card that turns out to be another card's work is merged into that card, which keeps its citations and links (`merge`);
+  - a citation that has moved to another card is taken off the old one.
+- **A reference carrying the citing paper's own identifiers is refused** (issue #26). This covers its own DOI, or the reference card of the paper itself. `refs` also strips the page furniture that put them there: page counters ("6 of 6"), publisher download stamps (with the reader's IP address), author-manuscript running heads, and the paper's own DOI.
+- **`cite` links `- cites:: ref 12 — …` lines** in the source's cards, cited cards included, to the card of reference 12. A card written before the reference cards existed can cite by number, for example in a paper whose reference list is written by hand (issue #23).
+
 ## 1.19.0 (2026-11-22)
 
 Discovery by progressive disclosure: the brain as a hierarchy, revealed on a need-to-know basis.

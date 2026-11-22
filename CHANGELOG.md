@@ -2,6 +2,10 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.16.1 (2026-11-22)
+
+- `sync` with nothing new to commit now pushes any local commits the branch holds, such as the one made by finishing a rebase after a conflict, as sync's own message asks. Before, it reported "up to date" and left them unpushed (issue #21).
+
 ## 1.16.0 (2026-11-22)
 
 Reports: eight dated documents assembled from the cards, for deciding what to do next.

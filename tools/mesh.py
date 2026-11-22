@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.16.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.16.1"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -4887,7 +4887,12 @@ def cmd_sync(root, msg=None, push=True):
         if m.err: sys.exit(f"sync: build has {len(m.err)} errors; fix them before syncing (nothing committed)")
         git(root, "add", "-A")
         if not git(root, "status", "--porcelain").stdout.strip():
-            print("sync: up to date, nothing to commit")
+            ahead = git(root, "rev-list", "--count", "@{u}..HEAD", check=False).stdout.strip() if push and has_remote else ""
+            if ahead.isdigit() and int(ahead):  # commits made by hand or by finishing a rebase are pushed too (issue #21)
+                r = git(root, "push", "-q", check=False)
+                if r.returncode: sys.exit(f"sync: nothing new to commit, but pushing {ahead} local commit(s) failed; run sync again.\n{(r.stderr or r.stdout).strip()}")
+                print(f"sync: nothing new to commit; pushed {ahead} local commit{'s' if int(ahead) > 1 else ''}")
+            else: print("sync: up to date, nothing to commit")
             if kept: print(f"sync: your local edits to {len(kept)} files clashed with newer versions from GitHub ({', '.join(kept[:8])}). The GitHub versions are in place; your edits are kept in the git stash (`git stash show -p`; `git stash drop` once you are sure).")
             return
         changed = len(git(root, "diff", "--cached", "--name-only").stdout.split())

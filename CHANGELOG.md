@@ -2,6 +2,13 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.16.1 (2026-11-22)
+
+From the first run of the reports on a real vault.
+
+- `report methods`, **What existing data might answer**: each open question now lists first the data sets its own card points to (named on it, or used by the evidence cards it links through `uses_data::`), whatever their access, and only then the accessible data sets that share two or more concepts with it. Matching by concepts alone missed the data a gap card itself cites when each data set shared one concept with it.
+- `report causal` and `table relations`: a contradiction or tension that holds both concepts of a relation is listed as "both concepts appear in V001", not "contested in V001". Holding both concepts does not make the card a dispute about that relation.
+
 ## 1.16.0 (2026-11-22)
 
 Reports: eight dated documents assembled from the cards, for deciding what to do next.

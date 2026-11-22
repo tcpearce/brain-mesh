@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.16.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.16.1"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -3527,7 +3527,7 @@ def cmd_table(m, args):
             vx = sorted(p.id for p in m.pages("VX") if not p.get("retired") and p.status in ("open", "explained") and {x, y} <= m.terms(p))
             body.append([ref(m.cards[x]), ref(m.cards[y]), {"+": "raises", "-": "lowers", "±": "raises and lowers", "?": "direction not recorded"}[e["sign"]],
                          e.get("rel") or "data", " ".join(ref(m.cards[t]) for t in ev[:6]) or "none cited", des or "—",
-                         "; ".join(([f"no effect found in {' '.join(nulls[(x, y)][:4])}"] if (x, y) in nulls else []) + ([f"contested in {' '.join(vx)}"] if vx else [])) or "—"])
+                         "; ".join(([f"no effect found in {' '.join(nulls[(x, y)][:4])}"] if (x, y) in nulls else []) + ([f"both concepts appear in {' '.join(vx)}"] if vx else [])) or "—"])
         L += [f"# Relations: {title}", "", f"Every directed relation the brain holds to or from these concepts. Built by `mesh.py table` on {TODAY}.", ""]
         L += (md_table(["Cause", "Outcome", "Direction", "Basis", "Evidence", "Sources and their designs", "Against or unresolved"], body) if body else ["No directed relation is recorded or shown by the data."]) + [""]
         L += ["**Basis.** " + " ".join(f"*{b}*: {t}." for b, t in BASES.items()) + " *data*: the observation cards differ in this one condition and in the outcome; whether that is causal depends on the design. *unstated*: the concept card gives no basis yet. Use causal wording (causes, raises, leads to) only for *tested* relations.", ""]
@@ -4026,7 +4026,7 @@ def report_causal(m, focus=None):
         return "; ".join(f"{p_} {', '.join(d for d, _n in study(m.cards[p_])['designs']) or 'design not recorded'}" for p_ in ps if p_ in m.cards) or "—"
     def against(x, y):
         vx = sorted(p.id for p in m.pages("VX") if not p.get("retired") and p.status in ("open", "explained") and {x, y} <= m.terms(p))
-        return "; ".join(([f"no effect found in {' '.join(nulls[(x, y)][:4])}"] if (x, y) in nulls else []) + ([f"contested in {' '.join(vx)}"] if vx else [])) or "—"
+        return "; ".join(([f"no effect found in {' '.join(nulls[(x, y)][:4])}"] if (x, y) in nulls else []) + ([f"both concepts appear in {' '.join(vx)}"] if vx else [])) or "—"
     L += ["## Every relation, strongest basis first", ""]
     L += md_table(["Cause", "Outcome", "Direction", "Basis", "Evidence", "Sources and their designs", "Against or unresolved"],
                   [[rl(m.cards[x]), rl(m.cards[y]), word[e["sign"]], rel(e), " ".join(rl(m.cards[t]) for t in e["basis"][:6] if t in m.cards) or "none cited", srcdes(e), against(x, y)] for (x, y), e in order]) if order else ["No directed relation is recorded or shown by the data."]
@@ -4110,6 +4110,20 @@ def report_robustness(m):
     return "", L, ""
 
 
+def named_data(m, p):
+    """The data sets a card points to: {data-set id: the evidence cards it links that use that data set}; an empty set where the card names the data set itself."""
+    out = {}
+    for t in m.ids(p.human + "\n" + "\n".join(v for _k, v in p.codes))[0]:
+        c = m.cards.get(t)
+        if c is None: continue
+        if c.fam == "page" and c.id[0] == "D": out.setdefault(c.id, set())
+        elif c.fam == "evidence":
+            for v in c.all("uses_data"):
+                for d in m.ids(v)[0]:
+                    if d in m.cards and d[0] == "D": out.setdefault(d, set()).add(c.id)
+    return out
+
+
 def report_methods(m):
     L, srcs = [], sorted((c for c in m.cards.values() if c.fam == "source"), key=lambda c: c.id)
     L += ["## Study designs", ""] + md_table(["Source", "", "Designs", "Sample", "Question"], [[rl(s_), short_cite(s_), "; ".join(f"{d}" + (f" ({one(plain(n), 70)})" if n else "") for d, n in study(s_)["designs"]) or "not recorded", one(plain(s_.get("sample") or "not recorded"), 110), one(plain(s_.get("question") or "not recorded"), 130)] for s_ in srcs]) + [""]
@@ -4142,10 +4156,15 @@ def report_methods(m):
     w = rarity(m); opp = []
     openq = sorted((p for p in m.pages("GVXH") if not p.get("retired") and p.status in ("open", "fillable", "confirmed", "planned")), key=lambda p: (PRANK[m.level(p.id)], p.id))
     for p in openq:
-        hit = sorted(((sum(w(t) for t in m.terms(d) & m.terms(p)), d, m.terms(d) & m.terms(p)) for d in ds if d.status in ("open", "on-request") and len(m.terms(d) & m.terms(p)) >= 2), key=lambda r: (-r[0], r[1].id))
-        if hit: opp += [f"**{rl(p)} [{p.type}, {p.status}, priority {m.level(p.id)}] {one(plain(p.title), 130)}**"] + [f"- {rl(d)} {name(d)} ({d.status}) · shares {', '.join(sorted(sh))}" for _sc, d, sh in hit[:6]] + [""]
-    L += ["## What existing data might answer", "", "For each open gap, contradiction, tension and hypothesis: the open or on-request data sets that share two or more concepts with it. Each is a question to ask of data that already exist, before a new experiment.", ""]
-    L += opp or ["None: no accessible data set shares two concepts with an open question."]
+        named = named_data(m, p)
+        hit = sorted(((sum(w(t) for t in m.terms(d) & m.terms(p)), d, m.terms(d) & m.terms(p)) for d in ds if d.id not in named and d.status in ("open", "on-request") and len(m.terms(d) & m.terms(p)) >= 2), key=lambda r: (-r[0], r[1].id))
+        first = sorted((m.cards[i] for i in named if not m.cards[i].get("retired")), key=lambda d: (d.status not in ("open", "on-request"), d.id))
+        if first or hit:
+            opp += [f"**{rl(p)} [{p.type}, {p.status}, priority {m.level(p.id)}] {one(plain(p.title), 130)}**"]
+            opp += [f"- {rl(d)} {name(d)} ({d.status}) · " + ("used by its evidence: " + " ".join(rl(m.cards[e]) for e in sorted(named[d.id])) if named[d.id] else "named on the card") for d in first]
+            opp += [f"- {rl(d)} {name(d)} ({d.status}) · shares {', '.join(sorted(sh))}" for _sc, d, sh in hit[:6]] + [""]
+    L += ["## What existing data might answer", "", "For each open gap, contradiction, tension and hypothesis: first the data sets its own card points to (named on it, or used by the evidence cards it links), whatever their access; then the open or on-request data sets that share two or more concepts with it. Each is a question to ask of data that already exist, before a new experiment.", ""]
+    L += opp or ["None: no open question points to a data set, and no accessible data set shares two concepts with one."]
     return "", L + [""], ""
 
 

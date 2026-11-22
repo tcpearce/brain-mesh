@@ -2,12 +2,17 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
-## 1.16.1 (2026-11-22)
+## 1.16.2 (2026-11-22)
 
 From the first run of the reports on a real vault.
 
 - `report methods`, **What existing data might answer**: each open question now lists first the data sets its own card points to (named on it, or used by the evidence cards it links through `uses_data::`), whatever their access, and only then the accessible data sets that share two or more concepts with it. Matching by concepts alone missed the data a gap card itself cites when each data set shared one concept with it.
 - `report causal` and `table relations`: a contradiction or tension that holds both concepts of a relation is listed as "both concepts appear in V001", not "contested in V001". Holding both concepts does not make the card a dispute about that relation.
+- A command whose output is piped to a reader that stops early (`... | head`, `... | grep -q`) now ends quietly with exit code 0 instead of a `BrokenPipeError` traceback. One test failed now and then for this reason.
+
+## 1.16.1 (2026-11-22)
+
+- `sync` with nothing new to commit now pushes any local commits the branch holds, such as the one made by finishing a rebase after a conflict, as sync's own message asks. Before, it reported "up to date" and left them unpushed (issue #21).
 
 ## 1.16.0 (2026-11-22)
 

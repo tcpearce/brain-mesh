@@ -5,7 +5,7 @@ description: "Write from a brain mesh (a literature review, a background or rela
 
 # Brain mesh: writing from the brain and auditing a draft
 
-Read `brain-mesh` first for the card formats, and `brain-mesh-access` for syncing and navigating.
+Read `brain-mesh` first, and `brain-mesh-access` for syncing and navigating. Gather what to write from with `ask` and `table` rather than by reading hubs whole (`brain-mesh-access`, **Keeping the context small**).
 
 Part A writes text from the brain. Part B checks text the user wrote against it. The same rules govern both.
 
@@ -51,6 +51,7 @@ Part A writes text from the brain. Part B checks text the user wrote against it.
 
 1. **Get the draft as text, markdown or LaTeX** (a Word file: `pandoc draft.docx -t markdown -o draft.md`). `python3 tools/mesh.py sync`.
 2. **`python3 tools/mesh.py draft <file>`** prints a worklist (`--out <file>` saves it). For each sentence that names a concept, cites a work or gives a number, it lists: the works cited and whether the brain holds them (author-year, numbered against the draft's own reference list, or citation keys); the concepts named; each number and the card that holds it; the cards most likely to bear on the sentence, with their values, conditions and pages; and what to check.
+   A long draft (more than a few pages) goes to subagents where the session can start them: one per section, each given that section's worklist (`draft <section file>`), each returning only its verdict table. The main session merges the tables into the report.
 3. **Judge every sentence on the worklist.** Read the cards, and open the page wherever a value or a wording matters. The listed cards are the likeliest, not the only ones: search (`find`, `facts`, `table`) before calling a claim unsupported.
 
    | Verdict | When |

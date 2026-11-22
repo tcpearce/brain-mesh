@@ -5,7 +5,7 @@ description: "Add many papers to a brain mesh at once, with one extraction agent
 
 # Brain mesh: batch ingest with agents
 
-Read `brain-mesh` and `brain-mesh-add-paper` first. Each agent follows add-paper steps 2 to 7 for its own paper; this document adds the division of labour that lets several agents work on one vault at once.
+Read `brain-mesh`, its FORMATS.md and `brain-mesh-add-paper` first. Each agent follows add-paper steps 2 to 7 for its own paper; this document adds the division of labour that lets several agents work on one vault at once.
 
 With up to about five papers, add them one at a time with `brain-mesh-add-paper`. Beyond that one session runs out of room long before it runs out of papers. A 9-page paper's main text came to about 60 cards in the first test, so 50 papers is several thousand cards.
 

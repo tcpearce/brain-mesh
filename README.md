@@ -148,6 +148,12 @@ A rough guide; it depends on how closely the papers bear on one another.
 | 5 to 20 | Findings with independent support, tensions and their moderators, numbers pooled across papers, transfer, research gaps that survive a search. |
 | 20 and up | Bridges, chains of effects, rival theories against the findings, analogies, batches and scheduled passes. |
 
+### Asking the brain
+
+Ask Claude a question about your field and it answers from the brain with `python tools/mesh.py ask "<the question>"`. In one call, within about 2,500 tokens, that returns the brain's conclusions on the question with their grades, the hub facts, the relations with their basis, the most relevant evidence cards and what was not read in full, each line carrying a card id. Claude opens only the cards the answer needs.
+
+This keeps a session's context small however large the brain grows. The commands rank and trim their output too: `find` shows the 25 most relevant hits, `show` cuts long generated lists, `table` shows the 25 most relevant rows, and each says how many more there are. Claude never reads a hub or `index/` whole, and hands wide sweeps (a full discovery pass, a scan of many papers, the audit of a long draft) to subagents that report back only their conclusions.
+
 ### Habits that pay
 
 1. **Check the page.** Every card links to its place in the PDF. Open it whenever a value or a wording matters.
@@ -163,7 +169,8 @@ A rough guide; it depends on how closely the papers bear on one another.
 
 | Path | What it is |
 |---|---|
-| `skills/brain-mesh/SKILL.md` | The map: card formats, ids, link types, the PDF as ground truth, navigation, rules. Read first. |
+| `skills/brain-mesh/SKILL.md` | The map: card families, ids, grades, links, navigation, rules. Read first, by every session. |
+| `skills/brain-mesh/FORMATS.md` | The card formats: every card type's sections and Codes, evidence types, link keys, citations, priority, the PDF rules. Read before writing or changing a card. |
 | `skills/brain-mesh-access/SKILL.md` | Read every session, by any agent: syncing with GitHub, navigating and answering, adding your own material, editing, retiring and deleting cards. |
 | `skills/brain-mesh-setup/SKILL.md` | Starting a vault, tooling, Obsidian, sharing, upgrading. |
 | `skills/brain-mesh-add-paper/SKILL.md` | Adding a paper or an own result: anchor, references, extract, duplicate rules, link, verify, integrate, update the hubs. Lens passes. |

@@ -2,6 +2,16 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.18.0 (2026-11-22)
+
+A small context: a session can navigate, extract from and mine a large brain without filling its context with cards it does not need.
+
+- **`ask "<question>" [--budget n] [--concepts a b] [--source P012]`**: what the brain holds on a question, best first, in about n tokens (2,500 unless set). It finds the question's concepts by name or alias (British or American spelling, plurals) and any card ids it names, then gives: those cards with their opening lines; the brain's conclusions (findings, tensions, contradictions, gaps, hypotheses, theories) with their grades; the definition and facts of the concept hubs the best evidence holds; the relations among the concepts with their basis; the most relevant evidence cards; and the parts of the sources holding them that were not read in full. A named card's own sides and support come first. Ranking weighs rare shared concepts, holding all of them, words in title and prose, the kind and status of each card, how much synthesis cites it, and priority.
+- **`find` ranks by relevance**: the concept named first, then cards with the words in their title or linking the concept, findings and observations before background; 25 shown.
+- **Short views.** `show` cuts a long generated list or `## Linked from` section to its first lines with a count; for a concept it gives the prose and Codes and the 15 cards that use it most. `--all` prints everything. `table` shows the 25 most relevant rows, taken from each source in turn (`--limit 0` for every row; `--out` saves them all). `place P012` groups a source's evidence by the finding, tension, gap or hypothesis it bears on (`--by-card` for the old layout). `facts` lists the 30 most relevant evidence cards. On the odour-coding vault: `show odour-intensity` 6,500 tokens to 2,200, `show P001` 9,700 to 2,300, `place P003` 11,400 to 2,500.
+- **The main skill is split.** `skills/brain-mesh/SKILL.md` is now a 3,700-token map (card families, ids, grades, links, navigation, rules) that every session reads; the card formats, word for word, are in `skills/brain-mesh/FORMATS.md` (9,900 tokens), read before writing or changing a card. A session that only reads the brain saves about 9,000 tokens.
+- **Context rules** in `brain-mesh-access` (section 2, **Keeping the context small**) and in the vault's `CLAUDE.md`: query through the tooling, never read a hub or `index/` whole, go down the layers only as far as needed, and hand wide sweeps to subagents that return only their conclusions. `brain-mesh-discover`, `brain-mesh-concept-scan`, `brain-mesh-write` (long drafts) and `brain-mesh-housekeeping` (audits) say how.
+
 ## 1.17.1 (2026-11-22)
 
 Review fixes for 1.17.0 (linked files).

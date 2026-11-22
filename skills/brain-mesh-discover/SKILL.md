@@ -5,7 +5,9 @@ description: "Mine a brain mesh, with the user, for new hypotheses and new links
 
 # Brain mesh: discovery
 
-Read `brain-mesh` first. Find the vault and run `python3 tools/mesh.py build`.
+Read `brain-mesh` first, and its FORMATS.md before writing or changing a card. Find the vault and run `python3 tools/mesh.py build`.
+
+**Keep the context small.** A full pass reads a great deal: every miner's signals, the cards behind them and the facts each proposal must respect. Where the session can start subagents, give the pass to one: it runs `discover`, opens the cards behind the strongest signals, runs `facts` on their concepts, and returns a shortlist, each item with its signal key, a line on why it matters, the cards it rests on and the question to put to the user. Present that shortlist; the reading stays in the subagent's context. Otherwise run one miner at a time (`discover <miner> --top 3`) and keep a short note of each miner's best signals before the next.
 
 The other documents build the brain from what papers say and find what they leave unknown. This one looks for what the brain implies and no paper states: connections between papers, hidden variables behind disagreements, results that ought to carry over to another system, rival accounts and the observations that would separate them. Its output is proposals put to the user, not conclusions.
 

@@ -5,7 +5,7 @@ description: "Assemble dated reports from a brain mesh for deciding what to do n
 
 # Brain mesh: reports
 
-Read `brain-mesh` first for the card formats, and `brain-mesh-access` for syncing.
+Read `brain-mesh` first, and `brain-mesh-access` for syncing.
 
 A report is one dated document that answers one question from the cards as they stand. `python3 tools/mesh.py report <kind>` assembles it, every line linked to the cards it rests on, into `reports/<date>-<kind>.md`. Claude then reads it, checks what matters on the cards and the page, and writes its **Reading**.
 

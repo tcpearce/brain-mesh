@@ -5,7 +5,7 @@ description: "Add a paper, PDF, preprint, thesis or own result to a brain mesh a
 
 # Brain mesh: add a source
 
-Read `brain-mesh` first; this skill assumes its card formats, ids and link types. Find the vault and run `python3 tools/mesh.py build` so the index is current. If there is no vault, use `brain-mesh-setup`.
+Read `brain-mesh` and its FORMATS.md first; this skill assumes their card formats, ids and link types. Find the vault and run `python3 tools/mesh.py build` so the index is current. If there is no vault, use `brain-mesh-setup`.
 
 Work through the steps in order for one source at a time. With several papers, finish steps 1 to 7 for one and integrate it before starting the next, so that later papers link to earlier ones. With more than about five papers to add, read `brain-mesh-batch`: extraction then runs in parallel agents.
 
@@ -52,7 +52,7 @@ Read the paper from the PDF itself, viewing pages as images wherever figures, ta
 
 List every unit of the source: each section, table, figure and supplementary item, with a few words on what it holds. These become the `coverage::` lines of the source card. Record supplementary material that was not supplied as `missing`.
 
-Note the study profile for the source card (`brain-mesh`, **Source cards**): the question the study asks; its design or designs from the fixed list, each with what was done; what was studied and how many; and the theory or model it works within. A paper often holds more than one study (a model and the experiment that tests it): one `design::` line each. Take them from the methods, not the abstract.
+Note the study profile for the source card (`brain-mesh` FORMATS.md, **Source cards**): the question the study asks; its design or designs from the fixed list, each with what was done; what was studied and how many; and the theory or model it works within. A paper often holds more than one study (a model and the experiment that tests it): one `design::` line each. Take them from the methods, not the abstract.
 
 Transcribe each data table to `P012-T2.csv`, in the source's folder, exactly as printed. Cards then cite `T2` and describe the dataset; the numbers stay in the table.
 
@@ -113,7 +113,7 @@ Extract every equation the source states, printed or defined in words, as LaTeX.
 Every data set and every code base or software package the study uses gets a card, so the brain knows what each result was computed from and others can find it again.
 
 1. `python3 tools/mesh.py mentions P012` lists the paragraphs naming data sets and code (with their links and accessions), the paper's cited works that look like databases or software, and the data-set and code cards already in the brain that match. Read the data and code availability statements and the methods yourself too; the list is a starting point.
-2. For each one the study uses (not merely mentions): find its card (`find <name>`) or make one (`id D` or `id C`) in the format of `brain-mesh`, and add `- used_by:: [[P012]] — how the study uses it`. A data set the paper itself releases is a data-set card too.
+2. For each one the study uses (not merely mentions): find its card (`find <name>`) or make one (`id D` or `id C`) in the format of `brain-mesh` FORMATS.md, and add `- used_by:: [[P012]] — how the study uses it`. A data set the paper itself releases is a data-set card too.
 3. A code card summarises the code as its README would. Read the README (`python3 tools/mesh.py repoinfo <github URL>`, or the repository page) before writing; commercial software without a README is described from its documentation and marked `restricted`.
 4. Link the evidence cards that rest on it: `- uses_data:: [[D003]] — training set`, `- uses_code:: [[C002]] — model training`. The method card that describes the data or code is the usual place.
 
@@ -162,7 +162,7 @@ A link should tell a reader something they would want to follow. Do not link car
 
 ### Scan for contradictions and log them
 
-Every paper is read against what the brain already holds, and every contradiction found goes on the register (`brain-mesh`, **Contradiction**). Contradictions are kept, not smoothed over: they are where theories, hypotheses and experiments come from.
+Every paper is read against what the brain already holds, and every contradiction found goes on the register (`brain-mesh` FORMATS.md, **Contradiction**). Contradictions are kept, not smoothed over: they are where theories, hypotheses and experiments come from.
 
 1. `python3 tools/mesh.py contradictions P012` lists the logged contradictions and tensions this paper's cards touch, and the possible contradictions the tooling sees in the Codes: a `contradicts::` link you just made, values of one quantity that disagree beyond error under the same conditions, an effect running the opposite way to a concept's recorded effect or to another source, a null result against an effect, evidence against a finding.
 2. Read for the ones the Codes cannot show. For each claim, model and main result of the paper, look at the cards and hub facts on the same concepts (`python3 tools/mesh.py facts <concept> ...`): does the paper state something that cannot be true if they are? A mechanism excluded by another paper's data, a claim against a hub's **What is known**, a definition that makes two results incompatible. The paper's own internal clashes count too (abstract against results), as do its stated disagreements with earlier work.
@@ -195,7 +195,7 @@ Two tests keep findings honest:
 - **The one-sentence test.** The finding's title must stay true of every card it cites. If adding the new evidence would make the title need "except", "mostly" or "in some conditions", give the new conditions their own finding.
 - **The agreement test.** Cards that measure the same quantity under the same conditions must agree within their errors. If they do not, the finding is `contested`: open a tension rather than averaging the disagreement away inside one finding.
 
-`python3 tools/mesh.py place P012` does the first sorting. For every observation, claim, model and caveat of the new source it lists the findings, tensions, gaps and hypotheses it most likely bears on (ranked by the rare concepts they share, and by whether the page already rests on the same quantity) and says what each match calls for:
+`python3 tools/mesh.py place P012` does the first sorting. Grouped by the finding, tension, gap or hypothesis each bears on (`--by-card` lists them card by card), it shows the observations, claims, models and caveats of the new source most likely to bear on it (ranked by the rare concepts they share, and by whether the page already rests on the same quantity) and says what each match calls for:
 
 - **within the finding's scope**: add it as `support` or `against` and re-grade;
 - **OUTSIDE the finding's scope**: a sibling finding, scoped in its title and `when::` lines, unless the claim truly holds there too, in which case widen the scope in both title and Codes;

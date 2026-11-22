@@ -5,7 +5,7 @@ description: "Create a new brain mesh vault, install or upgrade its tooling and 
 
 # Brain mesh: setup
 
-Read `brain-mesh` first. It defines the vault this skill creates.
+Read `brain-mesh` first, and its FORMATS.md. Together they define the vault this skill creates.
 
 ## 1. Decide where the vault lives
 

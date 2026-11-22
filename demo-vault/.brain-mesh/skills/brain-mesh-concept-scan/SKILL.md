@@ -5,7 +5,7 @@ description: "Scan chosen sources of a brain mesh, or all of them, for every con
 
 # Brain mesh: concept scan
 
-Read `brain-mesh` first for the card formats, and `brain-mesh-access` for syncing. This skill goes back over sources already in the brain. For a new paper the same work is part of `brain-mesh-add-paper` step 4.
+Read `brain-mesh` first, its FORMATS.md before writing or changing a card, and `brain-mesh-access` for syncing. This skill goes back over sources already in the brain. For a new paper the same work is part of `brain-mesh-add-paper` step 4.
 
 The aim: for every source in scope, everything the paper says about any concept in the brain is either on a card or recorded as nothing new; every fact the paper backs with a citation carries that citation, on its evidence card and in the concept hub; and every contradiction between what the paper says and what the brain holds is logged on the contradictions register. Each hub also shows its key equations and figures, with the cards and works they come from (step 7).
 
@@ -13,7 +13,7 @@ The aim: for every source in scope, everything the paper says about any concept 
 
 1. `python3 tools/mesh.py sync`, then `python3 tools/mesh.py scan`. With no arguments, `scan` lists every source with what is left to do: concepts named in passages no card of that source covers, and how many passages.
 2. Take the sources the user named, or all of them if they said all. Work high-priority sources first, then those with most to do.
-3. One source at a time, start to finish. With more than about five sources, the sources can be split between agents as in `brain-mesh-batch`: each agent writes only in its own source's folder (new evidence cards, `cites::` lines on that source's cards, `P012_scan.md`, proposals with `propose --from P012`), and the launching session does steps 5 to 8.
+3. One source at a time, start to finish. With more than about five sources, split them between agents as in `brain-mesh-batch`, which also keeps each source's reading out of the main conversation: each agent writes only in its own source's folder (new evidence cards, `cites::` lines on that source's cards, `P012_scan.md`, proposals with `propose --from P012`) and returns a short summary: cards added, citations added, hub lines it proposes, contradictions it found, with card ids. The launching session does steps 5 to 8 from those summaries.
 
 ## 2. Work one source: `python3 tools/mesh.py scan P012`
 

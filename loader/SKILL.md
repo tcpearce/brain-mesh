@@ -17,7 +17,7 @@ Repository: `tcpearce/brain-mesh`
 
 ## 2. Read the instructions for the task
 
-Always read `skills/brain-mesh/SKILL.md` first. It is the map: card formats, ids, links and rules. Then read the document for the task:
+Always read `skills/brain-mesh/SKILL.md` first. It is the map: card families, ids, grades, links, navigation and rules. Before writing or changing a card, read `skills/brain-mesh/FORMATS.md` too. Then read the document for the task:
 
 | Task | Read |
 |---|---|

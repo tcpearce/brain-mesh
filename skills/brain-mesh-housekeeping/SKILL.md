@@ -5,7 +5,7 @@ description: "Keep a brain mesh healthy as it grows: health report, stale concep
 
 # Brain mesh: housekeeping
 
-Read `brain-mesh` first. Find the vault.
+Read `brain-mesh` first, and its FORMATS.md before writing or changing a card. Find the vault.
 
 A vault that only ever grows drifts: hubs fall behind their evidence, findings keep grades they no longer deserve, searches age, and small extraction errors accumulate. Housekeeping is the work that keeps the brain trustworthy enough to design experiments from.
 
@@ -83,7 +83,7 @@ The user is free to edit prose. After they have, `build` shows what moved: a val
 
 - Treat the user's prose as their intent. Where an edit corrects content, change the Codes to match, then check the PDF page to see who is right, and say so if the source disagrees with the edit.
 - Where the intent is unclear, ask. Never silently revert a user's edit.
-- A note the user made in `concepts/` becomes a concept card at the next `build` (`brain-mesh`, **Concept cards**). Check its kind and aliases with them, then `scan <concept>` to find it in the sources already in the brain.
+- A note the user made in `concepts/` becomes a concept card at the next `build` (`brain-mesh` FORMATS.md, **Concept cards**). Check its kind and aliases with them, then `scan <concept>` to find it in the sources already in the brain.
 - A renamed file gets its id back automatically. If a card was renamed but kept its id at the start, `build` re-points the links. If the id was dropped, `build` restores it from the card's `- id::` line, keeps the user's wording as the slug, and rewrites the links Obsidian had pointed at the new name. A renamed concept keeps its old file name, which is its id, and gains the user's new name as an alias.
 - Edits inside `## Linked from` or an AUTO block are overwritten by the next `build`. Move anything of value into the card's own prose first.
 - The user's own highlights and notes on a marked PDF are kept when it is regenerated. Annotations on an original PDF change its checksum: move them to the marked copy and restore the original.
@@ -91,6 +91,8 @@ The user is free to edit prose. After they have, `build` shows what moved: a val
 ## Periodic audit
 
 Checks on anchors and numbers catch transcription slips, not misreadings. Every so often run `python3 tools/mesh.py sample P### 10` on a few sources, favouring older ones and those the main findings rest on. Read each card against its passage on the marked PDF for meaning, completeness of conditions and fairness of status.
+
+Where the session can start subagents, give each source's sample to one; it returns only the cards that need correcting, with what is wrong and the page, so the main conversation does not hold every card read.
 
 Log the result, for example `audit: 30 cards across P004, P011, P019; 1 corrected`. If more than about one card in twenty needs correcting in a source, re-verify that source in full.
 

@@ -5,7 +5,7 @@ description: "Rules for every session that opens a brain mesh vault, by Claude o
 
 # Brain mesh: accessing a vault
 
-Read `brain-mesh` for the card formats. This document says how to behave in a vault, whoever you are and whatever the task. Follow it every time a vault is opened. A vault's `CLAUDE.md` points here, so an agent that starts inside a clone (Claude Code, say) lands on these rules first.
+Read `brain-mesh` for the map of the brain, and its FORMATS.md before writing or changing a card. This document says how to behave in a vault, whoever you are and whatever the task. Follow it every time a vault is opened. A vault's `CLAUDE.md` points here, so an agent that starts inside a clone (Claude Code, say) lands on these rules first.
 
 ## 1. Every session
 
@@ -38,27 +38,40 @@ Read `brain-mesh` for the card formats. This document says how to behave in a va
 
 The brain answers in layers. Go down them as far as the question needs, and say which layer an answer comes from.
 
-1. **`MAP.md`, then the concept hubs.** Each hub's prose says what is known and its generated block lists everything that uses the concept: findings, tensions, gaps, evidence, key references.
+1. **`MAP.md`, then the concept hubs.** Each hub's prose says what is known, citing its cards; `show <concept>` gives the prose and the cards that use the concept most, and `ask` gathers the hubs, conclusions and evidence a question touches.
 2. **Findings (`K`), tensions (`X`), gaps (`G`).** The brain's own conclusions, each graded. A finding's status and scope (`when::` lines) say how far it can be trusted and where it holds.
 3. **Claims cards (`P012-claims`).** What each paper says it showed, in its authors' voice. Never present a claim as a finding.
 4. **Evidence cards.** One statement each, from one source, with its exact anchor.
 5. **The page.** Each evidence card's **open page** link lands on its highlight in the marked PDF. Go there whenever a value or wording matters.
 
+**Start with `ask`.** `python3 tools/mesh.py ask "<the question>"` returns, within about 2,500 tokens, what the brain holds on the question, best first: the cards it names, the brain's conclusions (findings, tensions, contradictions, gaps, hypotheses, theories) with their grades, the hub facts on its concepts, the relations among them with their basis, the most relevant evidence cards, and the parts of sources not read in full. Every line carries an id; open only the cards the answer needs. `--budget 6000` gives more, `--concepts a b` names concepts the question's words miss, `--source P012` keeps to one source.
+
 Tools:
 
 | Need | Command |
 |---|---|
-| Find cards | `find <words>`, with `--type observation`, `--source P012` |
-| See a card, its source paragraph and everything linked to it | `show <id>` |
-| See a concept | `show <concept>`, or `concept <name>` to find it by any of its names |
-| Lay the evidence on a concept or finding side by side | `table <concept or K001>`: one row per card with the study, its design and sample, the result, its conditions, how it was obtained, what limits it and the page. `table <concept> relations` for the relations it has and their basis; `table <concept> definitions` for how each source defines and measures it. `--out notes/tables/<name>.md` saves one with links. |
+| What the brain holds on a question | `ask "<question>"` |
+| Find cards | `find <words>`: most relevant first, 25 shown; narrow with `--type observation`, `--source P012` |
+| See a card, its source paragraph and what links to it | `show <id>`. Long generated lists are cut to their first lines with a count; `--all` prints everything |
+| See a concept | `show <concept>`: its prose and Codes, and the 15 cards that use it most; `concept <name>` finds it by any of its names |
+| Lay the evidence on a concept or finding side by side | `table <concept or K001>`: one row per card with the study, its design and sample, the result, its conditions, how it was obtained, what limits it and the page. It shows the 25 most relevant rows, taken from each source in turn; `--limit 0` for every row. `table <concept> relations` for the relations it has and their basis; `table <concept> definitions` for how each source defines and measures it. `--out notes/tables/<name>.md` saves every row with links. |
+| What a proposal must respect | `facts <concepts>` |
 | See how many independent groups of sources stand behind a finding | `independence K001` |
 | Everything that rests on a card or source | `impact <id>` |
 | Which combinations of conditions were measured | `matrix <variable> <variable>` |
 | Cards in other sources to link | `neighbours <id>` |
 | What needs attention | `health`, `gaps` |
-| Bulk work | `index/cards.tsv`, `index/edges.tsv`, `index/coverage.tsv`: plain tables to filter with any tool |
+| Bulk work | `index/cards.tsv`, `index/edges.tsv`, `index/coverage.tsv`: plain tables to filter with grep or a short script |
 | A bibliography | `references/library.bib` (everything), `sources/P012-…/P012_refs.bib` (one paper) |
+
+**Keeping the context small.** A brain of a hundred papers holds tens of thousands of cards, and a careless read fills a session with ones it does not need. So:
+
+- **Query through the tooling.** Never read a concept hub, a source card or a file under `index/` whole: their generated lists grow with every card. `show` cuts them and says how many more there are; ask for `--all` only when the whole list is the point.
+- **Search the tables, never read them:** `grep`, `awk` or a few lines of Python over `index/*.tsv`.
+- **Go down the layers only as far as the question needs.** A graded finding answers more than ten evidence cards. Open an evidence card to cite it or check its page, not to browse.
+- **One `ask` before a chain of `find` and `show`.** Raise its budget before opening cards one by one.
+- **Reports are files.** Read the Reading and the top of each table, then only the rows you need.
+- **Hand wide sweeps to a subagent** where the session can start one (an Agent or Task tool): a full discovery pass, a concept scan of many sources, the audit of a long draft, a housekeeping audit. Give it the task and the commands; it works in its own context and returns only its conclusions, with card ids, so the main conversation keeps the answer and none of the reading. Subagents that write follow `brain-mesh-batch`: each writes only in its own source's folder, and the session that started them writes the shared cards, builds and syncs. Without subagents, do the sweep in steps and keep a short written note of what each step found.
 
 Principles:
 
@@ -79,11 +92,11 @@ Choose the home by what the material is. Everything that enters keeps its proven
 | A paper, preprint, thesis or report | `brain-mesh-add-paper` (many at once: `brain-mesh-batch`) |
 | The user's own results, lab notes, data | A source with `kind:: own-result` (add-paper, **Own results**) |
 | A talk, conversation, email or something the user knows from experience | A source with `kind:: other`. Write it as a short dated text file saying who said what and when, anchor it (`anchor P021 note.txt`), and card it like a paper. Never put an unsourced statement on an evidence card. |
-| A data set or code base | A data-set card (`data-sets/`) or code card (`code/`); see `brain-mesh` |
+| A data set or code base | A data-set card (`data-sets/`) or code card (`code/`); see `brain-mesh` FORMATS.md |
 | A new concept | The user's call. An agent proposes it (`propose <slug> "<definition>" --from P012`) and links the proposed name; the user adopts it (`adopt`), folds it into another (`adopt <slug> into <concept>`) or rejects it. The user can also make one by hand: a note in `concepts/` with a sentence saying what it is, which `build` turns into a card. Either way, then run `scan <slug>` and card what the papers say about it (`brain-mesh-concept-scan`). |
 | An idea that would explain something | A hypothesis (`brain-mesh-experiment`) |
 | Something nobody knows | A gap (`brain-mesh-gaps`) |
-| Two cards, or a card and a concept fact, that cannot both hold | The contradictions register: `contradictions add <card> <card> "<the clash>" --by "<who found it>"` (`brain-mesh`, **Contradiction**). Never resolve a clash by editing one side away. |
+| Two cards, or a card and a concept fact, that cannot both hold | The contradictions register: `contradictions add <card> <card> "<the clash>" --by "<who found it>"` (`brain-mesh` FORMATS.md, **Contradiction**). Never resolve a clash by editing one side away. |
 | A paper to read | Set its reference card's status to `queued`, or add a row to the table in `ledger/reading-queue.md` |
 | Free-form thinking, to-dos, meeting notes | `notes/`. The tooling ignores it; notes may link to any card. |
 | A correction to a card | Edit the card (section 4), or follow housekeeping for published corrections |
@@ -92,7 +105,7 @@ Get new ids from `python3 tools/mesh.py id <kind>`, never by guessing. Before cr
 
 A concept card is made only by the user, by hand or with `adopt`, or by an agent on the user's word or where a vault rule in `CLAUDE.md` tells it to. When the user asks for a concept ("add a concept for mixture suppression"), that is their word: `propose` it, then `adopt` it.
 
-Every fact entered from a source carries the works the source cites for it (`cites::`), and a hub line stating it cites them too (`brain-mesh`, **Citations in cards**).
+Every fact entered from a source carries the works the source cites for it (`cites::`), and a hub line stating it cites them too (`brain-mesh` FORMATS.md, **Citations in cards**).
 
 ## 4. Changing cards
 

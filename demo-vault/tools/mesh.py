@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.17.1"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.18.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -2313,25 +2313,243 @@ def need(m, i):
     if not cid: sys.exit(f"{i}: no such card (try `find`)")
     return m.cards[cid]
 
-def cmd_show(m, i):
+# ---- 1.17.0: a small context: ranked search, a question command, short views ----
+
+EV_WEIGHT = {"observation": 1.0, "model": 1.0, "claim": 0.9, "definition": 0.8, "limitation": 0.7, "assumption": 0.7,
+             "oddity": 0.6, "method": 0.6, "question": 0.6, "cited": 0.5}
+EV_STATUS = {"measured": 1.1, "derived": 1.1, "reported": 1.0, "inferred": 0.95, "asserted": 0.85, "speculated": 0.8, "cited": 0.8}
+STOPWORDS = set("""a an and are as at be been being but by can could did do does done for from had has have how i if in into is it
+its may might more most much no not of on or our over should so such than that the their them then there these they this those
+to under was we were what when where whether which while who why will with would about across against between both each every
+known know show shows shown any also via within without whose brain card cards paper papers say says said tell find give get
+use used using here matter role way ways thing things kind""".split())
+
+
+def text_words(t):
+    """The words of a text for matching: lower case, accents folded, a plural s dropped from longer words."""
+    return {w[:-1] if len(w) > 4 and w.endswith("s") else w for w in re.findall(r"[a-z][a-z0-9]{2,}", ascii_fold(t).lower())}
+
+
+def card_words(m, c):
+    if getattr(m, "_tw", None) is None: m._tw = {}
+    if c.id not in m._tw: m._tw[c.id] = text_words(c.title + " " + c.prose())
+    return m._tw[c.id]
+
+
+def word_weights(m, words):
+    """Inverse document frequency of each word over the live cards' titles and prose: a word on every card weighs nothing."""
+    pool = [c for c in m.cards.values() if not c.get("retired")]
+    df = {w: sum(1 for c in pool if w in card_words(m, c)) for w in words}
+    return {w: math.log((len(pool) + 1) / (1 + n)) for w, n in df.items() if n}  # a word on no card is left out
+
+
+def page_cites(m):
+    """How many findings, tensions, gaps, hypotheses, theories and contradictions cite each card in their typed links."""
+    if getattr(m, "_pcites", None) is None:
+        n = Counter()
+        for c in m.cards.values():
+            if c.fam == "page" and not c.get("retired"):
+                for k in PAGES[c.id[0]][3]:
+                    for v in c.all(k):
+                        for t in m.ids(v)[0]: n[t] += 1
+        m._pcites = n
+    return m._pcites
+
+
+def card_score(m, c, Q, w, kw=None):
+    """How well a card answers a question about the concepts Q, and the words kw ({word: weight}): rare shared concepts
+    count most and holding them all counts extra; then words in its title and prose, the kind of card, how much synthesis
+    cites it, and the user's priority. 0 when the card holds none of them."""
+    cs = m.terms(c) & Q
+    sc = sum(w(t) for t in cs)
+    if len(Q) > 1 and cs == Q: sc += max(w(t) for t in Q)
+    if kw:
+        tw, tt = card_words(m, c), text_words(c.title)
+        sc += sum(v * (1.0 if x in tt else 0.5) for x, v in kw.items() if x in tw)
+    if sc <= 0: return 0.0
+    if c.fam == "evidence": sc *= EV_WEIGHT.get(c.type, 0.6) * EV_STATUS.get(c.status, 1.0)
+    sc += 0.3 * min(page_cites(m).get(c.id, 0), 3)
+    if m.level(c.id) in ("high", "elevated"): sc *= 1.2
+    return sc
+
+
+def question_concepts(m, text):
+    """The concepts a question names, by slug, title or alias (British or American spelling, plurals), in the order
+    they appear; a name inside a longer name of another concept is not counted."""
+    spans = []
+    for con in m.cards.values():
+        if con.fam != "concept" or con.get("retired"): continue
+        key = (con.id, False)
+        if key not in m._crx: m._crx[key] = concept_rx(con, False)
+        rx, _keys = m._crx[key]
+        if rx is not None: spans += [(mo.start(), mo.end(), con.id) for mo in rx.finditer(text)]
+    keep = [(a, b, c) for a, b, c in spans if not any(a2 <= a and b <= b2 and b2 - a2 > b - a for a2, b2, c2 in spans if c2 != c)]
+    order = []
+    for _a, _b, c in sorted(keep):
+        if c not in order: order.append(c)
+    return order, keep
+
+
+def fit(lines, room):
+    """As many lines as fit in room characters: (lines kept, characters used)."""
+    out, used = [], 0
+    for ln in lines:
+        if used + len(ln) + 1 > room: break
+        out.append(ln); used += len(ln) + 1
+    if not out and lines: out = [one(lines[0], max(room, 160))]; used = len(out[0]) + 1  # a section never vanishes for want of room
+    return out, used
+
+
+def cmd_ask(m, args):
+    """`ask "<question>" [--budget tokens] [--concepts a b] [--source P012]`: what the brain holds on a question, best first,
+    within a budget of about that many tokens (default 2500): the cards the question names, the brain's own conclusions,
+    the concept hubs' facts, the relations among the concepts, the most relevant evidence cards, and what was not read in
+    full. Each line gives a card id to open with `show`."""
+    budget, extra, src, words, k = 2500, [], None, [], 0
+    while k < len(args):
+        a = args[k]
+        if a == "--budget" and k + 1 < len(args): budget = max(300, int(args[k + 1])); k += 2
+        elif a == "--source" and k + 1 < len(args): src = args[k + 1]; k += 2
+        elif a == "--concepts":
+            k += 1
+            while k < len(args) and not args[k].startswith("--"): extra.append(args[k]); k += 1
+        else: words.append(a); k += 1
+    q = " ".join(words).strip()
+    if not q and not extra: sys.exit('ask: give the question in quotes: ask "what predicts odour intensity?" [--budget 2500] [--concepts a b] [--source P012]')
+    order, spans = question_concepts(m, q)
+    for a in extra:
+        c = concept_arg(m, a)
+        if not c: sys.exit(f"ask: '{a}' is not a concept (`mesh.py concept {a}` finds one by any of its names)")
+        if c not in order: order.append(c)
+    Q, w0 = set(order), rarity(m)
+    heads = {t for t in Q for o in Q - {t} if len((m.cards[t].title or t).split()) == 1 and (m.cards[t].title or t).lower() in (m.cards[o].title or o).lower().split()}
+    w = lambda t: w0(t) * (0.5 if t in heads else 1.0)  # a one-word concept that heads another named concept (odorant, odorant concentration) counts half
+    named = [t for t in dict.fromkeys(re.findall(r"\b(P\d{3}-(?:\d{3}|claims)|P\d{3}|R\d{4}|[" + PG + r"]\d{3})\b", q)) if m.resolve(t)]
+    named = [m.resolve(t) for t in named]
+    if named and not order: Q = set().union(*(m.terms(m.cards[t]) for t in named))  # a question about a card is about its concepts
+    covered = "".join(" " if any(a <= i < b for a, b, _c in spans) else ch for i, ch in enumerate(q))
+    cand = {x for x in text_words(covered) if x not in STOPWORDS and not re.fullmatch(r"[a-z]\d+|\d.*", x)}
+    kw = {x: v for x, v in sorted(word_weights(m, cand).items(), key=lambda r: -r[1])[:6] if v >= 0.7}
+    if not Q and not kw and not named: sys.exit("ask: nothing in the brain matches this question. `find <word>` searches every card; `concept <name>` finds a concept by any of its names.")
+    rx = m.retracted()
+    def cite(c):
+        s_ = m.cards.get(c.id[:4]) if c.fam in ("evidence", "claims") else None
+        return f"{short_cite(s_)} · " if s_ is not None else ""
+    head = [f"Question: {q}" if q else "Question: (concepts only)"]
+    if order: head.append("Concepts: " + " · ".join(f"{m.cards[c].title or c} [{c}] ({sum(1 for x in m.evidence() if c in m.terms(x))} evidence cards)" for c in order))
+    else: head.append("Concepts: none recognised, so cards are ranked by the question's words. `concept <name>` finds a concept by any of its names; --concepts a b names them.")
+    if kw: head.append("Words also matched: " + ", ".join(kw))
+    if named and not order: head[1] = one("Concepts: those of the cards the question names: " + ", ".join(sorted(Q)), 300)
+    for c in named:
+        x = m.cards[c]
+        first = next((one(plain(pa), 400) for pa in re.split(r"\n\s*\n", x.prose()) if pa.strip() and not pa.lstrip().startswith(("#", "<!--"))), "")
+        head += [f"Named: {c} [{x.type}, {x.status or '-'}] {cite(x)}{one(plain(x.title), 150)}"] + ([f"  {first}"] if first else [])
+    secs = []  # (heading, lines, total, share of the budget)
+    pg = [(card_score(m, p, Q, w, kw), p) for p in m.pages("KXVGHTSE") if not p.get("retired") and p.id not in named]
+    pg = sorted([r for r in pg if r[0] > 0], key=lambda r: (-r[0], r[1].id))
+    pg = [r for r in pg if r[0] >= 0.3 * pg[0][0]] if pg else pg  # well below the best match is noise
+    secs.append(("The brain's conclusions: findings, tensions, contradictions, gaps, hypotheses, theories (graded; open each with `show`)",
+                 [f"{p.id} [{p.type}, {p.status}] {one(plain(p.title), 150)}" for _sc, p in pg[:20]], len(pg), 0.25))
+    near = {t for c in named for k_, v in m.cards[c].codes for t in m.ids(v)[0]}  # what a named card links: its sides, its support
+    ev = [(card_score(m, c, Q, w, kw) + (0.01 if c.id in near else 0.0), c) for c in m.evidence(src) if c.id not in named]
+    ev = sorted([r for r in ev if r[0] > 0], key=lambda r: (r[1].id not in near, -r[0], r[1].id))  # a named card's own sides and support come first
+    facts = []
+    held = Counter(t for _sc, c in ev[:30] for t in m.terms(c) & Q)
+    for cid in sorted(order, key=lambda t: (-held[t], order.index(t)))[:4]:  # the concepts the best evidence holds first
+        con = m.cards[cid]
+        dfn = re.sub(r".*?\*\*Definition\.\*\*\s*", "", con.prose(), count=1, flags=re.S).split("\n")[0]
+        facts.append(f"{con.title or cid} [{cid}]: {one(plain(dfn), 220)}")
+        sect, pts, ques = None, [], []
+        for line in con.prose().split("\n"):
+            h = re.match(r"## (.+)", line)
+            if h: sect = h.group(1).strip(); continue
+            if not line.startswith("- "): continue
+            txt = one(plain(line[2:]), 220)
+            rel = sum(1 for o in Q - {cid} if "[[" + o in line) + sum(1 for x in kw if x in text_words(line))
+            (ques if sect == "Open questions" else pts).append((-rel, len(pts) + len(ques), txt))
+        facts += [f"  - {t}" for _r, _i, t in sorted(pts)[:5]] + [f"  - open question: {t}" for _r, _i, t in sorted(ques)[:2]]
+    if facts: secs.append(("Concept hubs: definition and facts (each cites its cards on the hub)", facts, len(facts), 0.22))
+    rel = []
+    if Q:
+        for (x, y), e in sorted(effects(m).items(), key=lambda r: (-len({r[0][0], r[0][1]} & Q), r[0])):
+            if x in Q or y in Q: rel.append(f"{x} → {y}: {({'+': 'raises', '-': 'lowers', '±': 'raises and lowers'}).get(e['sign'], 'direction not recorded')}, basis {e.get('rel') or 'data'} ({' '.join(e['basis'][:4])})")
+        for (x, y), ns in sorted(null_results(m).items()):
+            if x in Q or y in Q: rel.append(f"{x} → {y}: no effect found ({' '.join(ns[:4])})")
+    if rel: secs.append(("Relations among these concepts (causal wording only where the basis is tested)", rel, len(rel), 0.08))
+    evl = [f"{c.id} [{c.type}, {c.status}] {cite(c)}{one(plain(c.title), 140)}" + (" · RETRACTED" if c.id in rx else "") for _sc, c in ev[:80]]
+    cov = []
+    if Q:
+        for sid in sorted({c.id[:4] for _sc, c in ev}):
+            sc_ = m.cards.get(sid)
+            if sc_ is None: continue
+            gaps_ = [u_ for u_ in unread_units(sc_) if not u_.lower().startswith("reference")]
+            if gaps_: cov.append(one(f"{sid} {short_cite(sc_)}: " + "; ".join(gaps_), 240))
+    cap = budget * 4
+    foot = [f"Open a card with `show <id>`, its page with the card's open-page link. More on this question: `ask ... --budget {budget * 2}`; the evidence side by side: `table <concept>`; before proposing anything: `facts <concepts>`."]
+    covl, used_cov = fit(cov[:4], int(cap * 0.07))
+    used = sum(len(x) + 1 for x in head + foot) + used_cov
+    out, carry = list(head), 0
+    for title, lines, total, share in secs:
+        room = int(cap * share) + carry
+        kept, u = fit(lines, max(room - len(title) - 40, 0))
+        if kept: out += ["", f"## {title}" + (f" ({len(kept)} of {total})" if total > len(kept) else "")] + kept
+        used += u + len(title) + 5; carry = max(room - u - len(title) - 5, 0)
+    room = cap - used - 60
+    kept, u = fit(evl, max(room, 0))
+    out += ["", f"## Evidence, most relevant first: one statement each, from one source ({len(kept)} of {len(ev)})"] + (kept or ["(the budget is spent; raise --budget)"] if ev else ["None holds these concepts or words."])
+    if covl: out += ["", "## Not read in full, in sources holding these concepts (not in the brain is not not in the paper)"] + covl
+    if named and not Q and not ev: out += ["", "Nothing found beyond the cards named."]
+    print("\n".join(out + [""] + foot))
+
+
+def condense(text, cid, n_auto=10, n_lf=12, concept=False):
+    """A card's text as a session reads it: a long generated list cut to its first lines and a long `## Linked from`
+    section to its first entries, each saying how many more there are. The card file itself is unchanged."""
+    def auto(mo):
+        body = mo.group(1).strip("\n")
+        if len(body) <= 1200 and not (concept and body): return mo.group(0)
+        lines = body.split("\n")
+        n_ = 0 if concept else n_auto
+        tail = (f"(generated list of {len(lines)} lines, every card that uses this concept: the most used are ranked under USED BY below; `show {cid} --all` prints the list)" if concept
+                else f"… {len(lines) - n_} more lines of the generated list (`show {cid} --all`)")
+        return "<!--AUTO:START-->\n" + "".join(one(x, 300) + "\n" for x in lines[:n_]) + tail + "\n<!--AUTO:END-->"
+    text = re.sub(r"<!--AUTO:START-->\n?(.*?)<!--AUTO:END-->", auto, text, flags=re.S)
+    if "\n## Linked from" in text:
+        head, lf = text.split("\n## Linked from", 1)
+        items = [x for x in lf.split("\n") if x.startswith("- ")]
+        if len(items) > n_lf: text = head + "\n## Linked from\n" + "\n".join(items[:n_lf]) + f"\n- … {len(items) - n_lf} more (`show {cid} --all`)\n"
+    return text
+
+
+def cmd_show(m, i, every=False):
+    """A card, the source paragraphs it is anchored to and what links to it. Long generated lists are cut to their first
+    lines, with a count; `--all` prints everything."""
     c = need(m, i)
-    print(relp(c.path, m.root) + "\n" + c.raw)
+    print(relp(c.path, m.root) + "\n" + (c.raw if every else condense(c.raw, c.id, concept=c.fam == "concept")))
     if c.fam == "evidence":
         bl = m.blocks(c.id[:4])
         for a in m.anchors(c):
             if a in bl: print(f"SOURCE {c.id[:4]} {a} (page {bl[a][0]}): {bl[a][1]}")
     if c.fam == "concept":
         hits = [x for x in m.cards.values() if c.id in m.terms(x) and not x.get("retired")]
-        print(f"USED BY {len(hits)} cards:")
-        for x in sorted(hits, key=lambda x: (x.fam != "page", x.id))[:60]: print(f"  {x.id}\t{x.type}/{x.status}\t{one(x.title, 110)}")
+        if every:
+            print(f"USED BY {len(hits)} cards:")
+            for x in sorted(hits, key=lambda x: (x.fam != "page", x.id)): print(f"  {x.id}\t{x.type}/{x.status}\t{one(x.title, 110)}")
+        else:
+            w = rarity(m)
+            top = sorted(hits, key=lambda x: (x.fam != "page", "KXVGHTSEADC".find(x.id[0]) if x.fam == "page" else 0, -card_score(m, x, {c.id}, w), x.id))[:15]
+            print(f"USED BY {len(hits)} cards" + (f" ({len(top)} shown: synthesis first, then the evidence most relied on; `ask` for a question, `show {c.id} --all` for every card)" if len(hits) > len(top) else "") + ":")
+            for x in top: print(f"  {x.id}\t{x.type}/{x.status}\t{one(x.title, 110)}")
     if c.fam == "source": print("EVIDENCE BY TYPE:", dict(Counter(x.type for x in m.evidence(c.id))))
     inbound = [(s_, r) for s_, r, d in m.edges() if d == c.id]
-    if inbound: print("LINKED FROM: " + "; ".join(f"{s_} ({r})" for s_, r in inbound))
+    if inbound:
+        cut = inbound if every or len(inbound) <= 20 else inbound[:20]
+        print("LINKED FROM: " + "; ".join(f"{s_} ({r})" for s_, r in cut) + (f"; … {len(inbound) - len(cut)} more (`--all`)" if len(cut) < len(inbound) else ""))
 
 def cmd_link(m, ids): print(" ".join(f"[[{need(m, i).name}]]" for i in ids))
 
 def cmd_find(m, args):
-    opt, words, it = {"--type": None, "--source": None, "--limit": "40"}, [], iter(args)
+    opt, words, it = {"--type": None, "--source": None, "--limit": "25"}, [], iter(args)
     for a in it:
         if a in opt: opt[a] = next(it, None)
         else: words.append(a.lower())
@@ -2340,7 +2558,17 @@ def cmd_find(m, args):
     order = {"page": 0, "concept": 1, "source": 2, "claims": 3, "evidence": 4, "reference": 5}  # any other family sorts last (issue #13)
     rows = [c for c in m.cards.values() if not c.get("retired") and all(any(x in c.raw.lower() for x in alt) for alt in alts)
             and (not opt["--type"] or c.type == opt["--type"]) and (not opt["--source"] or c.id.startswith(opt["--source"]))]
-    rows.sort(key=lambda c: (order.get(c.fam, 9), c.id)); lim = int(opt["--limit"])
+    w, fam_w = rarity(m), {"page": 1.5, "concept": 1.0, "claims": 0.6, "source": 0.5, "evidence": 0.0, "reference": -0.5}
+    def score(c):  # most relevant first: the concept itself, words in the title, a link to the concept, then the kind of card
+        sc, low = fam_w.get(c.fam, 0.0) + (EV_WEIGHT.get(c.type, 0.6) if c.fam == "evidence" else 0.0), c.title.lower()
+        for alt in alts:
+            con, plain_ = next((x[2:] for x in alt if x.startswith("[[")), None), [x for x in alt if not x.startswith("[[")]
+            if c.fam == "concept" and con == c.id: sc += 6
+            if any(x in low for x in plain_): sc += 3
+            if con and con in m.terms(c): sc += 1.5 + 0.3 * w(con)
+            sc += 0.2 * min(sum(c.raw.lower().count(x) for x in plain_), 5)
+        return sc + 0.3 * min(page_cites(m).get(c.id, 0), 3)
+    rows.sort(key=lambda c: (-score(c), order.get(c.fam, 9), c.id)); lim = int(opt["--limit"])
     for c in rows[:lim]: print(f"{c.id}\t{c.type}/{c.status or '-'}\t{one(c.title, 150)}")
     print(f"{len(rows)} hits" + (f" (showing {lim}; narrow with more words, --type or --source)" if len(rows) > lim else ""))
 
@@ -3396,9 +3624,10 @@ def cmd_facts(m, args):
         if x in S or y in S: print(f"no effect found: {x} → {y} in {' '.join(ns[:6])}")
     ks = [k for k in m.pages("K") if not k.get("retired") and S <= m.terms(k)]
     for k in ks: print(f"finding: {k.id} [{k.status}] {one(k.title, 140)}")
-    ev = sorted((c for c in m.evidence() if S <= m.terms(c)), key=lambda c: c.id)
-    for c in ev[:60]: print(f"evidence: {c.id} [{c.type}, {c.status}{', null' if c.get('null') else ''}] {one(c.title, 130)}")
-    if len(ev) > 60: print(f"evidence: … {len(ev) - 60} more (`mesh.py show {cids[0]}`)")
+    w_ = rarity(m)
+    ev = sorted((c for c in m.evidence() if S <= m.terms(c)), key=lambda c: (-card_score(m, c, S, w_), c.id))
+    for c in ev[:30]: print(f"evidence: {c.id} [{c.type}, {c.status}{', null' if c.get('null') else ''}] {one(c.title, 130)}")
+    if len(ev) > 30: print(f"evidence: … {len(ev) - 30} more, ranked lower (`mesh.py table {' '.join(cids)} --limit 0` lays out every one)")
     if not ev and len(cids) > 1: print("evidence: no card holds all of them; each concept's own cards: " + ", ".join(f"{c} {sum(1 for x in m.evidence() if c in m.terms(x))}" for c in cids))
     _a, free = logged_pairs(m)
     vs = [p for p in m.pages("VX") if not p.get("retired") and p.status in ("open", "explained") and m.terms(p) & S]
@@ -3564,10 +3793,10 @@ def cmd_table(m, args):
     study, its design and sample, the result, its conditions, how it was obtained, what limits it and the page.
     relations: every relation the brain holds to or from the concepts, with its direction, basis and evidence.
     definitions: how each source defines and measures the concept."""
-    o, rest, k = {"type": None, "source": None, "out": None}, [], 0
+    o, rest, k = {"type": None, "source": None, "out": None, "limit": None}, [], 0
     every = "--all" in args; args = [a for a in args if a != "--all"]
     while k < len(args):
-        if args[k] in ("--type", "--source", "--out") and k + 1 < len(args): o[args[k][2:]] = args[k + 1]; k += 2
+        if args[k] in ("--type", "--source", "--out", "--limit") and k + 1 < len(args): o[args[k][2:]] = args[k + 1]; k += 2
         else: rest.append(args[k]); k += 1
     mode = next((a for a in rest if a in ("evidence", "relations", "definitions")), "evidence")
     targets = [a for a in rest if a not in ("evidence", "relations", "definitions")]
@@ -3590,6 +3819,14 @@ def cmd_table(m, args):
                         if m.cards[t].fam == "evidence" and t not in seen and not m.cards[t].get("retired"): seen.add(t); rows_.append((m.cards[t], {"support": "for", "against": "against", "sides": "side"}.get(key, key)))
         rows_ = [(c, r) for c, r in rows_ if (not o["type"] or c.type == o["type"]) and (not o["source"] or c.id.startswith(o["source"]))]
         if not rows_: sys.exit(f"table: no evidence cards for {title}" + ("" if every else " (try --all for methods, definitions and limitations too)"))
+        lim, rows_all = int(o["limit"]) if o["limit"] is not None else (0 if o["out"] else 25), rows_
+        if lim and len(rows_) > lim:  # the most relevant rows, taken from each source in turn so no source is crowded out
+            Q, w = (set(cons) if page is None else m.terms(page)), rarity(m)
+            by = defaultdict(list)
+            for r in sorted(rows_, key=lambda r: (r[1] not in ("for", "against"), -card_score(m, r[0], Q, w), r[0].id)): by[r[0].id[:4]].append(r)
+            pick, queues = [], [by[sid] for sid in sorted(by, key=lambda sid: (-card_score(m, by[sid][0][0], Q, w), sid))]
+            while len(pick) < lim: pick += [q_.pop(0) for q_ in queues if q_][:lim - len(pick)]
+            rows_ = pick
         qual = defaultdict(list)
         for e in m.evidence():
             for v in e.all("qualifies"):
@@ -3607,7 +3844,8 @@ def cmd_table(m, args):
             body.append(row)
         head = ["Study", "Design", "Sample", "Card"] + (["Role"] if page is not None else []) + ["Statement", "Result", "Conditions", "How obtained", "Limits", "Where"]
         L += [f"# Evidence table: {title}", "", f"One row per evidence card ({len(body)}). Built by `mesh.py table` on {TODAY} from the brain's cards: check a value on its page before quoting it, and read 'not recorded' as missing from the brain, not from the paper.", ""] + md_table(head, body) + [""]
-        srcs = sorted({c.id[:4] for c, _r in rows_})
+        if len(rows_) < len(rows_all): L.insert(L.index(f"# Evidence table: {title}") + 2, f"Showing {len(rows_)} of {len(rows_all)} rows: the most relevant from each source in turn. `--limit 0` for every row, or `--out <file>` to save them all.")
+        srcs = sorted({c.id[:4] for c, _r in rows_all})
         gs = independent_groups(m, srcs, waived_pairs(m, page) if page is not None and page.id[0] == "K" else ())
         L += [f"**Independence.** {len(srcs)} source{'s' * (len(srcs) != 1)} in {len(gs)} independent group{'s' * (len(gs) != 1)}: " + " | ".join(" + ".join(g) for g, _w in gs) + "."] + [f"- Not independent: {w_}." for _g, why in gs for w_ in why] + [""]
         used = sorted({d for p in srcs if p in m.cards for d, _n in study(m.cards[p])["designs"] if d in DESIGNS})
@@ -4458,7 +4696,7 @@ def relevance(m, a, b, w):
     return 0.75 * sum(w(t) for t in sa & sb) / den + 0.25 * jac(words(a), words(b))
 
 
-def cmd_place(m, target, top=4, floor=0.15):
+def cmd_place(m, target, top=4, floor=0.15, by_card=False):
     """Where new evidence goes. For each observation, claim, model, limitation, assumption, question or oddity of a
     source (or one card): the findings, tensions, gaps and hypotheses it most likely bears on, and what each match
     calls for: support within a finding's scope, a sibling finding outside it, a tension where it conflicts."""
@@ -4466,7 +4704,8 @@ def cmd_place(m, target, top=4, floor=0.15):
     pages, w = m.pages("KXGHTV"), rarity(m)
     cited = {p.id: {t for k in PAGES[p.id[0]][3] for v in p.all(k) for t in m.ids(v)[0]} for p in pages}
     var = lambda c: m.pair(c.get("value"))[0] if c.get("value") else None
-    unplaced = []
+    unplaced, grouped = [], defaultdict(list)
+    group = not by_card and re.fullmatch(r"P\d{3}", target)
     for a in [c for c in cards if c.type in ("observation", "claim", "model", "limitation", "assumption", "question", "oddity") and not c.get("retired")]:
         rows = []
         for p in pages:
@@ -4477,7 +4716,7 @@ def cmd_place(m, target, top=4, floor=0.15):
         if not rows:
             if a.type in ("observation", "claim", "model"): unplaced.append(a)
             continue
-        print(f"{a.id} [{a.type}] {one(a.title, 100)}")
+        if not group: print(f"{a.id} [{a.type}] {one(a.title, 100)}")
         for sc, p in rows:
             if a.id in cited[p.id]: act = "already cited here"
             elif p.id[0] == "K":
@@ -4492,7 +4731,18 @@ def cmd_place(m, target, top=4, floor=0.15):
             elif p.id[0] == "G": act = "may narrow or close this gap: compare it with the gap's 'What would close it'"
             elif p.id[0] == "T": act = "bears on this theory: is it something the theory explains, or something it forbids? Cite the finding it joins in explains:: or conflicts_with::"
             else: act = "bears on this hypothesis: does it support or refute one of its predictions?"
-            print(f"   {sc:.2f}  {p.id} [{p.type}/{p.status}] {one(p.title, 80)}\n         -> {act}")
+            if group: grouped[p.id].append((sc, a, act))
+            else: print(f"   {sc:.2f}  {p.id} [{p.type}/{p.status}] {one(p.title, 80)}\n         -> {act}")
+    if group and grouped:
+        print(f"Where {target}'s evidence goes, by the card it bears on (`place {target} --by-card` lists it card by card):")
+        for pid in sorted(grouped, key=lambda k_: (-len(grouped[k_]), k_)):
+            p, rows_ = m.cards[pid], grouped[pid]
+            print(f"\n{pid} [{p.type}/{p.status}] {one(p.title, 90)} — {len(rows_)} cards")
+            same = defaultdict(list)
+            for sc, a, act in sorted(rows_, key=lambda r: (-r[0], r[1].id)):
+                if act.startswith(("CONFLICTS", "OUTSIDE")): print(f"   {a.id} ({sc:.2f}) -> {act}")
+                else: same[act].append(f"{a.id} ({sc:.2f})")
+            for act, ids_ in same.items(): print(f"   -> {act}: " + ", ".join(ids_))
     due = review_due(m, target) if re.fullmatch(r"P\d{3}", target) else []
     if due or re.fullmatch(r"P\d{3}", target):
         print(f"\nDecisions to record ({len(due)}): open gaps, tensions and hypotheses that {target} bears on. For each, read it against the source and write on its card"
@@ -5103,6 +5353,8 @@ with the tooling in `tools/mesh.py`. The method lives in GitHub `tcpearce/brain-
 2. **Sync before anything else:** `python3 tools/mesh.py sync` (pulls from GitHub, rebuilds, commits and pushes any
    leftover local work). Use `python` instead of `python3` on Windows.
 3. Work through the tooling and the skills, never around them. `python3 tools/mesh.py help` lists the commands.
+   Answer questions with `python3 tools/mesh.py ask "<question>"`, then open only the cards the answer needs; never
+   read a concept hub or a file under `index/` whole (access rules, section 2: keeping the context small).
 4. **Sync when done:** `python3 tools/mesh.py sync "<what changed>"`. Every local change ends up on GitHub; never
    leave the vault with uncommitted work, and never force-push.
 
@@ -5755,11 +6007,13 @@ id <P|K|X|G|H|E|D|C|R|L|P###> next free id                   concept <name>     
 split <batch.md> [--update]   write many cards from one file (`=== <file name>` starts each card)
 build                         expand links to full names, check, rebuild index/, source lists and MAP.md
 check [P###]                  validate everything (or one source)
-find <words> [--type t] [--source P###] [--limit n]   search all cards (concept aliases expand)
-show <id|concept>             a card, its source paragraphs and what links to it
+ask "<question>" [--budget n] [--concepts a b] [--source P###]   what the brain holds on a question, best first, in about n tokens
+                              (default 2500): named cards, conclusions, hub facts, relations, ranked evidence, unread parts
+find <words> [--type t] [--source P###] [--limit n]   search all cards, most relevant first (concept aliases expand; 25 shown)
+show <id|concept> [--all]     a card, its source paragraphs and what links to it; long generated lists cut to their first lines unless --all
 link <id> [<id> ...]          the full [[file name]] link for each id
 matrix <var> [<var>] [--all]  cross-tab observations by condition (also: type, source)
-table <concept ...|K###|X###|V###|G###> [evidence|relations|definitions] [--type t] [--source P###] [--all] [--out file]
+table <concept ...|K###|X###|V###|G###> [evidence|relations|definitions] [--type t] [--source P###] [--all] [--limit n] [--out file]
                               evidence table (one row per card: study, design, sample, result, conditions, limits, page); the relations a concept has, with basis; how each source defines and measures it
 independence [K###|P### P### ...]  the independent groups of sources behind each finding (shared data sets or authors count once)
 draft <file> [--out file]     worklist for auditing a draft against the brain: per sentence, the works cited, concepts, numbers, likeliest cards and what to check
@@ -5774,7 +6028,7 @@ priority [<id> <high|normal|low> "<why>" [--sync]]  set a card's priority with i
 sync ["<message>"]            pull from GitHub, build, commit and push: at the start and end of every session
 refs <P###> [--force]         extract a source's reference list into P###_refs.md, with where each reference is cited
 cite <P###>                   turn the checked reference list into reference cards (references/R####), one per cited work
-place <P###|id>               where new evidence goes: findings, tensions, gaps and hypotheses each card bears on, and what each match calls for
+place <P###|id> [--by-card]   where new evidence goes: findings, tensions, gaps and hypotheses each card bears on, and what each match calls for
 equations <P###> [--si]       displayed equations of a source, with boxes to crop (figure ... eq4) and transcribe into LaTeX
 latex <card id>               render a card's equation:: lines beside the cropped original, to check the transcription
 staged                        concepts proposed by extraction agents, with the existing concepts they resemble
@@ -5819,7 +6073,7 @@ def main():
     if c == "anchor": cmd_anchor(m, a[0], [x for x in a[1:] if not x.startswith("--")], "--force" in a, "--si" in a, "--correction" in a)
     elif c == "figure": cmd_figure(m, a)
     elif c == "progress": cmd_progress(m, a[0])
-    elif c == "place": cmd_place(m, a[0])
+    elif c == "place": cmd_place(m, a[0], by_card="--by-card" in a)
     elif c == "refs": cmd_refs(m, a[0], "--force" in a)
     elif c == "claims": cmd_claims(m, a[0])
     elif c == "priority": cmd_priority(m, a)
@@ -5845,7 +6099,8 @@ def main():
     elif c == "id": cmd_id(m, a[0])
     elif c == "split": cmd_split(m, a[0], "--update" in a)
     elif c == "check": notes = m.check(a[0] if a else None); report(m, notes); sys.exit(1 if m.err else 0)
-    elif c == "show": cmd_show(m, " ".join(a))
+    elif c == "show": cmd_show(m, " ".join(x for x in a if x != "--all"), every="--all" in a)
+    elif c == "ask": cmd_ask(m, a)
     elif c == "linked": cmd_linked(m, a)
     elif c == "find": cmd_find(m, a)
     elif c == "concept": cmd_concept(m, " ".join(a))

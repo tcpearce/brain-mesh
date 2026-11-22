@@ -49,6 +49,15 @@ Each miner reads only the Codes. Scores rank signals within one miner, never acr
 
 `python3 tools/mesh.py theories` prints the whole theory × finding matrix.
 
+**Work the miners in this order.** Scores do not compare across miners, so the order is by what each settles:
+
+1. **Check the ground:** `contradictions` (log or dismiss every candidate), `definitions`, `constraints`, `links`. Before building on a comparison, make sure the sources mean the same thing by the term, measure it the same way, and agree on the numbers.
+2. **Explain disagreements:** `moderators`, then the contradiction pass (section 3).
+3. **Extend what holds:** `transfer`, `implied`, `bridges`, `analogies`.
+4. **Stress the structure:** `assumptions`, `oddities`, `genealogy`, `theories`.
+
+A signal from a later group that rests on an unsettled one from an earlier group waits for it.
+
 ## 3. Passes Claude runs by reading
 
 Some of the best ideas need reading, not counting. Each pass produces proposals like a miner, with `- miner::` naming the pass and no stamp.

@@ -2,6 +2,11 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.15.1 (2026-11-22)
+
+- README: a guide to using the tools well: the loop from adding papers to writing, what to ask for at each stage, the order to work the discovery miners in, how often to run each thing, what to expect at each vault size, and habits that pay.
+- `brain-mesh-discover`: the order to work the miners in (check the ground, explain disagreements, extend what holds, stress the structure).
+
 ## 1.15.0 (2026-11-22)
 
 What kind of study each source is, whether sources are independent, how far a relation is causal, and writing from the brain.

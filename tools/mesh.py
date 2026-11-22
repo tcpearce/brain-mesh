@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.20.1"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.20.2"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -632,9 +632,14 @@ class Mesh:
         var = s.pair(c.get("value"))[0] if c.get("value") else None
         if var and s.cards[var].get("kind") == "count": return None  # counts of different things (sample-size) are never compared
         return (c.type, var, tuple(sorted((w or "?", v) for w, v, _t in s.whens(c)))) if var else None
-    def num(s, c):
-        mo = re.search(r"[-+−]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?", plain(s.pair(c.get("value"))[1])) if c.get("value") else None
+    def num(s, c):  # the value's first number that stands on its own: not a digit inside a name such as consOR1, TM3 or 6x55 (issue #34)
+        mo = re.search(r"(?<![A-Za-z0-9.])[-+−]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?(?![A-Za-z0-9])", plain(s.pair(c.get("value"))[1])) if c.get("value") else None
         return mo.group(0) if mo else ""
+    def same_value(s, a, b):  # the same number; or, with no number on either side, the same words (issue #34)
+        na, nb = s.num(a), s.num(b)
+        if na or nb: return na == nb
+        words = lambda c: " ".join(plain(s.pair(c.get("value"))[1]).lower().split())
+        return words(a) == words(b)
     def score(s, a, b):  # similarity of two cards: shared concepts, title words, same variable and conditions
         sa, sb = s.sig(a), s.sig(b)
         return round(0.5 * jac(s.terms(a), s.terms(b)) + 0.35 * jac(toks(a.title), toks(b.title)) + (0.15 if sa and sa == sb else 0), 2)
@@ -1139,6 +1144,13 @@ class Mesh:
                 if root not in done and not (seeds & done):
                     W.append(f"{d}: rests on {root}, which is retracted. Re-grade, re-open or correct it as though that evidence were absent, then add '- retraction_checked:: {root} — <what changed>'")
 
+    def recomputes(s, a, b):
+        """One card is Claude's own reanalysis of the source's data (origin:: claude) and says which card of the
+        source it bears out (supports:: or replicates::). It repeats that card's number on purpose, so it is not a duplicate."""
+        for x, y in ((a, b), (b, a)):
+            if x.get("origin").split()[:1] == ["claude"] and any(y.id in s.ids(v)[0] for k in ("supports", "replicates") for v in x.all(k)): return True
+        return False
+
     def dupes(s, E, W):
         """Duplicate rules. Same source + same statement is a duplicate; other source + same statement must be linked, never merged."""
         ev, by_sig, by_src = s.evidence(), defaultdict(list), defaultdict(list)
@@ -1150,7 +1162,7 @@ class Mesh:
                 for y in range(x + 1, len(g)):
                     a, b = g[x], g[y]
                     if a.id[:4] == b.id[:4]:
-                        if s.num(a) == s.num(b): E.append(f"{b.id}: duplicates {a.id} (same source, variable, value and conditions); keep one card and add the second anchor to it")
+                        if s.same_value(a, b) and not s.recomputes(a, b): E.append(f"{b.id}: duplicates {a.id} (same source, variable, value and conditions); keep one card and add the second anchor to it")
                     elif not s.linked(a, b): W.append(f"{b.id} and {a.id}: parallel results from different sources (same variable and conditions) are not linked; add replicates/contradicts/extends with a reason, or cite both in one finding")
         for cs in by_src.values():
             for x in range(len(cs)):
@@ -1166,6 +1178,7 @@ class Mesh:
                     if jac(s.terms(g[x]), s.terms(g[y])) >= 0.99 and not s.linked(g[x], g[y]): W.append(f"{g[y].id}: repeats the background claim already carded as {g[x].id} ({ref}); add '- also_cited_by::' to {g[x].id} and retire this card")
         con, idx = [c for c in s.cards.values() if c.fam == "concept"], defaultdict(set)
         names = {c.id: {" ".join(str(a).lower().split()) for a in [c.id.replace("-", " "), c.title] + list(c.fm.get("aliases") or [])} for c in con}
+        deflinks = {c.id: set(s.ids(re.sub(r".*?\*\*Definition\.\*\*\s*", "", c.prose(), count=1, flags=re.S).split("\n")[0])[0]) if "**Definition.**" in c.prose() else set() for c in con}
         for c in con:
             for w in {w.rstrip("s") for n in names[c.id] for w in n.split() if len(w) > 3}: idx[w].add(c.id)
         seen = set()
@@ -1174,7 +1187,8 @@ class Mesh:
                 for b in sorted(group):
                     if a < b and (a, b) not in seen:
                         seen.add((a, b))
-                        if any(difflib.SequenceMatcher(None, x.rstrip("s"), y.rstrip("s")).ratio() >= 0.9 for x in names[a] for y in names[b]): W.append(f"concepts {a} and {b} have near-identical names; merge them, or say in each definition how they differ")
+                        if b in deflinks[a] and a in deflinks[b]: continue  # each definition names the other: told apart
+                        if any(difflib.SequenceMatcher(None, x.rstrip("s"), y.rstrip("s")).ratio() >= 0.9 for x in names[a] for y in names[b]): W.append(f"concepts {a} and {b} have near-identical names; merge them, or say in each definition how they differ, linking the other ([[{b}]] in {a}'s, [[{a}]] in {b}'s)")
         pg = s.pages("KXGHS")
         for x in range(len(pg)):
             for y in range(x + 1, len(pg)):
@@ -1819,7 +1833,7 @@ def cmd_split(m, batch, update=False):
             try: wr(tmp, content); new = Card(tmp, "evidence", cid)
             finally:
                 if os.path.exists(tmp): os.remove(tmp)
-            twin = next((c for c in m.evidence(ev.group(1)) + fresh if c.id[:4] == cid[:4] and m.sig(new) and m.sig(c) == m.sig(new) and m.num(c) == m.num(new)), None)
+            twin = next((c for c in m.evidence(ev.group(1)) + fresh if c.id[:4] == cid[:4] and m.sig(new) and m.sig(c) == m.sig(new) and m.same_value(c, new) and not m.recomputes(c, new)), None)
             if twin: skipped.append(f"{name}: duplicates {twin.id} '{one(twin.title, 70)}' (add an anchor to that card instead)"); continue
             fresh.append(new)
         if "\n## Codes" not in "\n" + content: content += "\n## Codes\n"

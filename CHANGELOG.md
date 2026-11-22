@@ -2,6 +2,14 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.20.2 (2026-11-22)
+
+Three false alarms of `check` met in a six-paper batch (issue #34).
+
+- **Duplicates read the value's number, not a digit inside a name** (issue #34). The duplicate test compared the first number in each card's value; in `= unchanged relative to consOR1` that was the `1` of `consOR1`, and two values with no number at all compared equal. A number must now stand on its own (not inside `consOR1`, `TM3` or `6x55`), and two values with no number are the same only when their words are. `split` uses the same test when it skips a card that duplicates one already written.
+- **A reanalysis is not a duplicate of the card it bears out.** A card of Claude's own recomputation from a source's data (`origin:: claude`) that `supports::` or `replicates::` a card of the same source repeats that card's number on purpose: a trial file reproducing a paper's d′ of 2.02, for example. `check` no longer calls it a duplicate. The same card in the authors' voice still is.
+- **Near-identical concept names can be told apart.** The warning asked to "say in each definition how they differ" but never read the definitions, so `class-i-odorant-receptor` and `class-ii-odorant-receptor` were warned of forever. When each definition links the other concept, the pair is taken as told apart; the warning now says so.
+
 ## 1.20.1 (2026-11-22)
 
 Lessons from a six-paper batch with parallel agents (`brain-mesh-batch`, `brain-mesh-add-paper`).

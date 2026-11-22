@@ -15,7 +15,7 @@ Read `brain-mesh` first. Find the vault and run `python3 tools/mesh.py build`.
 2. **Brain gap.** The literature answers it but the brain does not hold the paper. Response: a reading list, then ingestion.
 3. **Research gap.** A logged search finds no answer. Response: it enters the research-gaps document, and experiments are proposed from it.
 
-Skipping a rung is the main way this goes wrong: proposing an experiment that page 7 of a paper already in the vault has answered.
+Skipping a rung is the main way this goes wrong: proposing an experiment that page 7 of a paper already in the vault has answered. For one idea, `python3 tools/mesh.py report novelty "<the idea>"` lays the rungs out: passages in held papers that no card covers, unread works cited on its concepts, and a starting query (`brain-mesh-report`).
 
 ## 1. Scan for candidates
 

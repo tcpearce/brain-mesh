@@ -40,5 +40,6 @@ finds it in the papers already in the brain.
 `MAP.md` (start here) · `concepts/` hubs · `sources/P###-…/` papers, their evidence cards and claims cards ·
 `findings/` `tensions/` `gaps/` synthesis · `hypotheses/` `experiments/` workbench · `data-sets/` · `code/` ·
 `references/` cited works and `library.bib` · `contradictions/` and `ledger/contradictions.md` the contradictions
-register · `ledger/` changelog, reading queue, checksums · `notes/` the user's own.
+register · `ledger/` changelog, reading queue, checksums · `reports/` dated reports
+(`mesh.py report`) · `notes/` the user's own.
 <!-- brain-mesh:end -->

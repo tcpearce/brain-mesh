@@ -27,6 +27,8 @@ Give the user a shortlist. For each candidate state: what would be done; why, ci
 
 The brain holds only what was put into it. Before calling an idea novel, make sure its gap has been through the ladder in `brain-mesh-gaps`.
 
+Two reports help here (`brain-mesh-report`): `report frontier` ranks everything on this list in one table, and `report novelty "<the idea>"` checks a proposed study against the brain, rung by rung, before any design work.
+
 ## 2. Hypothesis cards
 
 ```markdown

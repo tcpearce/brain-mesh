@@ -103,7 +103,7 @@ Log the result, for example `audit: 30 cards across P004, P011, P019; 1 correcte
 
 ## Running it on a schedule
 
-Where scheduled tasks are available and the vault is somewhere a scheduled run can reach (a git repository, say), offer a weekly or monthly check. The run clones the vault, runs `build`, `health` and `gaps` in its own copy, and reports the queues and any errors. It never commits, pushes or edits cards: a scheduled run reports, and the next working session acts on the report.
+Where scheduled tasks are available and the vault is somewhere a scheduled run can reach (a git repository, say), offer a weekly or monthly check. The run clones the vault, runs `build`, `health` and `gaps` in its own copy, and reports the queues and any errors. It may also assemble the what-changed digest (`report changes`) in its own copy and include it. It never commits, pushes or edits cards: a scheduled run reports, and the next working session acts on the report.
 
 ## Report
 

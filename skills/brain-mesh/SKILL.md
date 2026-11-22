@@ -36,6 +36,7 @@ These instructions and the tooling live in the GitHub repository `tcpearce/brain
 | Hypotheses, experiment design, registered predictions, judging outcomes | `brain-mesh-experiment` |
 | Mine the brain for new hypotheses and links with the user; theory, analogy and seed cards; recheck them as sources arrive | `brain-mesh-discover` |
 | Write from the brain (a literature review, a background or related-work section) or audit a draft against it, claim by claim | `brain-mesh-write` |
+| Dated reports for deciding what to do next: frontier map, contradiction dossier, theory scorecard, causal map, robustness audit, methods and data landscape, novelty check, what-changed digest | `brain-mesh-report` |
 | Health checks, merges, corrections, retractions, periodic audits | `brain-mesh-housekeeping` |
 
 ## Finding the vault
@@ -79,6 +80,7 @@ data-sets/D###-<slug>.md  data-set cards: every data set a study uses
 code/C###-<slug>.md       code cards: every repository or software package a study uses
 theories/T###-...         analogies/A###-...       seeds/S###-...   discovery cards (brain-mesh-discover)
 contradictions/V###-...   the contradictions register: one card per pair or set of cards that cannot both hold
+reports/<date>-<kind>.md  dated reports assembled by `mesh.py report` (snapshots, not cards, never sources)
 gaps/RESEARCH-GAPS.md     generated research-gaps document
 ledger/                   CHANGELOG.md, lenses.md, reading-queue.md (with a generated list of what to read next), contradictions.md (the generated register, and the candidates judged not to be contradictions), checksums.txt, removed.md (deleted ids, never reused), signals.md (rejected discovery signals), proposals.md (proposals awaiting the user)
 index/                    generated lookup tables (cards.tsv, edges.tsv, coverage.tsv, marks.json ...)

@@ -2,6 +2,21 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.16.0 (2026-11-22)
+
+Reports: eight dated documents assembled from the cards, for deciding what to do next.
+
+- **`report <kind>`** writes `reports/<date>-<kind>.md`, every line linked to the cards it rests on, with a **Reading** section for Claude's judgement that a rerun on the same day keeps. `report all` writes the seven that need no argument; `report` lists the kinds and what has been written; `MAP.md` links the latest of each kind.
+  - `frontier [--focus concept] [--top n]`: open contradictions, tensions, gaps by rung, hypotheses with no experiment, experiments not yet run, seeds and the strongest discovery signals, ranked, each with what would settle it and what works on it.
+  - `contradictions [V001 X001 ...]`: a dossier for each open or explained contradiction and tension: the sides as an evidence table, what differs between them (conditions, methods, designs, samples, definitions, independence), what the miners point at, ways out, what works on it, decisions so far.
+  - `theories`: each theory against each finding, what separates them, pairs nothing separates, findings none explains, discriminating predictions; with no theories, the claims a theory pass would start from.
+  - `causal [--focus concept]`: every relation by basis, drawn as a graph; relations that carry weight without a test; chains with an untested link; effects looked for and not found.
+  - `robustness`: each finding's sources, independent groups, designs and weak points; replication priorities; second-hand claims by what rests on them; load-bearing assumptions; each source's unread parts.
+  - `methods`: designs and samples, techniques and who uses them, quantities not measured alike, methods untried elsewhere, data sets and code, and the accessible data sets that share concepts with each open question.
+  - `novelty "<idea>" | <S001> [--concepts a b]`: the cards that already hold the idea's concepts together, whether it has been asked, what it must respect, then the three rungs: uncarded passages in held papers, unread works cited on its concepts, a starting query.
+  - `changes [--since date|P012]`: new cards, status changes with reasons, decisions, priority changes, the discovery recheck, the log, and what waits for the user.
+- New skill `brain-mesh-report`: what each report holds, the rules (a snapshot, never a source), what the Reading of each says, and which skill acts on what a report shows. The main skill, access, discover, experiment, gaps, housekeeping, write, the loader and the README point to it.
+
 ## 1.15.2 (2026-11-22)
 
 - `cite` run again no longer makes a second reference card for a work it cannot key (no DOI, volume or title of three long words, as for a conference paper printed without its title). It now also matches the card whose `cited_by::` line already records the same source and reference number (issue #20).

@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.15.2"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.16.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -2108,6 +2108,10 @@ def cmd_build(root):
     sect("Analogies", m.pages("A"))
     sect("Seeds to judge (brain-mesh-discover)", [c for c in m.pages("S") if c.status in ("new", "developing")])
     sect("Sources", srcs)
+    latest = {}
+    for p_ in sorted(glob.glob(J(root, "reports", "*.md"))):
+        b = os.path.basename(p_)[:-3]; latest[re.sub(r"^\d{4}-\d\d-\d\d-", "", b).split("-")[0]] = b
+    if latest: L += ["**Reports** (the latest of each kind; `mesh.py report` writes them): " + " · ".join(f"[[{b}|{REPORT_KINDS.get(kd, (kd,))[0]}, {b[:10]}]]" for kd, b in latest.items()), ""]
     thin = [f"{r[0]} {r[1]} = {r[2]}" for r in cov if len(r) > 2 and r[2] != "full"]
     L += [f"**Not fully extracted:** {'; '.join(thin[:30]) or 'nothing'}", ""]
     if front: L += ["**Most-cited sources not yet in the brain:** " + "; ".join(f"{k} ({len(v)})" for k, v in front[:8]), ""]
@@ -3752,6 +3756,577 @@ def cmd_draft(m, args):
     else: print(out, end="")
 
 
+# ---- 1.16.0: reports, each assembled from the cards into one dated document under reports/ ----
+REPORT_KINDS = {
+    "frontier": ("Frontier map", "Where is a discovery most likely?"),
+    "contradictions": ("Contradiction dossier", "Why do these results disagree, and what would settle it?"),
+    "theories": ("Theory scorecard", "Which account is winning?"),
+    "causal": ("Causal map", "What is known to cause what, and how do we know?"),
+    "robustness": ("Robustness audit", "What do we believe on thin evidence?"),
+    "methods": ("Methods and data landscape", "What could be done with what already exists?"),
+    "novelty": ("Novelty check", "Is this idea new?"),
+    "changes": ("What-changed digest", "What moved in the brain?"),
+}
+BASIS_RANK = {"tested": 0, "data": 1, "correlational": 2, "proposed": 3, "inferred": 4, "unstated": 5}
+READING_TODO = "(to write: three to six sentences on what this report shows and what to do about it, each resting on lines below)"
+
+
+def rl(c, label=None): return f"[[{c.name}|{label or (c.title if c.fam == 'concept' and c.title else c.id)}]]"
+
+
+def linkify(m, text, n=300):
+    """A miner's signal text, cut to n characters without breaking a link, with every card id turned into a link."""
+    text = one(text, n)
+    if text.count("[[") > text.count("]]"): text = text[:text.rfind("[[")].rstrip() + "…"
+    ids_ = re.compile(r"\b(P\d{3}-\d{3}|P\d{3}|R\d{4}|[" + PG + r"]\d{3})\b")
+    return "".join(seg if seg.startswith("[[") else ids_.sub(lambda mo: rl(m.cards[mo.group(1)]) if mo.group(1) in m.cards else mo.group(1), seg) for seg in re.split(r"(\[\[[^\]]*\]\])", text))
+
+
+def card_section(c, *names):
+    """The text of the first of these parts a card has: a '## Name' section or a '**Name.**' paragraph."""
+    body = c.prose()
+    for name in names:
+        mo = re.search(r"^## " + re.escape(name) + r"\s*\n(.*?)(?=^## |\Z)", body, re.S | re.M)
+        if not mo: mo = re.search(r"\*\*" + re.escape(name) + r"\.?\*\*\.?[ \t]*(.+?)(?=\n\s*\n|\n\*\*|\Z)", body, re.S)
+        if mo and mo.group(1).strip() and "(to write" not in mo.group(1): return " ".join(re.sub(r"^\s*[-*]\s+", "", mo.group(1), flags=re.M).split())
+    return ""
+
+
+def unread_units(s_):
+    """Units of a source its coverage lines say were not read in full (a supplement the source does not have is not one)."""
+    rows = [[x.strip() for x in v.split("|")] for v in s_.all("coverage")]
+    return [r[0] for r in rows if len(r) > 1 and r[1] != "full" and not (r[1] == "none" and re.search(r"supplement|\bSI\b", r[0], re.I))]
+
+
+def working_on(m, cid):
+    """Hypotheses, theories, seeds, experiments, analogies, tensions and gaps that link a card."""
+    return sorted(p.id for p in m.pages("HTSEAXG") if p.id != cid and not p.get("retired") and any(cid in m.ids(v)[0] for k in PAGES[p.id[0]][3] + UNIVERSAL for v in p.all(k)))
+
+
+def fresh_signals(m, miners=None):
+    """Discovery signals that are neither housekeeping, nor rejected, nor already held by a stamped card: {miner: rows}."""
+    rows = mine(m, miners or MINERS)[0]
+    skip = set(judged(m)) | {k for _c, k, *_r in stamps(m)}
+    return {mn: [r for r in rs if r[1] not in skip and not any(r[1].startswith(h) for h in HOUSEKEEPING)] for mn, rs in rows.items()}
+
+
+def write_report(m, kind, slug, L, subject=""):
+    """Write reports/<date>-<kind>[-slug].md. Run again on the same day, it keeps the Reading already written."""
+    title, question = REPORT_KINDS[kind]
+    name = f"{TODAY}-{kind}" + (f"-{slug}" if slug else "")
+    p = J(m.root, "reports", name + ".md")
+    reading = READING_TODO
+    if os.path.exists(p):
+        mo = re.search(r"^## Reading\s*\n(.*?)(?=^## )", rd(p), re.S | re.M)
+        if mo and mo.group(1).strip() and "(to write" not in mo.group(1): reading = mo.group(1).strip()
+    nsrc, nev = sum(1 for c in m.cards.values() if c.fam == "source"), len(m.evidence())
+    head = ["---", "type: report", f"kind: {kind}", f"date: {TODAY}", "---", f"# {title}" + (f": {subject}" if subject else ""), "", f"*{question}*", "",
+            f"{m.cfg.get('name', 'Brain mesh')} · {TODAY} · assembled by `mesh.py report {kind}` (tooling {VERSION}) from {nsrc} sources, {nev} evidence cards and {len(m.pages(PG))} synthesis and workbench cards. "
+            "A snapshot: it does not change when the brain does, and it is not a source. Every line links the cards it rests on.", "", "## Reading", "", reading, ""]
+    os.makedirs(J(m.root, "reports"), exist_ok=True)
+    wr(p, "\n".join(head + L).rstrip("\n") + "\n")
+    print(f"written: reports/{name}.md ({len(L)} lines)" + (" — its Reading is still to write" if reading == READING_TODO else " — Reading kept"))
+    return p
+
+
+def ev_cells(m, c):
+    """Table cells for one evidence card: study, design, sample, card, statement, result, conditions, how obtained, where."""
+    src = m.cards.get(c.id[:4]); st = study(src) if src else {"designs": [], "sample": ""}
+    how = [rl(m.cards[t]) for v in c.all("obtained_by") + c.all("based_on") for t in m.ids(v)[0]]
+    return [f"{short_cite(src)} {rl(src)}" if src else c.id[:4], ", ".join(d for d, _n in st["designs"]) or "not recorded", one(plain(st["sample"] or "not recorded"), 70), rl(c),
+            f"{one(plain(c.title), 120)} ({c.type}, {c.status}{', null' if c.get('null') else ''})", "; ".join(one(plain(v), 90) for v in c.all("value")) or "—",
+            "; ".join(f"{w_ or '?'} = {v_}" for w_, v_, _t in m.whens(c)) or "—", ", ".join(how) or "—", page_of(m, c)]
+EV_HEAD = ["Study", "Design", "Sample", "Card", "Statement", "Result", "Conditions", "How obtained", "Where"]
+
+
+def report_frontier(m, focus=None, top=25):
+    items = []
+    def add(kind, base, c=None, text="", settle="", cs=(), working=(), key=""):
+        cs = set(cs) or (m.terms(c) if c is not None else set())
+        if focus and focus not in cs: return
+        if c is None and cs and all(m.level(t) == "low" for t in cs if t in m.cards): return  # a signal only about low-priority concepts is never raised
+        w_ = FOCUS_W.get(m.level(c.id), 1.0) if c is not None else max([FOCUS_W.get(m.level(t), 1.0) for t in cs if t in m.cards] or [1.0])
+        dep = len(m.dependants({c.id})) if c is not None else 0
+        items.append({"kind": kind, "c": c, "text": text or one(plain(c.title), 140), "settle": settle, "working": list(working), "dep": dep, "key": key,
+                      "score": round(base * w_ + min(1.5, 0.25 * dep), 2), "prio": m.level(c.id) if c is not None else {2.0: "high", 1.5: "elevated", 0.5: "low"}.get(w_, "normal")})
+    live = lambda pre: sorted((p for p in m.pages(pre) if not p.get("retired")), key=lambda p: p.id)
+    for p in live("V"):
+        if p.status == "open": add("open contradiction", 5, p, settle=card_section(p, "Ways out"), working=working_on(m, p.id))
+    for p in live("X"):
+        if p.status == "open": add("open tension", 4.5, p, settle=card_section(p, "What would settle it", "Possible explanations"), working=working_on(m, p.id))
+    rung = {"confirmed": ("research gap (a logged search found no answer)", 5), "planned": ("research gap with an experiment planned", 3),
+            "fillable": ("gap with papers waiting to be read", 3), "open": ("gap not yet searched", 2.5)}
+    for p in live("G"):
+        if p.status in rung: add(rung[p.status][0], rung[p.status][1], p, settle=card_section(p, "What would close it"), working=working_on(m, p.id))
+    for p in live("H"):
+        if p.status == "open":
+            tests = [e for e in working_on(m, p.id) if e[0] == "E"]
+            add("hypothesis with no experiment" if not tests else "hypothesis under test", 3.5 if not tests else 2, p, settle=card_section(p, "Predictions"), working=working_on(m, p.id))
+    for p in live("E"):
+        if p.status in ("proposed", "registered"): add(f"experiment {p.status}, not yet run", 3, p, settle=card_section(p, "Decision rule", "Registered predictions"))
+    for p in live("S"):
+        if p.status in ("new", "developing"): add("seed to judge", 2, p, settle="judge it: develop, promote to a hypothesis or gap, or drop (brain-mesh-discover)")
+    sig = fresh_signals(m)
+    for mn in MINERS:
+        for sc, key, text, lines, cs, _srcs in sig.get(mn, [])[:2]:
+            add(f"signal: {mn}", 1.5 + min(2.0, sc / 2), None, text=linkify(m, text, 260), settle=f"a prompt to judge: `mesh.py discover {mn}`", cs=cs, key=key)
+    items.sort(key=lambda r: (-r["score"], r["kind"], r["c"].id if r["c"] is not None else r["key"]))
+    what = lambda r: f"{rl(r['c'])} {r['text']}" if r["c"] is not None else f"{r['text']} (`{r['key']}`)"
+    work = lambda r: " ".join(rl(m.cards[x]) for x in r["working"]) or ("—" if r["c"] is None or r["c"].id[0] in "ES" else "**nothing yet**")
+    L = [f"## The ranking ({min(top, len(items))} of {len(items)})", ""]
+    L += md_table(["#", "What", "Kind", "Priority", "Rests on it", "What would settle it", "Working on it"],
+                  [[k + 1, what(r), r["kind"], r["prio"], r["dep"] or "—", one(plain(r["settle"]), 220) or "not written on the card", work(r)] for k, r in enumerate(items[:top])]) if items else ["Nothing open: no contradiction, tension, gap, hypothesis or signal" + (f" on {focus}" if focus else "") + "."]
+    L += ["", "The order is an aid, not a judgement: each kind has a base weight (open contradictions and research gaps highest), multiplied by the card's priority, plus a little for every card that rests on it. Read the cards before acting on it.", ""]
+    L += ["## By kind", ""]
+    for kind in dict.fromkeys(r["kind"] for r in items):
+        rs = [r for r in items if r["kind"] == kind]
+        L += [f"**{kind[:1].upper() + kind[1:]} ({len(rs)})**"] + [f"- {what(r)}" + (f" · working on it: {work(r)}" if r["working"] else "") for r in rs] + [""]
+    gs = [p for p in live("G") if p.status in ("open", "fillable")]
+    if gs and not focus:
+        L += ["## Before acting on a gap", "", "A gap is a gap to do science on only once a logged search has found no answer (`brain-mesh-gaps`, the ladder). Not there yet:", ""]
+        L += [f"- {rl(p)} [{p.status}] {one(plain(p.title), 120)}: " + ("search the literature first" if p.status == "open" else "papers are waiting to be read first") for p in gs] + [""]
+    return (focus or ""), L, (m.cards[focus].title if focus else "")
+
+
+def side_differences(m, sides):
+    """What differs between the evidence cards on the sides of a disagreement: conditions, methods, designs,
+    definitions and independence. Lines of markdown."""
+    ev = [c for c in sides if c.fam == "evidence"]
+    if len(ev) < 2: return []
+    out, conds = [], defaultdict(dict)
+    for c in ev:
+        for w_, v_, _t in m.whens(c):
+            if w_: conds[w_][c.id] = v_
+    for var, vals in sorted(conds.items()):
+        if len(set(vals.values())) > 1 or len(vals) < len(ev):
+            out.append(f"- **Condition {var}:** " + "; ".join(f"{c.id} = {vals[c.id]}" if c.id in vals else f"{c.id} not recorded" for c in ev))
+    how = {c.id: [m.cards[t] for v in c.all("obtained_by") + c.all("based_on") for t in m.ids(v)[0]] for c in ev}
+    tech = {c.id: sorted({t for x in how[c.id] for t in m.terms(x) if m.cards[t].get("kind") == "technique"}) for c in ev}
+    if any(how.values()): out.append(("- **How obtained (differs):** " if len({tuple(v) for v in tech.values()}) > 1 else "- **How obtained:** ") + "; ".join(f"{c.id}: {', '.join(tech[c.id]) or ', '.join(x.id for x in how[c.id]) or 'not recorded'}" for c in ev))
+    srcs = sorted({c.id[:4] for c in ev})
+    des = {p_: ", ".join(d for d, _n in study(m.cards[p_])["designs"]) or "not recorded" for p_ in srcs if p_ in m.cards}
+    out.append(("- **Designs (differ):** " if len(set(des.values())) > 1 else "- **Designs:** ") + "; ".join(f"{p_} {d}" for p_, d in des.items()))
+    out.append("- **Samples:** " + "; ".join(f"{p_} {one(plain(study(m.cards[p_])['sample'] or 'not recorded'), 80)}" for p_ in srcs if p_ in m.cards))
+    for y in sorted({m.pair(c.get("value"))[0] for c in ev if c.get("value")} - {None}):
+        r = measures(m, y); d = [(p_, x["defs"]) for p_, x in sorted(r.items()) if p_ in srcs and x["defs"]]
+        if d: out.append(f"- **Definitions of {y}:** " + "; ".join(f"{p_}: {', '.join(rl(c) for c in ds)}" for p_, ds in d))
+    if len(srcs) > 1:
+        gs = independent_groups(m, srcs)
+        out.append("- **Independence:** " + (f"the sides come from {len(gs)} independent groups of sources" if len(gs) > 1 else "the sides come from sources that are not independent (" + "; ".join(w_ for _g, ws in gs for w_ in ws) + ")"))
+    else: out.append(f"- **One source:** both sides are in {srcs[0]}")
+    return out
+
+
+def report_contradictions(m, ids=()):
+    if ids: ps = [need(m, i) for i in ids]
+    else: ps = sorted((p for p in m.pages("VX") if not p.get("retired") and p.status in ("open", "explained")), key=lambda p: (p.status != "open", p.id[0] != "V", p.id))
+    bad = [p.id for p in ps if p.fam != "page" or p.id[0] not in "VX"]
+    if bad: sys.exit(f"report contradictions: {', '.join(bad)} is not a contradiction (V###) or a tension (X###)")
+    L = [f"{sum(1 for p in ps if p.status == 'open')} open and {sum(1 for p in ps if p.status == 'explained')} explained, of {len(m.pages('V'))} contradictions and {len(m.pages('X'))} tensions in the brain.", ""]
+    mods = {}
+    for r in mine(m, ["moderators", "definitions"])[0].values():
+        for _sc, key, text, lines, _cs, _s in r:
+            for p in ps:
+                if p.id in key or p.id in text: mods.setdefault(p.id, []).append((key, text, lines))
+    for p in ps:
+        sides = [m.cards[t] for v in p.all("sides") for t in m.ids(v)[0]]
+        L += [f"## {p.id} {plain(p.title)}", "", f"{rl(p)} · {'contradiction' if p.id[0] == 'V' else 'tension'} · **{p.status}**" + (f" · kind {p.get('kind')}" if p.get("kind") else "") + (f" · found by {p.get('logged_by')}" if p.get("logged_by") else "") + f" · priority {m.level(p.id)}", ""]
+        for nm in ("The clash", "The disagreement", "Why both cannot hold"):
+            t = card_section(p, nm)
+            if t: L += [f"**{nm}.** {t}", ""]
+        ev = [c for c in sides if c.fam == "evidence"]
+        L += ["### The sides", ""] + (md_table(EV_HEAD, [ev_cells(m, c) for c in ev]) if ev else [])
+        L += [f"- {rl(c)} ({c.type or c.fam}{', ' + c.status if c.status else ''}): {one(plain(c.title), 140)}" for c in sides if c.fam != "evidence"] + [""]
+        diff = side_differences(m, sides)
+        if diff: L += ["### What differs between the sides", ""] + diff + [""]
+        if mods.get(p.id): L += ["### What the miners point at", ""] + [f"- {linkify(m, text, 300)} (`{key}`)" + "".join(f"\n  - {linkify(m, x, 240)}" for x in lines[:4] if not x.startswith(("table:", "log it:"))) for key, text, lines in mods[p.id][:5]] + [""]
+        out_ = card_section(p, "Ways out", "Possible explanations")
+        L += ["### Ways out", "", out_ or "Not yet written on the card.", ""]
+        wk = [m.cards[x] for x in working_on(m, p.id)]
+        L += ["### Working on it", ""] + ([f"- {rl(c)} [{c.type}, {c.status}] {one(plain(c.title), 130)}" for c in wk] or ["Nothing yet: no hypothesis, theory, seed or experiment links it."]) + [""]
+        st = card_section(p, "What would settle it")
+        exps = [c for c in wk if c.id[0] == "E"]
+        L += ["### What would settle it", "", st or ("; ".join(f"{rl(c)}: {card_section(c, 'Decision rule', 'Registered predictions') or one(plain(c.title), 120)}" for c in exps) if exps else "No experiment or decisive paper is named yet. The best one gives a different result for each way out above."), ""]
+        hist = [f"- {k_.replace('_', ' ')}: {v}" for k_ in ("graded", "reviewed", "explained_by", "resolved_by") for v in p.all(k_)]
+        if hist: L += ["### Decisions so far", ""] + hist + [""]
+    slug = "-".join(p.id for p in ps) if ids and len(ps) <= 3 else ""
+    return slug, L, (", ".join(p.id for p in ps) if ids else "")
+
+
+def theory_verdicts(m):
+    th = sorted((p for p in m.pages("T") if not p.get("retired")), key=lambda c: c.id)
+    verdict = defaultdict(dict)
+    for t in th:
+        for k_, lab in (("explains", "explains"), ("conflicts_with", "conflicts")):
+            for v in t.all(k_):
+                for x in m.ids(v)[0]: verdict[x][t.id] = lab
+    return th, verdict
+
+
+def report_theories(m):
+    th, verdict = theory_verdicts(m)
+    rows = sorted((p for p in m.pages("KXV") if not p.get("retired")), key=lambda c: c.id) + sorted((m.cards[x] for x in verdict if m.cards[x].fam == "evidence"), key=lambda c: c.id)
+    L = []
+    if not th:
+        L += ["No theory cards yet, so there is nothing to score. A theory pass (`brain-mesh-discover`, section 3) groups the papers' explanatory claims into rival accounts and judges each finding against each.", "", "## What a theory pass would start from", ""]
+        used = defaultdict(set)
+        for p in m.pages("KXVGH"):
+            for t in m.ids(p.raw.split("\n## Linked from")[0])[0]: used[t].add(p.id)
+        cl = sorted((c for c in m.evidence() if c.type in ("claim", "model") and c.status in ("inferred", "asserted", "speculated", "derived")), key=lambda c: (-len(used[c.id]), c.id))
+        L += md_table(["Card", "Source", "Explanatory claim or model", "Status", "Cited by"], [[rl(c), short_cite(m.cards[c.id[:4]]) if c.id[:4] in m.cards else c.id[:4], one(plain(c.title), 150), f"{c.type}, {c.status}", " ".join(sorted(used[c.id])) or "—"] for c in cl[:25]]) if cl else ["No explanatory claims or models are carded."]
+        L += ["", f"{len(cl)} claims and models in all; those cited by findings, tensions and contradictions come first.", ""]
+        return "", L, ""
+    _ag, free = logged_pairs(m)
+    L += ["## The theories", ""]
+    body = []
+    for t in th:
+        ex = sorted(x for x, vs in verdict.items() if vs.get(t.id) == "explains"); co = sorted(x for x, vs in verdict.items() if vs.get(t.id) == "conflicts")
+        silent = [r.id for r in rows if r.id[0] == "K" and t.id not in verdict.get(r.id, {})]
+        unfree = [x for x in co if not free.get(x)]
+        body.append([rl(t), one(plain(t.title), 110), t.status, f"{len(ex)}: {' '.join(ex[:8])}" if ex else "0", f"{len(co)}: {' '.join(co[:8])}" if co else "0", len(silent),
+                     ("all covered by a logged contradiction" if co and not unfree else f"{len(unfree)} not covered by any logged contradiction: {' '.join(unfree[:6])}") if co else "—"])
+    L += md_table(["Theory", "Core claim", "Status", "Explains", "Conflicts with", "Findings not judged", "Its conflicts"], body) + [""]
+    L += ["## Theory against finding", "", "E explains · C conflicts · a dot means not judged.", ""]
+    L += md_table(["Card", "Status"] + [t.id for t in th] + ["Statement"], [[rl(r), r.status or r.type] + [{"explains": "E", "conflicts": "C"}.get(verdict.get(r.id, {}).get(t.id), "·") for t in th] + [one(plain(r.title), 100)] for r in rows]) + [""]
+    sep = [r for r in rows if {"explains", "conflicts"} <= set(verdict.get(r.id, {}).values())]
+    L += ["## What separates them", ""] + ([f"- {rl(r)} {one(plain(r.title), 120)}: " + ", ".join(f"{t} {v}" for t, v in sorted(verdict[r.id].items())) for r in sep] or ["No finding is explained by one theory and in conflict with another."]) + [""]
+    pairs = []
+    for a, b in itertools.combinations(th, 2):
+        if not any({verdict.get(r.id, {}).get(a.id), verdict.get(r.id, {}).get(b.id)} == {"explains", "conflicts"} for r in rows): pairs.append((a, b))
+    L += ["## Pairs nothing yet separates", ""] + ([f"- {rl(a)} and {rl(b)}: no card is explained by one and in conflict with the other. An experiment whose result differs between them is the most decisive one available." for a, b in pairs] or ["Every pair of theories is separated by at least one card."]) + [""]
+    none = [r for r in rows if r.id[0] == "K" and "explains" not in verdict.get(r.id, {}).values()]
+    L += ["## Findings no theory explains", ""] + ([f"- {rl(r)} [{r.status}] {one(plain(r.title), 130)}" for r in none] or ["Every finding is explained by at least one theory."]) + [""]
+    L += ["## Predictions that would discriminate", ""]
+    for t in th:
+        d = card_section(t, "Discriminating predictions")
+        L.append(f"- {rl(t)}: {d or 'none written on the card'}")
+    return "", L + [""], ""
+
+
+def report_causal(m, focus=None):
+    eff, nulls = effects(m), null_results(m)
+    keep = {k: e for k, e in eff.items() if not focus or focus in k}
+    rel = lambda e: e.get("rel") or "data"
+    order = sorted(keep.items(), key=lambda kv: (BASIS_RANK.get(rel(kv[1]), 9), kv[0]))
+    word = {"+": "raises", "-": "lowers", "±": "raises and lowers", "?": "direction not recorded"}
+    cnt = Counter(rel(e) for _k, e in order)
+    L = [f"{len(order)} directed relations" + (f" involving {focus}" if focus else "") + ": " + (", ".join(f"{cnt[b]} {b}" for b in BASIS_RANK if cnt[b]) or "none") + ".", ""]
+    L += ["**Basis.** " + " ".join(f"*{b}*: {t}." for b, t in BASES.items()) + " *data*: observation cards differ in this one condition and in the outcome; whether that is causal depends on the design. *unstated*: the concept card gives no basis. Causal wording (causes, raises, leads to) only for *tested* relations.", ""]
+    if order and len(order) <= 40:
+        ids_ = {}
+        nid = lambda c: ids_.setdefault(c, f"n{len(ids_) + 1}")
+        G = ["```mermaid", "flowchart LR"]
+        for (x, y), e in order:
+            lab = rel(e) + {"+": " +", "-": " −", "±": " ±"}.get(e["sign"], "")
+            G.append(f"    {nid(x)} " + ("-->" if rel(e) == "tested" else "-.->") + f"|{lab}| {nid(y)}")
+        G += [f"    {n}[\"{(m.cards[c].title or c).replace(chr(34), chr(39))}\"]" for c, n in ids_.items()] + ["```", "", "Solid arrows are tested relations; dashed arrows are everything else.", ""]
+        L += ["## The map", ""] + G
+    def srcdes(e):
+        ps = sorted({t[:4] for t in e["basis"] if t in m.cards and m.cards[t].fam == "evidence"} | {p_ for t in e["basis"] if t in m.cards and m.cards[t].fam == "page" for p_ in srcs_of(m, [t])})
+        return "; ".join(f"{p_} {', '.join(d for d, _n in study(m.cards[p_])['designs']) or 'design not recorded'}" for p_ in ps if p_ in m.cards) or "—"
+    def against(x, y):
+        vx = sorted(p.id for p in m.pages("VX") if not p.get("retired") and p.status in ("open", "explained") and {x, y} <= m.terms(p))
+        return "; ".join(([f"no effect found in {' '.join(nulls[(x, y)][:4])}"] if (x, y) in nulls else []) + ([f"contested in {' '.join(vx)}"] if vx else [])) or "—"
+    L += ["## Every relation, strongest basis first", ""]
+    L += md_table(["Cause", "Outcome", "Direction", "Basis", "Evidence", "Sources and their designs", "Against or unresolved"],
+                  [[rl(m.cards[x]), rl(m.cards[y]), word[e["sign"]], rel(e), " ".join(rl(m.cards[t]) for t in e["basis"][:6] if t in m.cards) or "none cited", srcdes(e), against(x, y)] for (x, y), e in order]) if order else ["No directed relation is recorded or shown by the data."]
+    L += [""]
+    weak = [((x, y), e) for (x, y), e in order if rel(e) != "tested"]
+    rows = []
+    for (x, y), e in weak:
+        ks = sorted(k.id for k in m.pages("K") if not k.get("retired") and {x, y} <= m.terms(k)); hs = sorted(h.id for h in m.pages("HTE") if not h.get("retired") and {x, y} <= m.terms(h))
+        hot = [t for t in (x, y) if m.level(t) == "high"]
+        if ks or hs or hot: rows.append([f"{rl(m.cards[x])} → {rl(m.cards[y])}", rel(e), " ".join(ks) or "—", " ".join(hs) or "—", ", ".join(hot) or "—", f"an experiment that sets {m.cards[x].title or x} and measures {m.cards[y].title or y}"])
+    L += ["## Relations that carry weight without a test", "", "Not tested, yet a finding, a hypothesis, theory or experiment, or a high-priority concept rests on them.", ""]
+    L += (md_table(["Relation", "Basis", "Findings on both", "Hypotheses, theories, experiments", "High priority", "What would test it"], rows) if rows else ["None."]) + [""]
+    chains = []
+    for (a, b), e1 in keep.items() if focus else eff.items():
+        for (b2, c), e2 in eff.items():
+            if b2 != b or c == a or (focus and focus not in (a, b, c)): continue
+            wk = max((rel(e1), rel(e2)), key=lambda r: BASIS_RANK.get(r, 9))
+            if wk == "tested": continue
+            direct = eff.get((a, c))
+            chains.append((BASIS_RANK.get(wk, 9), f"- {rl(m.cards[a])} → {rl(m.cards[b])} ({rel(e1)}) → {rl(m.cards[c])} ({rel(e2)}): the chain is no stronger than *{wk}*; "
+                           + (f"{a} → {c} is itself recorded ({rel(direct)})" if direct else f"nothing measures {a} → {c} directly") + (f"; no effect found in {' '.join(nulls[(a, c)][:3])}" if (a, c) in nulls else "")))
+    L += ["## Chains with a link nobody has tested", ""] + ([t for _r, t in sorted(set(chains))[:30]] or ["None: no two relations chain through a shared concept, or every link is tested."]) + [""]
+    nl = [f"- {rl(m.cards[x])} → {rl(m.cards[y])}: no effect found in {' '.join(rl(m.cards[t]) for t in ns[:5])}" for (x, y), ns in sorted(nulls.items()) if (not focus or focus in (x, y)) and x in m.cards and y in m.cards]
+    if nl: L += ["## Looked for and not found", ""] + nl + [""]
+    return (focus or ""), L, (m.cards[focus].title if focus else "")
+
+
+def report_robustness(m):
+    L, ks = [], sorted((k for k in m.pages("K") if not k.get("retired")), key=lambda c: c.id)
+    body, prio = [], []
+    for k in ks:
+        sup = [m.cards[t] for v in k.all("support") for t in m.ids(v)[0] if m.cards[t].fam == "evidence"]
+        agn = [m.cards[t] for v in k.all("against") for t in m.ids(v)[0]]
+        srcs = sorted({c.id[:4] for c in sup}); gs = independent_groups(m, srcs, waived_pairs(m, k))
+        des = sorted({d for p_ in srcs if p_ in m.cards for d, _n in study(m.cards[p_])["designs"]})
+        soft = [c.id for c in sup if c.status not in ("measured", "derived", "reported")]
+        fl = []
+        if len(srcs) <= 1: fl.append("one source")
+        elif len(gs) < 2: fl.append("one group: " + "; ".join(w_ for _g, ws in gs for w_ in ws[:2]))
+        elif len(gs) < len(srcs): fl.append(f"{len(srcs)} sources count as {len(gs)}: " + "; ".join(w_ for _g, ws in gs for w_ in ws[:2]))
+        if des and "experiment" not in des: fl.append("no experiment among its sources")
+        if len(des) == 1: fl.append("one kind of design")
+        if not des: fl.append("designs not recorded")
+        if any(m.cards[p_].get("kind") == "preprint" for p_ in srcs if p_ in m.cards): fl.append("rests on a preprint")
+        if any(m.cards[p_].get("retracted") for p_ in srcs if p_ in m.cards): fl.append("RETRACTED source")
+        if agn and k.status in ("probable", "established"): fl.append(f"{len(agn)} against, yet graded {k.status}")
+        if soft: fl.append(f"support includes {len(soft)} card{'s' * (len(soft) > 1)} not measured ({' '.join(soft[:3])})")
+        thin = sorted(p_ for p_ in srcs if p_ in m.cards and unread_units(m.cards[p_]))
+        if thin: fl.append(f"sources not fully read: {' '.join(thin)}")
+        if not m.scope_of(k): fl.append("no scope")
+        dep = len(m.dependants({k.id}))
+        body.append((len(fl), dep, [rl(k), one(plain(k.title), 110), k.status, f"{len(srcs)}: {' '.join(srcs)}", len(gs), ", ".join(des) or "—", f"{len(sup)} for, {len(agn)} against", dep or "—", "; ".join(fl) or "none"]))
+        if len(gs) <= 1: prio.append((dep, k, srcs))
+    L += ["## Findings", ""] + (md_table(["Finding", "Statement", "Grade", "Sources", "Independent groups", "Designs", "Evidence", "Rests on it", "Weak points"], [r for _f, _d, r in sorted(body, key=lambda r: (-r[0], -r[1]))]) if body else ["No findings yet."]) + [""]
+    L += ["## Replication priorities", "", "Findings resting on one source or one group, most depended-on first.", ""]
+    L += [f"- {rl(k)} [{k.status}] {one(plain(k.title), 120)} · {' + '.join(srcs) or 'no source'} · {dep} card{'s' * (dep != 1)} rest on it" for dep, k, srcs in sorted(prio, key=lambda r: (-r[0], r[1].id))] or ["None."]
+    held = {r.id for r in m.cards.values() if r.fam == "reference" and (r.status == "held" or r.all("held"))}
+    by_ref = defaultdict(list)
+    for c in m.evidence():
+        if c.status == "cited" or c.type == "cited":
+            for w_ in works_cited(m, c):
+                if w_.fam == "reference" and w_.id not in held: by_ref[w_.id].append(c)
+    rows = []
+    for rid, cs in by_ref.items():
+        r = m.cards[rid]; dep = sorted({x for c in cs for x in m.dependants({c.id}) if m.cards[x].fam == "page"})
+        srcs = sorted({p_ for p_, _n, _b in ref_cites(r)} | {c.id[:4] for c in cs})
+        rows.append((len(dep), len(srcs), [f"{rl(r)} {short_cite(r)}", r.status, f"{len(srcs)}: {' '.join(srcs)}", " ".join(rl(c) for c in cs[:5]), " ".join(dep[:8]) or "—"]))
+    L += ["", "## Claims the brain knows only second-hand", "", "A source says another work showed something, and that work has not been read. Those that most rests on come first; read the original before building on them.", ""]
+    L += (md_table(["Work not read", "Status", "Cited by", "Cards that state the claim", "What rests on those cards"], [r for _a, _b, r in sorted(rows, key=lambda r: (-r[0], -r[1]))[:25]]) if rows else ["None carded."]) + [""]
+    asm = fresh_signals(m, ["assumptions"]).get("assumptions", [])
+    L += ["## Assumptions much rests on", ""] + ([f"- {linkify(m, text, 300)}" for _sc, _key, text, _l, _cs, _s in asm[:10]] or ["None found by the assumptions miner."]) + [""]
+    eff = effects(m); cnt = Counter(e.get("rel") or "data" for e in eff.values())
+    L += ["## Relations", "", f"{len(eff)} directed relations: " + (", ".join(f"{cnt[b]} {b}" for b in BASIS_RANK if cnt[b]) or "none") + ". `mesh.py report causal` lists those that carry weight without a test.", ""]
+    sb = []
+    for s_ in sorted((c for c in m.cards.values() if c.fam == "source"), key=lambda c: c.id):
+        notfull = unread_units(s_)
+        ps = s_.all("pass"); ver = [x.strip() for x in ps[0].split("|")][3:4] if ps else []
+        fl = sum(1 for c in m.evidence(s_.id) if c.get("flag"))
+        sb.append([rl(s_), short_cite(s_), s_.get("kind"), s_.status, ", ".join(d for d, _n in study(s_)["designs"]) or "not recorded", "; ".join(notfull[:4]) + (" …" if len(notfull) > 4 else "") or "all read in full", m.si_state(s_.id), one(ver[0], 90) if ver else "no pass recorded", fl or "—", "RETRACTED" if s_.get("retracted") else "—"])
+    L += ["## Sources", ""] + md_table(["Source", "", "Kind", "Status", "Designs", "Not read in full", "Supplementary material", "First verification", "Flagged cards", "Retracted"], sb) + [""]
+    return "", L, ""
+
+
+def report_methods(m):
+    L, srcs = [], sorted((c for c in m.cards.values() if c.fam == "source"), key=lambda c: c.id)
+    L += ["## Study designs", ""] + md_table(["Source", "", "Designs", "Sample", "Question"], [[rl(s_), short_cite(s_), "; ".join(f"{d}" + (f" ({one(plain(n), 70)})" if n else "") for d, n in study(s_)["designs"]) or "not recorded", one(plain(s_.get("sample") or "not recorded"), 110), one(plain(s_.get("question") or "not recorded"), 130)] for s_ in srcs]) + [""]
+    used = sorted({d for s_ in srcs for d, _n in study(s_)["designs"] if d in DESIGNS})
+    if used: L += ["**What each design can establish.**"] + [f"- {d}: {DESIGNS[d][0]}." for d in used] + [""]
+    ev = m.evidence(); tech = [c for c in m.cards.values() if c.fam == "concept" and c.get("kind") == "technique" and not c.get("retired")]
+    by = {t.id: {"methods": [], "vars": set(), "srcs": set()} for t in tech}
+    obt = defaultdict(set)
+    for c in ev:
+        y = m.pair(c.get("value"))[0] if c.get("value") else None
+        for v in c.all("obtained_by"):
+            for x in m.ids(v)[0]:
+                if y: obt[x].add(y)
+    for c in ev:
+        if c.type != "method": continue
+        for t in m.terms(c):
+            if t in by: by[t]["methods"].append(c); by[t]["srcs"].add(c.id[:4]); by[t]["vars"] |= obt.get(c.id, set())
+    rows = [[rl(t), f"{len(r['srcs'])}: {' '.join(sorted(r['srcs']))}" if r["srcs"] else "none", ", ".join(sorted(r["vars"])) or "—", " ".join(rl(x) for x in r["methods"][:6]) + (" …" if len(r["methods"]) > 6 else "") or "—"] for t, r in sorted(((t, by[t.id]) for t in tech), key=lambda tr: (-len(tr[1]["srcs"]), tr[0].id))]
+    L += ["## Techniques", ""] + (md_table(["Technique", "Used by", "Quantities obtained with it", "Method cards"], rows) if rows else ["No technique concepts yet."]) + [""]
+    one_src = [t for t in tech if len(by[t.id]["srcs"]) == 1]
+    if one_src and len(srcs) > 1: L += ["**Used by one source only** (could another source's question be asked with it?): " + ", ".join(f"{rl(t)} ({next(iter(by[t.id]['srcs']))})" for t in one_src), ""]
+    dm = fresh_signals(m, ["definitions", "transfer"])
+    L += ["## Quantities not defined or measured alike", ""] + ([f"- {linkify(m, text, 300)} (`{key}`)" for _sc, key, text, _l, _cs, _s in dm.get("definitions", [])[:12]] or ["The definitions miner finds none."]) + [""]
+    L += ["## Established in one place, untried in another", ""] + ([f"- {linkify(m, text, 300)} (`{key}`)" for _sc, key, text, _l, _cs, _s in dm.get("transfer", [])[:12]] or ["The transfer miner finds none: conditions such as species, preparation and method must be recorded as `when::` lines for it to see them."]) + [""]
+    name = lambda c: c.get("name") or one(plain(c.title), 60)
+    ds = sorted((c for c in m.pages("D") if not c.get("retired")), key=lambda c: c.id); cs = sorted((c for c in m.pages("C") if not c.get("retired")), key=lambda c: c.id)
+    who = lambda c, k_: " ".join(sorted({t[:4] if re.match(r"P\d{3}", t) else t for v in c.all(k_) for t in m.ids(v)[0]})) or "—"
+    L += [f"## Data sets ({len(ds)})", ""] + (md_table(["Data set", "Name", "Access", "Size", "Used by", "Derived from", "Concepts"], [[rl(c), name(c), c.status, one(plain(c.get("size") or "—"), 50), who(c, "used_by"), who(c, "derived_from"), ", ".join(sorted(m.terms(c))[:6]) or "—"] for c in ds]) if ds else ["No data-set cards."]) + [""]
+    L += [f"## Code ({len(cs)})", ""] + (md_table(["Code", "Name", "Access", "Uses data", "Used by", "Concepts"], [[rl(c), name(c), c.status, who(c, "uses_data"), who(c, "used_by"), ", ".join(sorted(m.terms(c))[:6]) or "—"] for c in cs]) if cs else ["No code cards."]) + [""]
+    w = rarity(m); opp = []
+    openq = sorted((p for p in m.pages("GVXH") if not p.get("retired") and p.status in ("open", "fillable", "confirmed", "planned")), key=lambda p: (PRANK[m.level(p.id)], p.id))
+    for p in openq:
+        hit = sorted(((sum(w(t) for t in m.terms(d) & m.terms(p)), d, m.terms(d) & m.terms(p)) for d in ds if d.status in ("open", "on-request") and len(m.terms(d) & m.terms(p)) >= 2), key=lambda r: (-r[0], r[1].id))
+        if hit: opp += [f"**{rl(p)} [{p.type}, {p.status}, priority {m.level(p.id)}] {one(plain(p.title), 130)}**"] + [f"- {rl(d)} {name(d)} ({d.status}) · shares {', '.join(sorted(sh))}" for _sc, d, sh in hit[:6]] + [""]
+    L += ["## What existing data might answer", "", "For each open gap, contradiction, tension and hypothesis: the open or on-request data sets that share two or more concepts with it. Each is a question to ask of data that already exist, before a new experiment.", ""]
+    L += opp or ["None: no accessible data set shares two concepts with an open question."]
+    return "", L + [""], ""
+
+
+def report_novelty(m, args):
+    extra, rest, k = [], [], 0
+    while k < len(args):
+        if args[k] == "--concepts":
+            k += 1
+            while k < len(args) and not args[k].startswith("--"): extra.append(args[k]); k += 1
+        else: rest.append(args[k]); k += 1
+    if not rest and not extra: sys.exit('report novelty: give the idea in a sentence (in quotes), or the id of a seed, hypothesis, gap or experiment; add --concepts a b for concepts it involves')
+    card = m.cards.get(m.resolve(rest[0]) or "") if rest and len(rest) == 1 and re.fullmatch(r"[A-Z]\d{3}\S*", rest[0]) else None
+    text = plain(card.title + ". " + (card_section(card, "Idea", "Unknown", "Rationale") or "")) if card is not None else " ".join(rest)
+    cs = sorted(m.terms(card)) if card is not None else []
+    low = text.lower(); found = []
+    for c in m.cards.values():
+        if c.fam != "concept" or c.get("retired"): continue
+        rx, keys = m._crx.setdefault((c.id, False), concept_rx(c))
+        if rx is None or (keys and not any(k_ in low for k_ in keys)): continue
+        mo = rx.search(text)
+        if mo: found.append((c.id, mo.span()))
+    cs = sorted(set(cs) | {cid for cid, (a, z) in found if not any((a2 <= a and z <= z2) and (a2, z2) != (a, z) for _c, (a2, z2) in found)})
+    for a in extra:
+        c = concept_arg(m, a)
+        if not c: sys.exit(f"report novelty: '{a}' is not a concept")
+        cs = sorted(set(cs) | {c})
+    w = rarity(m); S = set(cs)
+    common = {c for c in cs if w(c) < 1.0}  # on a third or more of the cards: sharing only these says little
+    part = lambda sh: len(sh) >= min(2, len(S)) and bool(sh) and (sh == S or bool(sh - common) or common == S)
+    L = ["## The idea", "", text, "", "**Concepts the brain recognises in it:** " + (", ".join(rl(m.cards[c]) for c in cs) or "none") + ".", ""]
+    if len(cs) < 2: L += ["With fewer than two recognised concepts the brain can say little. Name the concepts with `--concepts`, or propose the missing ones (`mesh.py propose`).", ""]
+    pool = [c for c in m.cards.values() if (c.fam == "evidence" or (c.fam == "page" and c.id[0] == "K")) and not c.get("retired") and c is not card]
+    st = toks(text); scored = []
+    for c in pool:
+        sh = S & m.terms(c)
+        if part(sh): scored.append((len(sh) == len(S), sum(w(t) for t in sh) + 3 * len(toks(c.title) & st) / max(4, min(len(toks(c.title)), len(st) or 1)), c, sh))
+    scored.sort(key=lambda r: (not r[0], r[2].id[0] != "K", -r[1], r[2].id))
+    allc = [r for r in scored if r[0]]
+    L += ["## Does the brain already answer it?", ""]
+    L += [f"{len(allc)} card{'s' * (len(allc) != 1)} hold{'s' * (len(allc) == 1)} all {len(S)} concepts together; {len(scored) - len(allc)} more hold two or more of them." if S else "No concepts to look for.", ""]
+    if scored: L += md_table(["Card", "Kind", "Statement", "Result", "Conditions", "Concepts shared", "Where"], [[rl(c), f"{c.type}, {c.status}", one(plain(c.title), 130), "; ".join(one(plain(v), 70) for v in c.all("value")[:2]) or "—", "; ".join(f"{w_}={v_}" for w_, v_, _t in m.whens(c)[:4]) or "—", ("all" if full else ", ".join(sorted(sh))), page_of(m, c) if c.fam == "evidence" else "—"] for full, _sc, c, sh in scored[:15]]) + [""]
+    asked = sorted((p for p in m.pages("GHSETAVX") if not p.get("retired") and p is not card and part(S & m.terms(p))), key=lambda p: (-len(S & m.terms(p)), p.id))
+    L += ["## Has it been asked already?", ""] + ([f"- {rl(p)} [{p.type}, {p.status}] {one(plain(p.title), 130)} · shares {', '.join(sorted(S & m.terms(p)))}" for p in asked[:15]] or ["No gap, hypothesis, seed, experiment, theory, contradiction or tension holds two of these concepts."]) + [""]
+    eff, nulls = effects(m), null_results(m)
+    res = [f"- {x} → {y}: {e.get('rel') or 'data'}, {' '.join(e['basis'][:4]) or 'no evidence cited'}" for (x, y), e in sorted(eff.items()) if x in S and y in S]
+    res += [f"- **no effect found:** {x} → {y} in {' '.join(ns[:4])}" for (x, y), ns in sorted(nulls.items()) if x in S and y in S]
+    L += ["## What it must respect", ""] + (res or ["No relation or null result is recorded between these concepts."]) + ["", f"The full list: `mesh.py facts {' '.join(cs)}`. A proposal may go against a card only where a logged contradiction covers that card.", ""] if cs else []
+    rung1 = []
+    for s_ in sorted((c for c in m.cards.values() if c.fam == "source" and m.blocks(c.id)), key=lambda c: c.id):
+        hits = concept_hits(m, s_.id); state = scan_state(m, s_.id); blocks = m.blocks(s_.id)
+        per = defaultdict(set)
+        for c in cs:
+            for b in hits.get(c, {}): per[b].add(c)
+        unc = {b for c in cs for b in state.get(c, ([], []))[1]}
+        both = sorted(b for b, got in per.items() if part(got) and b in unc)
+        notfull = unread_units(s_)
+        if both or (notfull and any(c in hits for c in cs)):
+            rung1.append(f"- {rl(s_)} {short_cite(s_)}: " + (f"{len(both)} passage{'s' * (len(both) != 1)} name two or more of the concepts and no card covers them: " + ", ".join(f"[[{s_.id}{part_of(b)}_text#^{b}|{b}]] p. {blocks[b][0]}" for b in both[:8]) + (" …" if len(both) > 8 else "") if both else "names these concepts")
+                         + (f"; not read in full: {', '.join(notfull[:4])}" if notfull else ""))
+    L += ["## Rung 1: in papers you already hold, not yet on a card", ""] + (rung1 or ["Nothing: every passage naming two of these concepts is carded, and the sources that name them were read in full."]) + [""]
+    near = Counter()
+    for c in m.evidence():
+        if part(S & m.terms(c)):
+            for w_ in works_cited(m, c):
+                if w_.fam == "reference" and w_.status != "held": near[w_.id] += 1
+    L += ["## Rung 2: works the brain knows of and has not read", ""] + ([f"- {rl(m.cards[r])} {one(plain(m.cards[r].title), 120)} [{m.cards[r].status}] · cited by {n} card{'s' * (n != 1)} that hold{'s' * (n == 1)} two or more of these concepts" for r, n in near.most_common(12)] or ["No unread work is cited by a card that holds two or more of these concepts."]) + [""]
+    names = [[str(m.cards[c].title or c)] + [str(a) for a in (m.cards[c].fm.get("aliases") or []) if str(a).lower() != str(m.cards[c].title).lower()][:2] for c in cs]
+    q = " AND ".join("(" + " OR ".join(f'"{n}"' for n in dict.fromkeys(ns)) + ")" for ns in names)
+    gsr = [f"{g.id} searched {g.get('searched')}" for g in m.pages("G") if g.get("searched") and S & m.terms(g)]
+    L += ["## Rung 3: the literature", "", "Nothing above says the idea is new to the field: only a logged search does (`brain-mesh-gaps`, section 4). A starting query:", "", f"`{q}`" if q else "(no concepts to search on)", ""]
+    if gsr: L += ["Related gap searches already logged: " + "; ".join(gsr) + ".", ""]
+    L += ["## Verdict", "", "(to write, in the Reading: already answered in the brain; partly answered; asked but not answered; new to the brain; or against the evidence. Say which rung has been checked.)", ""]
+    slug = card.id if card is not None else "-".join(re.findall(r"[a-z0-9]+", ascii_fold(text).lower())[:5])
+    return slug, L, (card.id if card is not None else one(text, 70))
+
+
+def report_changes(m, since=None):
+    prev = sorted(glob.glob(J(m.root, "reports", "*-changes.md")))
+    prev = [p for p in prev if os.path.basename(p)[:10] < TODAY]
+    if since and re.fullmatch(r"P\d{3}", since):
+        src = m.cards.get(since)
+        if src is None: sys.exit(f"report changes: no source {since}")
+        ds = sorted(re.findall(r"\d{4}-\d\d-\d\d", " ".join(src.all("pass")))); since = ds[0] if ds else str(src.fm.get("updated", ""))[:10]
+    if not since: since = os.path.basename(prev[-1])[:10] if prev else (datetime.date.today() - datetime.timedelta(days=7)).isoformat()
+    if not re.fullmatch(r"\d{4}-\d\d-\d\d", since): sys.exit("report changes: --since takes a date (YYYY-MM-DD) or a source id (P###)")
+    L = [f"Changes from {since} to {TODAY}" + (f" (the last digest was {os.path.basename(prev[-1])[:10]})" if prev else "") + ".", ""]
+    new, how = set(), "cards whose `updated` date falls in the period (new or edited)"
+    if os.path.isdir(J(m.root, ".git")):
+        r = git(m.root, "log", f"--since={since} 00:00", "--diff-filter=A", "--name-only", "--format=", check=False)
+        if r.returncode == 0:
+            new = {m.byname[os.path.basename(f)[:-3]] for f in r.stdout.splitlines() if f.endswith(".md") and os.path.basename(f)[:-3] in m.byname}
+            how = "files first committed in the period"
+    if not new: new = {c.id for c in m.cards.values() if str(c.fm.get("updated", ""))[:10] >= since}
+    newc = [m.cards[i] for i in sorted(new)]
+    fam = Counter(("evidence" if c.fam == "evidence" else c.type or c.fam) for c in newc)
+    L += ["## New cards", "", f"{len(newc)} ({how}): " + (", ".join(f"{n} {k_}" for k_, n in fam.most_common()) or "none") + ".", ""]
+    ns = [c for c in newc if c.fam == "source"]
+    if ns: L += ["**Sources**"] + [f"- {rl(c)} {plain(c.title)} [{c.status}] · {sum(1 for e in newc if e.fam == 'evidence' and e.id.startswith(c.id))} new evidence cards" for c in ns] + [""]
+    evs = Counter(c.id[:4] for c in newc if c.fam == "evidence" and c.id[:4] not in {s_.id for s_ in ns})
+    if evs: L += ["**New evidence in sources already held:** " + ", ".join(f"{p_} {n}" for p_, n in sorted(evs.items())), ""]
+    for pre, nm in (("K", "Findings"), ("V", "Contradictions"), ("X", "Tensions"), ("G", "Gaps"), ("H", "Hypotheses"), ("E", "Experiments"), ("T", "Theories"), ("A", "Analogies"), ("S", "Seeds"), ("D", "Data sets"), ("C", "Code")):
+        ps = [c for c in newc if c.fam == "page" and c.id[0] == pre]
+        if ps: L += [f"**{nm} ({len(ps)})**"] + [f"- {rl(c)} [{c.status}] {one(plain(c.title), 130)}" for c in ps[:10]] + ([f"- … and {len(ps) - 10} more: " + " ".join(rl(c) for c in ps[10:])] if len(ps) > 10 else []) + [""]
+    nc = [c for c in newc if c.fam == "concept"]
+    if nc: L += [f"**Concepts ({len(nc)}):** " + ", ".join(rl(c) + (" (made by you)" if "made by the user" in c.get("origin") else "") for c in nc[:40]) + (f" … and {len(nc) - 40} more" if len(nc) > 40 else ""), ""]
+    dated = lambda v: (re.match(r"\s*(\d{4}-\d\d-\d\d)", v) or [None, ""])[1]
+    moved, decided, prio_ = [], [], []
+    for c in sorted(m.cards.values(), key=lambda c: c.id):
+        gl = c.all("graded")
+        for k, v in enumerate(gl):
+            if dated(v) >= since and c.fam == "page":
+                st = (re.match(r"\s*\S+\s+([a-z-]+)", v) or [None, "?"])[1]; before = (re.match(r"\s*\S+\s+([a-z-]+)", gl[k - 1]) or [None, None])[1] if k else None
+                moved.append((before != st, f"- {rl(c)} {one(plain(c.title), 90)}: " + (f"**{before} → {st}**" if before and before != st else (f"new, {st}" if not before else f"still {st}")) + f" ({dated(v)}) — {one(plain(reason(v)), 200)}"))
+        for v in c.all("reviewed"):
+            if dated(v) >= since: decided.append(f"- {rl(c)}: {one(plain(v), 240)}")
+        for v in c.all("prioritised"):
+            if dated(v) >= since: prio_.append(f"- {rl(c)} {one(plain(c.title), 80)}: {one(plain(v), 200)}")
+    L += ["## Status changes", ""] + ([t for _ch, t in sorted(moved, key=lambda r: (not r[0], r[1]))] or ["None."]) + [""]
+    if decided: L += ["## Decisions recorded on open gaps, tensions, contradictions and hypotheses", ""] + decided + [""]
+    if prio_: L += ["## Priority", ""] + prio_ + [""]
+    st_new = [f"- {rl(c)} [{c.status}] {one(plain(c.title), 110)} (`{key}`, {date})" for c, key, date, _sc, _s in stamps(m) if date >= since]
+    rej = [f"- `{key}` rejected {date}: {one(why, 160)}" for key, (date, _sc, _s, why) in sorted(judged(m).items()) if date >= since]
+    groups, nst, nrej = recheck_groups(m)
+    L += ["## Discovery", ""] + (["**Ideas accepted from the miners**"] + st_new + [""] if st_new else []) + (["**Signals rejected**"] + rej + [""] if rej else [])
+    L += [f"**Earlier ideas against the evidence as it now stands** ({nst} stamped cards, {nrej} rejected signals): " + ", ".join(f"{len(groups.get(g, []))} {g}" for g in ("strengthened", "weakened", "dissolved", "changed", "reopened", "standing")) + "."]
+    for g in ("strengthened", "weakened", "dissolved", "reopened"):
+        L += [f"- {g}: {one(x.replace(chr(10), ' '), 260)}" for x in groups.get(g, [])]
+    L += [""]
+    lp = J(m.root, "ledger", "CHANGELOG.md")
+    log = [l for l in (rd(lp).splitlines() if os.path.exists(lp) else []) if re.match(r"- \d{4}-\d\d-\d\d", l) and l[2:12] >= since]
+    L += ["## The log", ""] + ([one(l, 400) for l in log] or ["No log lines in the period."]) + [""]
+    todo = []
+    stg = m.staged()
+    if stg: todo.append(f"- {len(stg)} proposed concept{'s' * (len(stg) != 1)} to adopt, fold or reject: {', '.join(sorted(stg)[:10])} (`mesh.py staged`)")
+    oc = open_candidates(m)
+    if oc: todo.append(f"- {len(oc)} possible contradiction{'s' * (len(oc) != 1)} to log or dismiss (`mesh.py contradictions`)")
+    due = review_due(m)
+    if due: todo.append(f"- {len(due)} decision{'s' * (len(due) != 1)} owed on open gaps, tensions, contradictions or hypotheses: " + ", ".join(sorted({f'{p.id}←{s_.id}' for p, s_, _c, _sc in due})[:10]))
+    seeds = [c for c in m.pages("S") if c.status == "new" and not c.get("retired")]
+    if seeds: todo.append(f"- {len(seeds)} new seed{'s' * (len(seeds) != 1)} to judge: " + " ".join(rl(c) for c in seeds[:10]))
+    nov = [c for c in m.pages("V") if c.status == "open" and not c.get("retired") and not working_on(m, c.id)]
+    if nov: todo.append(f"- {len(nov)} open contradiction{'s' * (len(nov) != 1)} nothing works on: " + " ".join(rl(c) for c in nov[:10]))
+    L += ["## Waiting for you", ""] + (todo or ["Nothing."]) + [""]
+    return "", L, f"since {since}"
+
+
+def cmd_report(m, args):
+    """Assemble a dated report from the cards into reports/: `report <kind> [target] [--focus concept] [--since date|P###]
+    [--top n]`. Kinds: frontier, contradictions [V001 X001 ...], theories, causal, robustness, methods,
+    novelty "<idea>"|<S001|H001> [--concepts a b], changes. `report all` writes every kind that needs no argument;
+    `report` alone lists the kinds and the reports already written."""
+    o, rest, k = {"focus": None, "since": None, "top": "25"}, [], 0
+    while k < len(args):
+        if args[k] in ("--focus", "--since", "--top") and k + 1 < len(args): o[args[k][2:]] = args[k + 1]; k += 2
+        else: rest.append(args[k]); k += 1
+    if not rest:
+        print("Reports (`mesh.py report <kind>`), each written to reports/<date>-<kind>.md:")
+        for kd, (title, q) in REPORT_KINDS.items(): print(f"  {kd.ljust(15)} {title}: {q}")
+        have = sorted(glob.glob(J(m.root, "reports", "*.md")))
+        print(f"\n{len(have)} written so far" + (": " + ", ".join(os.path.basename(p)[:-3] for p in have[-12:]) if have else "."))
+        return
+    kind, rest = rest[0], rest[1:]
+    focus = None
+    if o["focus"]:
+        focus = concept_arg(m, o["focus"])
+        if not focus: sys.exit(f"report: --focus '{o['focus']}' is not a concept")
+    if kind == "all":
+        for kd in ("changes", "frontier", "contradictions", "theories", "causal", "robustness", "methods"): cmd_report(Mesh(m.root), [kd] + (["--since", o["since"]] if o["since"] and kd == "changes" else []))
+        return
+    if kind not in REPORT_KINDS: sys.exit(f"report: kind '{kind}' is not one of {', '.join(REPORT_KINDS)} (or all)")
+    if kind == "frontier": slug, L, subj = report_frontier(m, focus, int(o["top"]))
+    elif kind == "contradictions": slug, L, subj = report_contradictions(m, rest)
+    elif kind == "theories": slug, L, subj = report_theories(m)
+    elif kind == "causal": slug, L, subj = report_causal(m, focus or (concept_arg(m, rest[0]) if rest else None))
+    elif kind == "robustness": slug, L, subj = report_robustness(m)
+    elif kind == "methods": slug, L, subj = report_methods(m)
+    elif kind == "novelty": slug, L, subj = report_novelty(m, rest)
+    else: slug, L, subj = report_changes(m, o["since"])
+    write_report(m, kind, slug, L, subj)
+
+
 def rarity(m):
     """Weight of each concept: rare concepts count for much, a concept on every card for almost nothing."""
     pool = [c for c in m.cards.values() if c.fam in ("evidence", "page") and not c.get("retired")]
@@ -4371,7 +4946,8 @@ finds it in the papers already in the brain.
 `MAP.md` (start here) · `concepts/` hubs · `sources/P###-…/` papers, their evidence cards and claims cards ·
 `findings/` `tensions/` `gaps/` synthesis · `hypotheses/` `experiments/` workbench · `data-sets/` · `code/` ·
 `references/` cited works and `library.bib` · `contradictions/` and `ledger/contradictions.md` the contradictions
-register · `ledger/` changelog, reading queue, checksums · `notes/` the user's own.
+register · `ledger/` changelog, reading queue, checksums · `reports/` dated reports
+(`mesh.py report`) · `notes/` the user's own.
 <!-- brain-mesh:end -->
 """
 
@@ -4917,8 +5493,9 @@ def cmd_discover(m, args):
           ". These are prompts, not findings. Judge each against its cards and the PDF, and against every fact and piece of evidence on its concepts (`mesh.py facts`): a proposal may go against evidence only where a logged contradiction frees it. Then propose the worthwhile ones to the user as cards (brain-mesh-discover). Paste the stamp into each accepted card; record each rejection with `mesh.py dismiss <key> <reason>`.")
 
 
-def recheck(m):
-    """After new sources: compare every stamped card and every rejected signal with what the miners find now."""
+def recheck_groups(m):
+    """After new sources: compare every stamped card and every rejected signal with what the miners find now.
+    Returns ({state: [lines]}, stamped cards, rejected signals)."""
     stm, rej = stamps(m), judged(m)
     need_ = sorted(({k.split(":")[0] for _c, k, *_r in stm} | {k.split(":")[0] for k in rej}) & set(MINERS))
     rows = mine(m, need_)[0]
@@ -4942,13 +5519,18 @@ def recheck(m):
     for key, (date, sc0, src0, why) in sorted(rej.items()):
         r = cur.get(key)
         if r and set(r[5]) - src0: groups["reopened"].append(f"{key}: rejected {date} ({one(why, 70)}); new sources since: {' '.join(sorted(set(r[5]) - src0))}\n       -> propose it again to the user, saying what is new")
+    return groups, len(stm), len(rej)
+
+
+def recheck(m):
+    groups, nst, nrej = recheck_groups(m)
     for g, title in (("dissolved", "Dissolved: the signal behind the card is gone"), ("weakened", "Weakened: the card lost part of its basis"), ("strengthened", "Strengthened: new sources bear on the card"),
                      ("changed", "Changed without new sources"), ("reopened", "Rejected signals with new evidence"), ("standing", "Standing: nothing changed")):
         rs = groups.get(g, [])
         print(f"\n## {title} ({len(rs)})")
         for x in rs if g != "standing" else []: print("  " + x)
         if g == "standing" and rs: print("  " + ", ".join(rs))
-    print(f"\n{len(stm)} stamped cards and {len(rej)} rejected signals checked. Nothing here changes a card by itself: take each change to the user, then update the card and its stamp.")
+    print(f"\n{nst} stamped cards and {nrej} rejected signals checked. Nothing here changes a card by itself: take each change to the user, then update the card and its stamp.")
 
 
 def cmd_dismiss(m, key, why):
@@ -5029,6 +5611,8 @@ gaps                          scan for candidate gaps (signals to judge)
 gapsdoc                       assemble gaps/RESEARCH-GAPS.md from the gap cards
 discover [miner ...] [--top n] [--focus concept] [--all]   mine the ontology for candidate cards: """ + ", ".join(MINERS) + """
 discover --recheck            after new sources: what changed for stamped cards and rejected signals
+report [<kind> [target]] [--focus concept] [--since date|P###] [--top n]   assemble a dated report in reports/: frontier, contradictions [V001 ...], theories, causal,
+                              robustness, methods, novelty "<idea>"|<S001> [--concepts a b], changes; `report all`; `report` alone lists them
 dismiss <signal key> <reason> record that the user rejected a signal (ledger/signals.md)
 theories                      the theory × finding matrix
 log <message>                 append a dated changelog line          schema   print the enforced sets"""
@@ -5065,6 +5649,7 @@ def main():
     elif c == "contradictions": cmd_contradictions(m, a)
     elif c == "facts": cmd_facts(m, a)
     elif c == "table": cmd_table(m, a)
+    elif c == "report": cmd_report(m, a)
     elif c == "independence": cmd_independence(m, a)
     elif c == "draft": cmd_draft(m, a)
     elif c == "reject": cmd_reject(m, a)

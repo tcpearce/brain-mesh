@@ -33,6 +33,7 @@ Papers go in, and each one is woven into what the brain already holds. The brain
 | 4 Mine for ideas | "Run a discovery session on …" | `brain-mesh-discover` | `discover`, `facts`, `dismiss`, `theories` |
 | 5 Test ideas | "Turn that into a hypothesis and design the experiment"; later "Here are my results" | `brain-mesh-experiment` | `matrix`, `impact` |
 | 6 Write and check | "Write the background on … from the brain"; "Audit this draft against the brain" | `brain-mesh-write` | `table`, `draft` |
+| Decide what next | "Give me a frontier map"; "Why do these results disagree?"; "Is this idea new?"; "What changed this week?" | `brain-mesh-report` | `report` |
 | Keep it healthy | "Run housekeeping" | `brain-mesh-housekeeping` | `health`, `sample` |
 
 Every session starts and ends with one command, `python3 tools/mesh.py sync` (`python` on Windows). It pulls, rebuilds, commits and pushes.
@@ -104,15 +105,32 @@ Run discovery on a brain that is integrated, never on half-added papers. After e
 - **Writing from the brain:** a review or a background section organised by theme, each claim traced to a card and a page, said as strongly as the evidence and no more.
 - **Auditing a draft:** `draft <file>` lists what to check in your own text, sentence by sentence: numbers against the cards, causal wording against what was tested, citations the brain knows only second-hand, and claims a logged contradiction bears on. Claude then gives each claim a verdict (supported, overstated, contradicted, not in the brain) and a corrected draft. Do it before anything is submitted.
 
+### Reports: deciding what to do next
+
+`python3 tools/mesh.py report <kind>` assembles one dated document in `reports/`, every line linked to its cards; Claude then writes a short reading at the top. `MAP` links the latest of each kind.
+
+| Report | The question | Run it |
+|---|---|---|
+| `frontier` | Where is a discovery most likely? | Before choosing what to work on, read or bid for |
+| `contradictions` | Why do these results disagree, and what would settle it? | Before designing an experiment |
+| `theories` | Which account is winning? | Once rival explanations exist |
+| `causal` | What is known to cause what, and how do we know? | Before claiming a mechanism |
+| `robustness` | What do we believe on thin evidence? | Before building on a finding, and before writing |
+| `methods` | What could be done with what already exists? | When planning methods or looking for a reanalysis |
+| `novelty "<idea>"` | Is this idea new? | Before proposing a study or promoting an idea |
+| `changes` | What moved in the brain? | After every batch, and when coming back after time away |
+
+A report is a snapshot: run it again when the brain changes, and never treat it as a source.
+
 ### How often
 
 | When | What |
 |---|---|
 | Every session | `sync` first and last |
-| Every paper or batch | Stages 1 and 2, then `discover --recheck` |
-| Every five to ten papers, or monthly | `health`, `gaps`, the reading queue, a discovery session |
+| Every paper or batch | Stages 1 and 2, then `discover --recheck` and `report changes` |
+| Every five to ten papers, or monthly | `health`, `gaps`, the reading queue, `report frontier` and `report robustness`, a discovery session |
 | Now and then | An audit: `sample P012 10` puts ten cards beside their source text, to check meaning rather than typing |
-| Before an experiment | Discovery on the question; a hypothesis with rivals; registered predictions |
+| Before an experiment | `report contradictions` and `report novelty` on the idea; discovery on the question; a hypothesis with rivals; registered predictions |
 | Before submitting text | `draft` |
 | Weekly, unattended | A scheduled check that reports and changes nothing |
 
@@ -148,6 +166,7 @@ A rough guide; it depends on how closely the papers bear on one another.
 | `skills/brain-mesh-batch/SKILL.md` | Adding many papers at once: prepare, extract with one agent per paper in parallel, merge. |
 | `skills/brain-mesh-concept-scan/SKILL.md` | Scanning chosen or all sources for every concept in the brain, carding each new fact with the works the paper cites for it, adding missing citations, updating the hubs. |
 | `skills/brain-mesh-write/SKILL.md` | Writing from the brain (a literature review, a background section, evidence tables) with every claim traced to a card and page, and auditing a draft against the brain claim by claim. |
+| `skills/brain-mesh-report/SKILL.md` | Dated reports assembled from the cards: frontier map, contradiction dossier, theory scorecard, causal map, robustness audit, methods and data landscape, novelty check, what-changed digest. |
 | `skills/brain-mesh-gaps/SKILL.md` | Finding key gaps, hunting papers that fill them, the research-gaps document. |
 | `skills/brain-mesh-experiment/SKILL.md` | Hypotheses, experiment design, registered predictions, assessing outcomes. |
 | `skills/brain-mesh-discover/SKILL.md` | Mining the brain with the user for new hypotheses and links; theory, analogy and seed cards; rechecking them as sources arrive. |

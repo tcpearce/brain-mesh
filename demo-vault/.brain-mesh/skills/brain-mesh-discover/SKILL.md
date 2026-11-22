@@ -23,6 +23,7 @@ The other documents build the brain from what papers say and find what they leav
 - The user asks for new ideas, hypotheses or connections, or what the brain implies.
 - After a paper or a batch is integrated: always `discover --recheck` (section 8), then the miners if the user wants new proposals.
 - Before proposing experiments: seeds and unseparated theories feed `brain-mesh-experiment`.
+- Around a session: a frontier map and a contradiction dossier (`brain-mesh-report`) show where the signals sit among the open contradictions and gaps; `report novelty S004` checks a seed against the brain before it is promoted.
 - On a schedule, as an insight pass with nobody watching (section 7).
 
 `python3 tools/mesh.py discover` runs every miner; name miners to run some (`discover bridges moderators`); `--focus <concept>` keeps signals involving one concept; `--top N` shows more per miner; `--all` includes rejected signals.

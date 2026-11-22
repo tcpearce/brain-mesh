@@ -68,6 +68,7 @@ Principles:
 - **Grades matter.** A `single-source` finding is not a fact. A `contested` one has a tension card that says why. Two papers from one group or on one data set are one piece of evidence (`independence`).
 - **Design matters.** A source's `design::` says what its results can establish. Use causal wording only for relations whose basis is `tested`; say "is associated with" or "predicts" otherwise.
 - **Writing something to keep** (a review, a background section, a paragraph for a paper or a bid) or **checking a draft** against the brain: `brain-mesh-write`.
+- **A briefing on where things stand** (where to work next, why results disagree, what is weak, what changed, whether an idea is new): `brain-mesh-report`. `python3 tools/mesh.py report` lists the eight kinds.
 
 ## 3. Adding to the brain
 

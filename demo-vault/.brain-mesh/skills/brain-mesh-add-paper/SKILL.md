@@ -77,7 +77,7 @@ Writing each card:
 - Write in your own words. The only copied text is the short `loc::` phrase.
 - Give every card a way back to the page. End the **Source:** line with `[[P012.pdf#page=5|open page]]`; `build` re-points it at the card's highlight in the marked PDF. Take the `loc::` phrase from the sentence that carries the statement, because that phrase is what gets highlighted.
 - Choose locator phrases made of plain words. Avoid stretches containing symbols or operators (=, <, ±, ~), citation numbers, and words the PDF breaks across lines with a hyphen: PDFs often encode these oddly, and the phrase then fails to match the page even though it reads correctly.
-- For a table or figure give the page as well, `- anchor:: T2, p7`, so the mark lands on the right caption.
+- For a table or figure give the page as well, `- anchor:: T2, p7`, so the mark lands on the right caption. Extended Data figures and tables belong to the main PDF (`F6a, p32`); an `SI-` anchor points into the supplementary PDF.
 - A value read from a plot is `via:: figure` and approximate; say so in the prose.
 - Doubt about the extraction goes in `flag::`, not in silence.
 
@@ -125,7 +125,7 @@ For every material, variable, technique and mechanism a card mentions, run `pyth
 - Already proposed: link that exact name.
 - Nothing covers it: propose it; never create the card yourself. `python3 tools/mesh.py propose <slug> "<one-sentence definition>" --from P012 --kind <entity|variable|count|technique|concept> [--unit 1] [--alias "other name"]`, then link the proposed name from the cards. New concepts are the user's call (`brain-mesh`, **Concept cards**): at the end you list the proposals for them to adopt. Exception: the user has told you to make it, or a vault rule in `CLAUDE.md` does; then `propose` and `adopt` it.
 - A variable whose values are things (solvent, strain, polymer) is `categorical`, and each value is its own concept card.
-- Record the system as conditions, not only in the prose: organism or species, preparation (in vivo, slice, culture, in silico), level of organisation (molecule, receptor, cell, circuit, behaviour) and stimulus class, as categorical `when::` lines wherever the paper states them. The discovery miners can only look across what is coded (`brain-mesh-discover`).
+- Record the system as conditions, not only in the prose: organism or species, preparation (in vivo, slice, culture, in silico), level of organisation (molecule, receptor, cell, circuit, behaviour) and stimulus class, as categorical `when::` lines wherever the paper states them. The discovery miners can only look across what is coded (`brain-mesh-discover`). The conditions use the concepts `species` and `preparation` (both categorical); propose them if the vault lacks them.
 
 Use the concept's canonical unit in `value::` and `when::` lines where the conversion is exact; otherwise keep the paper's unit and say so on the concept card.
 

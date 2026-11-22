@@ -4,6 +4,10 @@ A method and tooling for building a **second brain from science papers** with Cl
 
 This repository is the single source of truth for the method. Claude sessions load it through a small synced skill, so a change made here reaches every session.
 
+![The concept network built from three olfaction papers, in Obsidian's graph view](docs/concept-network.webp)
+
+*The concept network Claude built from three olfaction papers, shown in Obsidian's graph view. Pointing at a concept lights up every card that links to it.*
+
 ## How to use it well
 
 You talk to Claude; Claude runs the tooling. This section says what to ask for, in what order, and what makes each step pay off. The commands are shown so you can see what happens and run them yourself when you want to.

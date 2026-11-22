@@ -2,6 +2,18 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.20.1 (2026-11-22)
+
+Lessons from a six-paper batch with parallel agents (`brain-mesh-batch`, `brain-mesh-add-paper`).
+
+- **The verifying agent's brief** is written out: every observation and model card and a sample of 20 others against the pages and data; an independent recomputation of everything the extractor derived. It may also correct the paper's `P012_refs.md` and figure data files, which a verifier needed and was not allowed to fix.
+- **While the agents run** the launching session runs no `build`, `mark`, `sync` or `upgrade`, commits shared files by path if it must, and asks the user to pause Obsidian Git.
+- **Registration lists every unit**, including Extended Data, the reporting summary, a peer-review file and source data. An agent found a reporting summary that contradicted the Methods and that registration had not listed.
+- **`species` and `preparation`** are seeded as the categorical condition variables every card's `when::` lines need. Agents had each proposed their own.
+- **Propose sparingly.** About 100 concepts were proposed for six papers, many of them method detail; more than about 15 for one paper means the bar is too low.
+- **Extended Data anchors** use the main PDF (`F6a, p32`): eleven cards had pointed them into the supplementary PDF, a peer-review file.
+- **References.** Agents may cite by number (`cites:: ref 12`) where they write a reference list by hand, and the merge runs `cite P012 --update` (1.20.0).
+
 ## 1.20.0 (2026-11-22)
 
 - **`cite --update` applies a checked reference list to the cards made before it was checked** (issue #27). In a batch, `cite` runs at registration, before the extraction agents correct each `P012_refs.md`, and `cite` never overwrites a field. With `--update` the checked list becomes the truth for the cards only this source cites, and is not applied to works held in the brain:

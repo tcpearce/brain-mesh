@@ -2,6 +2,21 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.19.0 (2026-11-22)
+
+Discovery by progressive disclosure: the brain as a hierarchy, revealed on a need-to-know basis.
+
+- **`zoom [topic:<slug> | <concept> | <id>] [--budget n] [--explored "<note>"]`.** Each level fits in about n tokens (1,000):
+  - `zoom`: the topics, hottest first, with their size, findings, open contradictions and gaps, signals and when each was last explored; where topics meet and where no card joins them; the strongest signals.
+  - `zoom topic:<slug>`: its concepts ranked by need to know, its findings and open questions, the signals inside it, and its joins to other topics with the concept pairs that make them.
+  - `zoom <concept>`: hub facts, relations with their basis, broader and narrower concepts and what it appears with, the conclusions that hold it, its signals, its evidence and the parts of sources not read in full.
+  - `zoom <K | X | V | G | H | T | S | E id>`: what it says, its sides or support with values, ways out and what would settle it, what works on it, its history.
+  - `zoom <evidence id>`: the card, its codes and the passage on the page. `zoom <P012>`: the study profile, claims, the topics its evidence falls in and what was not read.
+- **Topics** are computed: concepts tied by the cards that hold them together (each card weighted 1/(k-1) for k concepts) and grouped by the Louvain method, in a fixed order so the same brain gives the same topics. A `broader::` or `part_of::` link ties a concept to its parent as strongly as the strongest pair, so a curated hierarchy wins. Low-priority and count concepts are left out, so a vault's generic vocabulary never organises it.
+- **Heat** is need to know: the open contradictions, tensions, gaps, hypotheses, seeds and unfinished experiments holding a concept, plus each miner's ten best fresh signals by rank; doubled for a high-priority concept (1.5 elevated); halved when it was explored and nothing holding it has changed since.
+- **`--explored "<note>"`** records a branch worked in `ledger/explored.md`. `discover --focus topic:<slug>` mines a whole topic.
+- `brain-mesh-discover` now works top-down (**Working top-down**): the hottest branch, the miners inside it, down only where a signal survives, a shortlist, the branch recorded; one subagent per branch where the session can start them. The access skill, the map, the README and the vault's `CLAUDE.md` point to `zoom` for exploring and `ask` for answering.
+
 ## 1.18.1 (2026-11-22)
 
 - `split` gives each new card's duplicate check its own temporary file (`index/.new-<card id>-<process>.md`, removed even on error), so extraction agents can split their batches at the same moment. Before, every process used `index/.new.md`: two agents splitting together could read each other's card, or crash (on Windows, "file in use") with a batch left unwritten. `init` and `upgrade` ignore `index/.new*.md` (issue #25).

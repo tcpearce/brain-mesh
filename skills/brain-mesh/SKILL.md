@@ -122,9 +122,10 @@ Every evidence card's **open page** link lands on its highlight in the marked co
 Work from the top down, read only what the question needs, and keep the context small (`brain-mesh-access`, section 2):
 
 1. **`python3 tools/mesh.py ask "<the question>"`** first. Within about 2,500 tokens it returns the brain's conclusions on the question with their grades, the hub facts, the relations with their basis, the most relevant evidence cards and what was not read in full, each with an id to open.
-2. `show <id>` for a card, its source paragraph and what links to it; `find <words>` to search, most relevant first; `table <concept>` to lay the evidence side by side; `facts <concepts>` before proposing anything.
-3. `MAP.md` for the overview and the hubs; `index/*.tsv` for bulk work, searched with grep, never read whole.
-4. When a detail matters, open the PDF page the card points to.
+2. **`zoom`** to explore rather than answer: the topics ranked by need to know, then one topic, concept, finding or card at a time, about 1,000 tokens a level.
+3. `show <id>` for a card, its source paragraph and what links to it; `find <words>` to search, most relevant first; `table <concept>` to lay the evidence side by side; `facts <concepts>` before proposing anything.
+4. `MAP.md` for the overview and the hubs; `index/*.tsv` for bulk work, searched with grep, never read whole.
+5. When a detail matters, open the PDF page the card points to.
 
 When answering: cite card ids, and the source in words (authors, year, page) for anything the user may repeat; say what kind of statement each point is (measured, the authors' interpretation, the brain's synthesis); check coverage before saying the brain has nothing on a point, and where the answer may sit in a part not read in full, run a lens pass (`brain-mesh-add-paper`) instead of reporting an absence.
 

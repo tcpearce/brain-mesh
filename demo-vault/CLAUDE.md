@@ -13,8 +13,8 @@ with the tooling in `tools/mesh.py`. The method lives in GitHub `tcpearce/brain-
 2. **Sync before anything else:** `python3 tools/mesh.py sync` (pulls from GitHub, rebuilds, commits and pushes any
    leftover local work). Use `python` instead of `python3` on Windows.
 3. Work through the tooling and the skills, never around them. `python3 tools/mesh.py help` lists the commands.
-   Answer questions with `python3 tools/mesh.py ask "<question>"`, then open only the cards the answer needs; never
-   read a concept hub or a file under `index/` whole (access rules, section 2: keeping the context small).
+   Answer questions with `python3 tools/mesh.py ask "<question>"`; explore with `python3 tools/mesh.py zoom`, top-down;
+   then open only the cards needed. Never read a concept hub or a file under `index/` whole (access rules, section 2).
 4. **Sync when done:** `python3 tools/mesh.py sync "<what changed>"`. Every local change ends up on GitHub; never
    leave the vault with uncommitted work, and never force-push.
 

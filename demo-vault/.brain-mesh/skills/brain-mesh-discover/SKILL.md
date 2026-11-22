@@ -7,8 +7,6 @@ description: "Mine a brain mesh, with the user, for new hypotheses and new links
 
 Read `brain-mesh` first, and its FORMATS.md before writing or changing a card. Find the vault and run `python3 tools/mesh.py build`.
 
-**Keep the context small.** A full pass reads a great deal: every miner's signals, the cards behind them and the facts each proposal must respect. Where the session can start subagents, give the pass to one: it runs `discover`, opens the cards behind the strongest signals, runs `facts` on their concepts, and returns a shortlist, each item with its signal key, a line on why it matters, the cards it rests on and the question to put to the user. Present that shortlist; the reading stays in the subagent's context. Otherwise run one miner at a time (`discover <miner> --top 3`) and keep a short note of each miner's best signals before the next.
-
 The other documents build the brain from what papers say and find what they leave unknown. This one looks for what the brain implies and no paper states: connections between papers, hidden variables behind disagreements, results that ought to carry over to another system, rival accounts and the observations that would separate them. Its output is proposals put to the user, not conclusions.
 
 ## The rules
@@ -20,6 +18,20 @@ The other documents build the brain from what papers say and find what they leav
 5. **Nothing is deleted.** A seed is promoted, answered or dropped; a theory abandoned; an analogy failed; always with the reason.
 6. **Brain-relative.** "No card holds both" means in this brain. Before a proposal is promoted to a hypothesis or gap, it climbs the ladder in `brain-mesh-gaps` (coverage of the sources held, then a literature search).
 
+## Working top-down
+
+Read the brain from the top, and only as far down as each signal deserves, so a pass stays small however large the brain grows.
+
+1. **`python3 tools/mesh.py zoom`.** The topics, hottest first: groups of concepts that appear together on cards (a `broader::` or `part_of::` link keeps a concept with its parent). Heat is need to know: the user's priority first, then the open contradictions, tensions, gaps, hypotheses and seeds in a topic, then its fresh discovery signals. A branch explored with nothing changed since counts half. The view also shows where topics meet and where they do not, and the strongest signals.
+2. **Pick a branch:** the user's focus if they gave one, otherwise the hottest topic not explored lately. Two hot topics that no card joins are a branch too: a bridge to look for.
+3. **`zoom topic:<slug>`:** its concepts ranked, its findings and open questions, the signals inside it, its joins to other topics.
+4. **Mine inside it:** `discover --focus topic:<slug>` (or `--focus <concept>`). Judge only these signals, never the whole list.
+5. **Go down only where a signal survives a first look:** `zoom <concept>`, `zoom <V001 | G002 | K003>`, then `zoom <evidence id>` and the page. Run `facts` on a proposal's concepts before putting it to the user (rule 2).
+6. **Propose** (sections 5 and 6), then **record the branch:** `zoom topic:<slug> --explored "<what was mined, proposed, accepted or dropped>"`, and the same for a concept or card worked on. The next session starts elsewhere, or comes back once something in the branch changes.
+7. **Stop at a shortlist.** Come back up for another topic when the user wants more.
+
+Where the session can start subagents, give each branch to one: it does steps 3 to 5 for its topic and returns a shortlist, each item with its signal key, a line on why it matters, the cards it rests on and the question to put to the user. The main conversation holds the top level and the shortlists, none of the reading. Without subagents, finish one branch and note its shortlist before taking the next.
+
 ## 1. When to run
 
 - The user asks for new ideas, hypotheses or connections, or what the brain implies.
@@ -28,7 +40,7 @@ The other documents build the brain from what papers say and find what they leav
 - Around a session: a frontier map and a contradiction dossier (`brain-mesh-report`) show where the signals sit among the open contradictions and gaps; `report novelty S004` checks a seed against the brain before it is promoted.
 - On a schedule, as an insight pass with nobody watching (section 7).
 
-`python3 tools/mesh.py discover` runs every miner; name miners to run some (`discover bridges moderators`); `--focus <concept>` keeps signals involving one concept; `--top N` shows more per miner; `--all` includes rejected signals.
+`python3 tools/mesh.py discover` runs every miner; name miners to run some (`discover bridges moderators`); `--focus <concept>` keeps signals involving one concept, and `--focus topic:<slug>` those involving any concept of a topic from `zoom`; `--top N` shows more per miner; `--all` includes rejected signals.
 
 ## 2. The miners
 

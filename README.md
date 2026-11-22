@@ -93,6 +93,7 @@ Run discovery on a brain that is integrated, never on half-added papers. After e
 - **Signals are prompts, not findings.** Claude judges each against its cards and the page, then proposes the worthwhile ones with the case for each. Only what you accept is written.
 - **Proposals must respect the evidence** (`facts <concept>`). One may go against a card only where a logged contradiction covers that card.
 - **Reject with a reason** (`dismiss`). A rejected signal stays away until new evidence bears on it.
+- **Work top-down** (`zoom`, then `discover --focus topic:<slug>` for the hottest topic) rather than reading every miner's list at once.
 - **Mine around a question:** `discover --focus <concept>`, with that concept set to high priority.
 - **Record conditions as codes.** The miners see only what is in a card's coded lines. Species, preparation, method and level of organisation written as conditions can be mined across; left in the prose, they cannot.
 
@@ -152,7 +153,9 @@ A rough guide; it depends on how closely the papers bear on one another.
 
 Ask Claude a question about your field and it answers from the brain with `python tools/mesh.py ask "<the question>"`. In one call, within about 2,500 tokens, that returns the brain's conclusions on the question with their grades, the hub facts, the relations with their basis, the most relevant evidence cards and what was not read in full, each line carrying a card id. Claude opens only the cards the answer needs.
 
-This keeps a session's context small however large the brain grows. The commands rank and trim their output too: `find` shows the 25 most relevant hits, `show` cuts long generated lists, `table` shows the 25 most relevant rows, and each says how many more there are. Claude never reads a hub or `index/` whole, and hands wide sweeps (a full discovery pass, a scan of many papers, the audit of a long draft) to subagents that report back only their conclusions.
+To explore rather than answer, Claude uses `python tools/mesh.py zoom`. It shows the brain as a hierarchy, revealed on a need-to-know basis: the topics first (groups of concepts that appear together), ranked by your priorities, their open contradictions and gaps, and the signals the miners find in them; then one topic, one concept, one finding or contradiction, one evidence card and its page, each level in about 1,000 tokens. Discovery runs top-down: the hottest topic, the miners inside it only, a shortlist for you, and a note of the branch explored so the next session starts somewhere new.
+
+Both keep a session's context small however large the brain grows. The commands rank and trim their output too: `find` shows the 25 most relevant hits, `show` cuts long generated lists, `table` shows the 25 most relevant rows, and each says how many more there are. Claude never reads a hub or `index/` whole, and hands wide sweeps (a full discovery pass, a scan of many papers, the audit of a long draft) to subagents that report back only their conclusions.
 
 ### Habits that pay
 

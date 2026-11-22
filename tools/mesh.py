@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.18.1"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.19.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -2460,18 +2460,7 @@ def cmd_ask(m, args):
     facts = []
     held = Counter(t for _sc, c in ev[:30] for t in m.terms(c) & Q)
     for cid in sorted(order, key=lambda t: (-held[t], order.index(t)))[:4]:  # the concepts the best evidence holds first
-        con = m.cards[cid]
-        dfn = re.sub(r".*?\*\*Definition\.\*\*\s*", "", con.prose(), count=1, flags=re.S).split("\n")[0]
-        facts.append(f"{con.title or cid} [{cid}]: {one(plain(dfn), 220)}")
-        sect, pts, ques = None, [], []
-        for line in con.prose().split("\n"):
-            h = re.match(r"## (.+)", line)
-            if h: sect = h.group(1).strip(); continue
-            if not line.startswith("- "): continue
-            txt = one(plain(line[2:]), 220)
-            rel = sum(1 for o in Q - {cid} if "[[" + o in line) + sum(1 for x in kw if x in text_words(line))
-            (ques if sect == "Open questions" else pts).append((-rel, len(pts) + len(ques), txt))
-        facts += [f"  - {t}" for _r, _i, t in sorted(pts)[:5]] + [f"  - open question: {t}" for _r, _i, t in sorted(ques)[:2]]
+        facts += hub_facts(m, cid, Q, kw)
     if facts: secs.append(("Concept hubs: definition and facts (each cites its cards on the hub)", facts, len(facts), 0.22))
     rel = []
     if Q:
@@ -2523,6 +2512,340 @@ def condense(text, cid, n_auto=10, n_lf=12, concept=False):
         items = [x for x in lf.split("\n") if x.startswith("- ")]
         if len(items) > n_lf: text = head + "\n## Linked from\n" + "\n".join(items[:n_lf]) + f"\n- … {len(items) - n_lf} more (`show {cid} --all`)\n"
     return text
+
+
+# ---- 1.19.0: zoom: the brain as a hierarchy, disclosed on a need-to-know basis ----
+
+OPEN_WEIGHT = {"V": 3.0, "X": 3.0, "G": 2.0, "H": 2.0, "S": 1.0, "E": 1.0}
+OPEN_STATUS = {"V": ("open",), "X": ("open",), "G": ("open", "fillable", "confirmed", "planned"), "H": ("open",), "S": ("new", "developing"), "E": ("proposed", "registered", "running")}
+
+
+def hub_facts(m, cid, Q=(), kw=None, n_pts=5, n_q=2):
+    """A concept hub's definition and its facts, those naming the other concepts or words of a question first."""
+    con, kw = m.cards[cid], kw or {}
+    dfn = re.sub(r".*?\*\*Definition\.\*\*\s*", "", con.prose(), count=1, flags=re.S).split("\n")[0]
+    out, sect, pts, ques = [f"{con.title or cid} [{cid}]: {one(plain(dfn), 220)}"], None, [], []
+    for line in con.prose().split("\n"):
+        h = re.match(r"## (.+)", line)
+        if h: sect = h.group(1).strip(); continue
+        if not line.startswith("- "): continue
+        rel = sum(1 for o in set(Q) - {cid} if "[[" + o in line) + sum(1 for x in kw if x in text_words(line))
+        (ques if sect == "Open questions" else pts).append((-rel, len(pts) + len(ques), one(plain(line[2:]), 220)))
+    return out + [f"  - {t}" for _r, _i, t in sorted(pts)[:n_pts]] + [f"  - open question: {t}" for _r, _i, t in sorted(ques)[:n_q]]
+
+
+def zoom_concepts(m):
+    """The concepts that structure the brain, with how many cards use each: live, used, neither low priority (a vault's
+    generic vocabulary) nor a count."""
+    use = Counter(t for c in m.cards.values() if c.fam in ("evidence", "page") and not c.get("retired") for t in m.terms(c))
+    return {t: n for t, n in use.items() if t in m.cards and m.cards[t].fam == "concept" and not m.cards[t].get("retired") and m.level(t) != "low" and m.cards[t].get("kind") != "count"}
+
+
+def louvain(nodes, w, gamma=1.0):
+    """Communities of a weighted graph by the Louvain method (local moves, then aggregation, until nothing moves), in a
+    fixed order, so the same brain always gives the same groups. w: {(a, b): weight}. Returns {node: group key}."""
+    adj = defaultdict(dict)
+    for (a, b), x in w.items():
+        if a != b: adj[a][b] = adj[a].get(b, 0.0) + x; adj[b][a] = adj[b].get(a, 0.0) + x
+    cur, members = sorted(nodes), {n: [n] for n in nodes}
+    while True:
+        comm, k = {n: n for n in cur}, {n: sum(adj[n].values()) for n in cur}
+        m2 = sum(k.values()) or 1.0
+        tot, moved_any, moved = Counter(k), False, True
+        while moved:
+            moved = False
+            for n in cur:
+                c0 = comm[n]; tot[c0] -= k[n]
+                links = defaultdict(float)
+                for nb, x in adj[n].items():
+                    if nb != n: links[comm[nb]] += x
+                best, gain = c0, links.get(c0, 0.0) - gamma * tot[c0] * k[n] / m2
+                for c, x in sorted(links.items()):
+                    g = x - gamma * tot[c] * k[n] / m2
+                    if g > gain + 1e-12: best, gain = c, g
+                comm[n] = best; tot[best] += k[n]
+                if best != c0: moved = moved_any = True
+        if not moved_any: break
+        nm, na = defaultdict(list), defaultdict(dict)
+        for n in cur:
+            nm[comm[n]] += members[n]
+            for nb, x in adj[n].items(): na[comm[n]][comm[nb]] = na[comm[n]].get(comm[nb], 0.0) + x
+        cur, members, adj = sorted(nm), dict(nm), na
+    return {t: g for g, ts in members.items() for t in ts}
+
+
+def topics(m):
+    """Topics: groups of concepts that appear together on cards. Each card ties its concepts in pairs, weighted 1/(k-1)
+    for a card with k concepts; a broader:: or part_of:: link ties a concept to its parent as strongly as the strongest
+    pair, so a curated hierarchy wins. Groups come from the Louvain method; a topic is named after its most used concept.
+    Returns ({slug: [concepts, most central first]}, {concept: slug}, {(slug, slug): cards joining them})."""
+    if getattr(m, "_topics", None) is not None: return m._topics
+    use = zoom_concepts(m); U = set(use)
+    w, cards_of = defaultdict(float), defaultdict(set)
+    for c in m.cards.values():
+        if c.fam not in ("evidence", "page") or c.get("retired"): continue
+        ts = sorted(m.terms(c) & U)
+        for t in ts: cards_of[t].add(c.id)
+        for a, b in itertools.combinations(ts, 2): w[(a, b)] += 1.0 / (len(ts) - 1)
+    top = max(w.values(), default=1.0)
+    for t in sorted(U):
+        for k_ in ("broader", "part_of"):
+            for v in m.cards[t].all(k_):
+                for o in m.ids(v)[0]:
+                    if o in U and o != t: w[tuple(sorted((t, o)))] += top
+    comm = louvain(sorted(U), w)
+    deg = Counter()
+    for (a, b), x in w.items():
+        if comm[a] == comm[b]: deg[a] += x; deg[b] += x
+    groups, lone = defaultdict(list), []
+    for t, g in comm.items(): (groups[g] if deg[t] or sum(1 for x in comm.values() if x == g) > 1 else lone).append(t)
+    T, of = {}, {}
+    for g, ts in groups.items():
+        ts = sorted(ts, key=lambda t: (-deg[t], -use[t], t)); slug = max(ts, key=lambda t: (use[t], deg[t], t))
+        T[slug] = ts
+    if lone: T["other"] = sorted(lone, key=lambda t: (-use[t], t))
+    for slug, ts in T.items():
+        for t in ts: of[t] = slug
+    joins = Counter()
+    for c in m.cards.values():
+        if c.fam in ("evidence", "page") and not c.get("retired"):
+            ss = sorted({of[t] for t in m.terms(c) if t in of})
+            for a, b in itertools.combinations(ss, 2): joins[(a, b)] += 1
+    m._topics = (T, of, joins)
+    return m._topics
+
+
+def explored(m):
+    """ledger/explored.md: {node: [(date, note)]}, the branches of the brain a session has worked through."""
+    p, out = J(m.root, "ledger", "explored.md"), defaultdict(list)
+    if os.path.exists(p):
+        for mo in re.finditer(r"^- (\d{4}-\d{2}-\d{2}) (\S+) — (.*)$", rd(p), re.M): out[mo.group(2)].append((mo.group(1), mo.group(3)))
+    return out
+
+
+def heat(m):
+    """Need to know, per concept: the open contradictions, tensions, gaps, hypotheses, seeds and unfinished experiments
+    that hold it, and the fresh discovery signals that involve it (each miner's ten best, by rank); times 2 for a concept
+    the user set high (1.5 elevated); halved when it was explored and no card holding it has changed since.
+    Returns ({concept: heat}, {concept: [open card ids]}, {concept: [signal rows]}, all fresh signals by miner)."""
+    if getattr(m, "_heat", None) is not None: return m._heat
+    T, of, _j = topics(m)
+    H, opn, sig = Counter(), defaultdict(list), defaultdict(list)
+    for p_ in m.pages("VXGHSE"):
+        if p_.get("retired") or p_.status not in OPEN_STATUS[p_.id[0]]: continue
+        ts = [t for t in m.terms(p_) if t in of]
+        for t in ts: H[t] += OPEN_WEIGHT[p_.id[0]] / math.sqrt(len(ts)); opn[t].append(p_.id)
+    fresh = fresh_signals(m)
+    for mn, rows in fresh.items():
+        for rank, r in enumerate(rows[:10]):
+            ts = [t for t in r[4] if t in of]
+            for t in ts: H[t] += 1.0 / (rank + 1) / math.sqrt(len(ts)); sig[t].append(r)
+    ex, upd = explored(m), defaultdict(str)
+    for c in m.cards.values():
+        if c.fam in ("evidence", "page"):
+            for t in m.terms(c):
+                if t in of: upd[t] = max(upd[t], str(c.fm.get("updated") or ""))
+    for t in of:
+        lv = m.level(t)
+        H[t] *= 2.0 if lv == "high" else 1.5 if lv == "elevated" else 1.0
+        last = max([d for d, _n in ex.get(t, [])] + [d for d, _n in ex.get("topic:" + of[t], [])] or [""])
+        if last and upd[t] <= last: H[t] *= 0.5
+    m._heat = (H, opn, sig, fresh)
+    return m._heat
+
+
+def page_topic(m, c):
+    """The topic most of a card's concepts belong to."""
+    T, of, _j = topics(m); H = heat(m)[0]
+    cnt = Counter(of[t] for t in m.terms(c) if t in of)
+    return max(cnt, key=lambda s_: (cnt[s_], sum(H[t] for t in T[s_]), s_)) if cnt else None
+
+
+def emit(head, secs, foot, budget):
+    """Print a view within about budget tokens: the head and foot always, then each section (title, lines, share of the
+    room) with as many lines as its share allows, room a section leaves unused passing to the next. A section shows at
+    least its first line, and its heading says how many lines it left out."""
+    secs = [x for x in secs if x[1]]
+    room0 = budget * 4 - sum(len(x) + 1 for x in head + foot)
+    tot = sum(x[2] for x in secs) or 1.0
+    out, carry = list(head), 0
+    for title, lines, share in secs:
+        room = int(room0 * share / tot) + carry
+        kept, used = fit(lines, max(room - len(title) - 8, 0))
+        out += ["", f"## {title}" + (f" ({len(kept)} of {len(lines)})" if len(kept) < len(lines) else "")] + kept
+        carry = max(room - used - len(title) - 8, 0)
+    print("\n".join(out + [""] + foot))
+
+
+def zoom_line(m, t):
+    """One line on a concept: its use, findings, open cards, signals, priority, heat."""
+    H, opn, sig, _f = heat(m)
+    ks = [k.id for k in m.pages("K") if not k.get("retired") and t in m.terms(k)]
+    return (f"{t} ({m.cards[t].title or t}) · {sum(1 for x in m.evidence() if t in m.terms(x))} evidence" + (f" · findings {' '.join(ks[:4])}" if ks else "")
+            + (f" · open {' '.join(sorted(set(opn[t]))[:5])}" if opn[t] else "") + (f" · {len(sig[t])} signals" if sig[t] else "")
+            + (f" · {m.level(t)}" if m.level(t) != "normal" else "") + f" · heat {H[t]:.1f}")
+
+
+def sig_line(r): return f"[{r[1].split(':')[0]}] {one(plain(r[2]), 200)} (`{r[1]}`)"
+
+
+def zoom_brain(m, budget):
+    T, of, joins = topics(m); H, opn, sig, fresh = heat(m); ex = explored(m)
+    th = {s_: sum(H[t] for t in ts) for s_, ts in T.items()}
+    order = sorted(T, key=lambda s_: (s_ == "other", -th[s_], s_))
+    nsrc = sum(1 for c in m.cards.values() if c.fam == "source")
+    head = [f"The brain: {m.cfg.get('name', 'brain mesh')} · {nsrc} sources, {len(m.evidence())} evidence cards · {len(of)} concepts in {len(T)} topics",
+            "Topics are concepts that appear together on cards (a broader:: or part_of:: link keeps a concept with its parent; low-priority and count concepts are left out).",
+            "Need to know, first: your priority, then open contradictions, tensions and gaps, then discovery signals, then what changed since a branch was last explored."]
+    rows = []
+    for i, s_ in enumerate(order, 1):
+        ts = T[s_]; cs = set(ts)
+        ks = sorted({k.id + " " + k.status for k in m.pages("K") if not k.get("retired") and page_topic(m, k) == s_})
+        op = sorted({x for t in ts for x in opn[t]}); nsig = len({r[1] for t in ts for r in sig[t]})
+        ev = sum(1 for c in m.evidence() if m.terms(c) & cs)
+        last = max([d for d, _n in ex.get("topic:" + s_, [])] or ["never"])
+        hi = [t for t in ts if m.level(t) == "high"]
+        named = [s_] + [t for t in ts if t != s_][:2] if s_ in m.cards else ts[:3]
+        rows += [f"{i}. topic:{s_} — " + " · ".join(m.cards[t].title or t for t in named) + (f" (+{len(ts) - len(named)} more)" if len(ts) > len(named) else ""),
+                 f"   {len(ts)} concepts · {ev} evidence" + (f" · findings {', '.join(ks[:4])}" if ks else "") + (f" · open {' '.join(op[:6])}" if op else "")
+                 + (f" · {nsig} signals" if nsig else "") + (f" · high: {', '.join(hi[:3])}" if hi else "") + f" · heat {th[s_]:.1f} · explored {last}"]
+    meet = [f"topic:{a} × topic:{b}: {n} cards hold concepts of both" for (a, b), n in sorted(joins.items(), key=lambda r: (-r[1], r[0]))[:6]]
+    hot = [s_ for s_ in order if s_ != "other"][:5]
+    meet += [f"topic:{a} × topic:{b}: no card holds concepts of both" for a, b in itertools.combinations(hot, 2) if not joins.get(tuple(sorted((a, b))))][:4]
+    best = sorted((next((r for r in rs if any(t in of for t in r[4])), None) for rs in fresh.values()), key=lambda r: -r[0] if r else 0)
+    best = [r for r in best if r][:4]  # a signal only about low-priority concepts is never raised
+    foot = ["Go down: `zoom topic:<slug>`, a concept `zoom <concept>`, a card `zoom <id>`. After working a branch: `zoom <node> --explored \"<what was done or found>\"`."]
+    emit(head, [("Topics, most need to know first", rows, 0.6), ("Where topics meet, and where they do not", meet, 0.2), ("The strongest signals, one per miner", [sig_line(r) for r in best], 0.2)], foot, budget)
+
+
+def zoom_topic(m, slug, budget):
+    T, of, joins = topics(m); H, opn, sig, _f = heat(m); ex = explored(m)
+    if slug not in T: sys.exit(f"zoom: no topic '{slug}'. `zoom` lists the topics: " + ", ".join(sorted(T)))
+    ts = sorted(T[slug], key=lambda t: (-H[t], t)); cs = set(ts)
+    last = max([d for d, _n in ex.get("topic:" + slug, [])] or ["never"])
+    ev = [c for c in m.evidence() if m.terms(c) & cs]
+    head = [f"Topic: {slug} · {len(ts)} concepts · {len(ev)} evidence cards from {len({c.id[:4] for c in ev})} sources · heat {sum(H[t] for t in ts):.1f} · explored {last}"]
+    head += [f"  explored {d}: {one(n_, 200)}" for d, n_ in ex.get("topic:" + slug, [])[-2:]]
+    pg = sorted((p_ for p_ in m.pages("KXVGHTSE") if not p_.get("retired") and page_topic(m, p_) == slug), key=lambda p_: ("KXVGHTSE".find(p_.id[0]), p_.status not in OPEN_STATUS.get(p_.id[0], (p_.status,)), p_.id))
+    other = Counter()
+    for (a, b), n in joins.items():
+        if slug in (a, b): other[b if a == slug else a] = n
+    via = defaultdict(Counter)
+    for c in m.cards.values():
+        if c.fam in ("evidence", "page") and not c.get("retired"):
+            mine_ = [t for t in m.terms(c) if of.get(t) == slug]
+            for t in m.terms(c):
+                if t in of and of[t] != slug:
+                    for t0 in mine_: via[of[t]][(t0, t)] += 1
+    jl = [f"topic:{o}: {n} cards" + (", most through " + ", ".join(f"{a}–{b} ({k})" for (a, b), k in via[o].most_common(2)) if via[o] else "") for o, n in other.most_common(6)]
+    sg = sorted({r[1]: r for t in ts for r in sig[t] if sum(1 for x in r[4] if x in cs) * 2 >= len(r[4])}.values(), key=lambda r: -r[0])
+    foot = [f"Go down: `zoom <concept>`. Mine it: `discover --focus topic:{slug}`. Afterwards: `zoom topic:{slug} --explored \"<what was done or found>\"`."]
+    emit(head, [("Concepts, most need to know first", [zoom_line(m, t) for t in ts], 0.35),
+                ("The brain's conclusions and open questions here", [f"{p_.id} [{p_.type}, {p_.status}] {one(plain(p_.title), 150)}" for p_ in pg], 0.25),
+                ("Signals inside this topic", [sig_line(r) for r in sg[:8]], 0.25),
+                ("Joins to other topics", jl, 0.15)], foot, budget)
+
+
+def zoom_concept(m, cid, budget):
+    T, of, _j = topics(m); H, opn, sig, _f = heat(m); w = rarity(m)
+    con = m.cards[cid]
+    up = [f"broader: {', '.join(t for v in con.all('broader') for t in m.ids(v)[0])}"] if con.all("broader") else []
+    up += [f"part of: {', '.join(t for v in con.all('part_of') for t in m.ids(v)[0])}"] if con.all("part_of") else []
+    down = sorted(c.id for c in m.cards.values() if c.fam == "concept" and any(cid in m.ids(v)[0] for k_ in ("broader", "part_of") for v in c.all(k_)))
+    co = Counter(t for c in m.cards.values() if c.fam in ("evidence", "page") and not c.get("retired") and cid in m.terms(c) for t in m.terms(c) if t != cid and t in of)
+    head = [f"Concept: {con.title or cid} [{cid}] · topic:{of.get(cid, '-')} · {m.cards[cid].get('kind') or 'concept'} · priority {m.level(cid)} · heat {H.get(cid, 0):.1f}"]
+    head += ["  " + " · ".join(up + ([f"narrower: {', '.join(down[:8])}"] if down else []) + ["appears with: " + ", ".join(f"{t} ({n})" for t, n in co.most_common(6))])]
+    rel = []
+    for (x, y), e in sorted(effects(m).items()):
+        if cid in (x, y): rel.append(f"{x} → {y}: {({'+': 'raises', '-': 'lowers', '±': 'raises and lowers'}).get(e['sign'], 'direction not recorded')}, basis {e.get('rel') or 'data'} ({' '.join(e['basis'][:4])})")
+    for (x, y), ns in sorted(null_results(m).items()):
+        if cid in (x, y): rel.append(f"{x} → {y}: no effect found ({' '.join(ns[:4])})")
+    pg = sorted((p_ for p_ in m.pages("KXVGHTSE") if not p_.get("retired") and cid in m.terms(p_)), key=lambda p_: (p_.status not in OPEN_STATUS.get(p_.id[0], ("~",)), "KXVGHTSE".find(p_.id[0]), p_.id))
+    ev = sorted((c for c in m.evidence() if cid in m.terms(c)), key=lambda c: (-card_score(m, c, {cid}, w), c.id))
+    unk = [f"{s_} {short_cite(m.cards[s_])}: " + "; ".join(u for u in unread_units(m.cards[s_]) if not u.lower().startswith("reference")) for s_ in sorted({c.id[:4] for c in ev}) if s_ in m.cards and [u for u in unread_units(m.cards[s_]) if not u.lower().startswith("reference")]]
+    foot = [f"Go down: `zoom <id>` for a finding, contradiction, gap or card. Lay out the evidence: `table {cid}`. Before proposing: `facts {cid}`. Mine around it: `discover --focus {cid}`. Afterwards: `zoom {cid} --explored \"<what was done or found>\"`."]
+    emit(head, [("Hub", hub_facts(m, cid, n_pts=4), 0.22), ("Relations, with their basis", rel, 0.08),
+                ("Conclusions and open questions that hold it", [f"{p_.id} [{p_.type}, {p_.status}] {one(plain(p_.title), 150)}" for p_ in pg], 0.18),
+                ("Signals involving it", [sig_line(r) for r in sorted(sig.get(cid, []), key=lambda r: -r[0])[:6]], 0.17),
+                ("Evidence, most relied on first", [f"{c.id} [{c.type}, {c.status}] {short_cite(m.cards[c.id[:4]]) if c.id[:4] in m.cards else c.id[:4]} · {one(plain(c.title), 130)}" for c in ev[:12]], 0.27),
+                ("Not read in full, in sources that hold it", [one(x, 240) for x in unk], 0.08)], foot, budget)
+
+
+def zoom_card(m, c, budget):
+    """A finding, tension, contradiction, gap, hypothesis, theory, seed or experiment: its opening, its evidence, its
+    ways out or what would settle it, what works on it, its history."""
+    _T, of, _j = topics(m); sig = heat(m)[2]
+    paras = [pa for pa in re.split(r"\n\s*\n", c.prose()) if pa.strip() and not pa.lstrip().startswith("<!--")]
+    opening = [one(plain(pa), 500) for pa in paras if not pa.lstrip().startswith(("#", "**Sides", "- ", "**Ways out", "**Evidence"))][:2]
+    links = []
+    for k_ in PAGES[c.id[0]][3] + ["cites"]:
+        for v in c.all(k_):
+            for t in m.ids(v)[0]:
+                x = m.cards[t]
+                links.append(f"{k_}: {t} [{x.type}, {x.status or '-'}] " + (f"{short_cite(m.cards[t[:4]])} · " if x.fam == "evidence" and t[:4] in m.cards else "") + one(plain(x.title), 130)
+                             + (" = " + "; ".join(one(plain(v_), 60) for v_ in x.all("value"))[:120] if x.all("value") else ""))
+    settle = []
+    for nm in ("Ways out", "Possible explanations", "What would settle it", "What would close it", "What would change this", "Why it matters", "Search log", "Discriminating predictions", "Registered predictions", "Decision rule"):
+        sec = card_section(c, nm)
+        if sec: settle.append(f"{nm}: {one(plain(sec), 600)}")
+    wk = working_on(m, c.id)
+    hist = [f"{k_}: {one(plain(v), 200)}" for k_ in ("graded", "reviewed", "explained_by", "resolved_by") for v in c.all(k_)][-4:]
+    sg = sorted({r[1]: r for t in m.terms(c) for r in sig.get(t, []) if c.id in r[1] or c.id in r[2]}.values(), key=lambda r: -r[0])
+    head = [f"{c.id} [{c.type}, {c.status}] {one(plain(c.title), 200)}", f"  topic:{page_topic(m, c) or '-'} · concepts: {', '.join(sorted(m.terms(c))[:10])}" + (f" · working on it: {', '.join(wk)}" if wk else " · nothing works on it")]
+    foot = [f"Go down: `zoom <evidence id>`. The evidence side by side: `table {c.id}`." + (f" The full dossier: `report contradictions {c.id}`." if c.id[0] in "VX" else "") + f" Afterwards: `zoom {c.id} --explored \"<what was done or found>\"`."]
+    emit(head, [("What it says", opening, 0.2), ("What it rests on and sets against each other", links, 0.3), ("Ways out, and what would settle it", settle, 0.25),
+                ("Signals that name it", [sig_line(r) for r in sg[:5]], 0.1), ("History", hist, 0.15)], foot, budget)
+
+
+def zoom_evidence(m, c, budget):
+    src = m.cards.get(c.id[:4]); bl = m.blocks(c.id[:4])
+    paras = [one(plain(pa), 600) for pa in re.split(r"\n\s*\n", c.prose()) if pa.strip()][:3]
+    page = [f"{a} (page {bl[a][0]}): {one(bl[a][1], 700)}" for a in m.anchors(c) if a in bl][:2]
+    codes = [f"{k_}: {one(plain(v), 200)}" for k_, v in c.codes if k_ in ("value", "stat", "when", "obtained_by", "based_on", "supports", "contradicts", "replicates", "qualifies", "underlies", "cites", "missing")]
+    up = sorted({s_ for s_, _r, d in m.edges() if d == c.id and s_ in m.cards and m.cards[s_].fam == "page"})
+    head = [f"{c.id} [{c.type}, {c.status}] {short_cite(src) if src else ''} · {one(plain(c.title), 200)}", f"  used by: {', '.join(up) or 'no finding, tension, contradiction or gap yet'}"]
+    emit(head, [("The card", paras, 0.35), ("Codes", codes, 0.25), ("On the page", page, 0.4)], [f"The page itself: the card's open-page link (`show {c.id}` prints it). Up: `zoom <id>` for a card above."], budget)
+
+
+def zoom_source(m, c, budget):
+    _T, of, _j = topics(m); st = study(c)
+    ev = m.evidence(c.id)
+    tc = Counter(page_topic(m, x) for x in ev if page_topic(m, x))
+    cl = m.cards.get(c.id + "-claims")
+    head = [f"{c.id} [{c.get('kind') or 'paper'}, {c.status}] {one(plain(c.title), 200)}",
+            f"  {len(ev)} evidence cards: " + ", ".join(f"{k} {v}" for k, v in ranked(Counter(x.type for x in ev)))]
+    prof = [f"question: {one(plain(st.get('question') or c.get('question') or 'not recorded'), 250)}"] + [f"design: {d} — {one(plain(n_), 160)}" for d, n_ in st["designs"]] + [f"sample: {one(plain(st['sample'] or 'not recorded'), 200)}"]
+    claims = [f"{k_}: {one(plain(v), 250)}" for k_, v in cl.codes if k_ in ("main_claim", "sub_claim")] if cl is not None else ["no claims card yet"]
+    foot = [f"Go down: `zoom topic:<slug>` for the topics its cards fall in, or `zoom <card id>`. Where its evidence goes: `place {c.id}`."]
+    emit(head, [("Study", prof, 0.25), ("What it claims", claims, 0.35), ("Topics its evidence falls in", [f"topic:{s_}: {n} cards" for s_, n in tc.most_common(8)], 0.2),
+                ("Not read in full", [u for u in unread_units(c)], 0.2)], foot, budget)
+
+
+def cmd_zoom(m, args):
+    """`zoom [topic:<slug> | <concept> | <id>] [--budget n] [--explored "<note>"]`: the brain as a hierarchy, from the
+    topics down to a card and its page, each level within about n tokens (1,000), most need to know first."""
+    budget, note, rest, k = 1000, None, [], 0
+    while k < len(args):
+        if args[k] == "--budget" and k + 1 < len(args): budget = max(300, int(args[k + 1])); k += 2
+        elif args[k] == "--explored" and k + 1 < len(args): note = args[k + 1]; k += 2
+        else: rest.append(args[k]); k += 1
+    node = " ".join(rest).strip()
+    if note is not None:
+        if not node: sys.exit('zoom --explored: name the node: zoom topic:<slug> --explored "<what was done or found>"')
+        p_ = J(m.root, "ledger", "explored.md")
+        old = rd(p_) if os.path.exists(p_) else "# Explored branches of the brain\n\nWritten by `mesh.py zoom <node> --explored \"<note>\"` after a session works a topic, concept or card, so the next session can start somewhere new. `zoom` shows when each branch was last explored, and a branch explored with nothing changed since counts for less.\n\n"
+        wr(p_, old.rstrip("\n") + f"\n- {TODAY} {node} — {' '.join(note.split())}\n")
+        print(f"explored: {node} — recorded in ledger/explored.md"); return
+    if not node: return zoom_brain(m, budget)
+    if node.startswith("topic:"): return zoom_topic(m, node[6:], budget)
+    cid = concept_arg(m, node)
+    if cid: return zoom_concept(m, cid, budget)
+    c = need(m, node)
+    if c.fam == "concept": return zoom_concept(m, c.id, budget)
+    if c.fam == "evidence": return zoom_evidence(m, c, budget)
+    if c.fam == "source": return zoom_source(m, c, budget)
+    if c.fam == "page" and c.id[0] in "KXVGHTSEA": return zoom_card(m, c, budget)
+    return cmd_show(m, c.id)
 
 
 def cmd_show(m, i, every=False):
@@ -5357,8 +5680,8 @@ with the tooling in `tools/mesh.py`. The method lives in GitHub `tcpearce/brain-
 2. **Sync before anything else:** `python3 tools/mesh.py sync` (pulls from GitHub, rebuilds, commits and pushes any
    leftover local work). Use `python` instead of `python3` on Windows.
 3. Work through the tooling and the skills, never around them. `python3 tools/mesh.py help` lists the commands.
-   Answer questions with `python3 tools/mesh.py ask "<question>"`, then open only the cards the answer needs; never
-   read a concept hub or a file under `index/` whole (access rules, section 2: keeping the context small).
+   Answer questions with `python3 tools/mesh.py ask "<question>"`; explore with `python3 tools/mesh.py zoom`, top-down;
+   then open only the cards needed. Never read a concept hub or a file under `index/` whole (access rules, section 2).
 4. **Sync when done:** `python3 tools/mesh.py sync "<what changed>"`. Every local change ends up on GitHub; never
    leave the vault with uncommitted work, and never force-push.
 
@@ -5890,10 +6213,15 @@ def cmd_discover(m, args):
         if a in flags: continue
         if a in opt: opt[a] = next(it, None)
         elif a in MINERS: want.append(a)
-        else: sys.exit(f"discover: unknown miner or option '{a}'; miners are {', '.join(MINERS)}; options --top N, --focus <concept>, --all, --recheck")
+        else: sys.exit(f"discover: unknown miner or option '{a}'; miners are {', '.join(MINERS)}; options --top N, --focus <concept or topic:slug>, --all, --recheck")
     if "--recheck" in flags: return recheck(m)
     want, top = want or MINERS, int(opt["--top"] or 8)
-    focus = need(m, opt["--focus"]).id if opt["--focus"] else None
+    tf = opt["--focus"] or ""
+    if tf.startswith("topic:"):  # a topic from `zoom`: signals involving any of its concepts
+        T_ = topics(m)[0]
+        if tf[6:] not in T_: sys.exit(f"discover: no topic '{tf[6:]}'. `zoom` lists the topics: " + ", ".join(sorted(T_)))
+    focus = (tf if tf.startswith("topic:") else need(m, tf).id) if tf else None
+    fset = set(topics(m)[0][tf[6:]]) if tf.startswith("topic:") else {focus}
     (rows, notes), rej = mine(m, want), judged(m)
     carded, closed = defaultdict(list), defaultdict(list)  # signal key -> live cards carrying its stamp; -> closed ones (dropped, answered, refuted …) with the sources stamped
     for c in sorted((c for c in m.cards.values() if c.fam == "page" and not c.get("retired")), key=lambda c: c.id):
@@ -5904,12 +6232,12 @@ def cmd_discover(m, args):
             else: closed[mo.group(1)].append((c.id, c.status, set(mo.group(4).split())))
     synth = [c for c in m.cards.values() if c.fam == "page" and c.id[0] != "S" and not c.get("retired")]
     touched = lambda cs: [p.id for p in synth if len(cs) >= 2 and set(cs) <= m.terms(p)][:3]
-    print(f"Mining {len(m.evidence())} evidence cards, {len(synth)} synthesis and workbench cards and {sum(1 for c in m.cards.values() if c.fam == 'concept')} concepts" + (f" around [[{focus}]]" if focus else ""))
+    print(f"Mining {len(m.evidence())} evidence cards, {len(synth)} synthesis and workbench cards and {sum(1 for c in m.cards.values() if c.fam == 'concept')} concepts" + (f" around {focus}" if focus and focus.startswith("topic:") else f" around [[{focus}]]" if focus else ""))
     total = hidden = 0
     for miner in want:
         shown = []
         for r in rows.get(miner, []):
-            if focus and focus not in r[4]: continue
+            if focus and not fset & set(r[4]): continue
             rj = rej.get(r[1])
             if not rj and closed.get(r[1]) and not carded.get(r[1]):  # a card made from it was closed: treat as judged
                 cl = closed[r[1]]; rj = ("", 0, set().union(*[x[2] for x in cl]), "card " + ", ".join(f"{i} {st}" for i, st, _s in cl))
@@ -6011,6 +6339,8 @@ id <P|K|X|G|H|E|D|C|R|L|P###> next free id                   concept <name>     
 split <batch.md> [--update]   write many cards from one file (`=== <file name>` starts each card)
 build                         expand links to full names, check, rebuild index/, source lists and MAP.md
 check [P###]                  validate everything (or one source)
+zoom [topic:<slug>|<concept>|<id>] [--budget n] [--explored "<note>"]   the brain as a hierarchy, most need to know first: topics, then a
+                              topic's concepts, a concept, a finding, contradiction or gap, an evidence card; about n tokens (1000) a level
 ask "<question>" [--budget n] [--concepts a b] [--source P###]   what the brain holds on a question, best first, in about n tokens
                               (default 2500): named cards, conclusions, hub facts, relations, ranked evidence, unread parts
 find <words> [--type t] [--source P###] [--limit n]   search all cards, most relevant first (concept aliases expand; 25 shown)
@@ -6105,6 +6435,7 @@ def main():
     elif c == "check": notes = m.check(a[0] if a else None); report(m, notes); sys.exit(1 if m.err else 0)
     elif c == "show": cmd_show(m, " ".join(x for x in a if x != "--all"), every="--all" in a)
     elif c == "ask": cmd_ask(m, a)
+    elif c == "zoom": cmd_zoom(m, a)
     elif c == "linked": cmd_linked(m, a)
     elif c == "find": cmd_find(m, a)
     elif c == "concept": cmd_concept(m, " ".join(a))

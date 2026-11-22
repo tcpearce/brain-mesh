@@ -2,6 +2,10 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.15.2 (2026-11-22)
+
+- `cite` run again no longer makes a second reference card for a work it cannot key (no DOI, volume or title of three long words, as for a conference paper printed without its title). It now also matches the card whose `cited_by::` line already records the same source and reference number (issue #20).
+
 ## 1.15.1 (2026-11-22)
 
 - README: a guide to using the tools well: the loop from adding papers to writing, what to ask for at each stage, the order to work the discovery miners in, how often to run each thing, what to expect at each vault size, and habits that pay.

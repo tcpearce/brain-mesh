@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.15.1"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.15.2"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -3911,16 +3911,17 @@ def cmd_cite(m, pid):
     that cites it, matched by DOI, arXiv id, first author + year + volume + page, or first author + year + title."""
     path = J(SRC(m.root, pid), pid + "_refs.md")
     if not os.path.exists(path): sys.exit(f"cite: no {pid}_refs.md; run `mesh.py refs {pid}` first")
-    index = {}
+    index, byref = {}, {}
     for r in [c for c in m.cards.values() if c.fam == "reference" and not c.get("retired")]:
         for k in ref_keys(r.fields()): index.setdefault(k, r)
+        for p, n, _b in ref_cites(r): byref.setdefault((p, int(n)), r)  # a card already made for this source's ref n (issue #20)
     srcs = {k: c for c in m.cards.values() if c.fam == "source" for k in ref_keys(source_fields(c))}
     nxt = max([int(c.id[1:]) for c in m.cards.values() if c.fam == "reference"] or [0]) + 1
     made, merged = 0, 0
     os.makedirs(J(m.root, "references"), exist_ok=True)
     for n, f in read_refs(path):
         line = f"- cited_by:: [[{pid}]] ref {n}" + (f" — {f['cited_at']}" if f.get("cited_at") else "")
-        keys = ref_keys(f); hit = next((index[k] for k in keys if k in index), None)
+        keys = ref_keys(f); hit = next((index[k] for k in keys if k in index), None) or byref.get((pid, n))
         held = next((srcs[k] for k in keys if k in srcs), None)
         if hit:
             raw = rd(hit.path); codes = [l for l in raw.split("\n## Codes", 1)[1].split("\n") if l.startswith(f"- cited_by:: [[{pid}") or l.startswith(f"- cited_by:: [[{pid}-")] if "\n## Codes" in raw else []

@@ -470,6 +470,7 @@ grep -q "^- authors:: Novak, P.$" $S2/P002_refs.md && grep -q "^- url:: https://
 (python3 tools/mesh.py check || true) | grep -q "P001: its references are extracted (P001_refs.md) but not yet turned into reference cards" && pass "check asks for cite after refs" || fail "refs not cited"
 python3 tools/mesh.py refs P001 > /dev/null 2>&1 && fail "refs overwrote a checked list without --force" || pass "refs keeps a checked list unless --force"
 python3 tools/mesh.py cite P001 | grep -q "4 new reference cards" && python3 tools/mesh.py cite P002 | grep -q "1 new reference cards, 2 references matched" && pass "a work cited by two sources gets one reference card" || fail "cite dedupe"
+python3 tools/mesh.py cite P002 | grep -q "0 new reference cards, 3 references matched" && [ "$(ls references/R*-branwen-* | wc -l)" -eq 1 ] && pass "cite run again finds the card it made for a work with no DOI, volume or long title" || { ls references; fail "cite rerun duplicates (issue #20)"; }
 grep -q "^status: held" references/R0002-garcia-2023-*.md && grep -q "^- held:: \[\[P002\]\]" references/R0002-*.md && pass "a cited work already in the brain is marked held" || fail "held"
 python3 tools/mesh.py build > build.txt; grep -q "check: 0 errors" build.txt && pass "a vault with reference cards builds clean" || { cat build.txt; fail "build refs"; }
 python3 tools/mesh.py find novak > f.txt 2>&1 && grep -q "^R0003" f.txt && pass "find lists reference cards among its hits" || { cat f.txt; fail "find references"; }

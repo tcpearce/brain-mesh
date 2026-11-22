@@ -1364,4 +1364,64 @@ C=$(ls references/R*-chen-2023-*.md); grep -q "^- title:: Binding retained in ac
 grep -q "^- cited_by:: \[\[P002\]\] ref 2" references/R*-novak-2005-*.md && pass "cite --update cites the corrected entry once its own DOI is gone" || { cat c.txt; ls references; fail "update self fixed"; }
 grep -q "^- cites:: \[\[$(basename $C .md)\]\] — a test of linking by number$" $E && grep -q "1 'cites:: ref N' lines linked" c.txt && pass "cite links cites:: ref N lines to the reference cards" || { cat c.txt; grep cites $E; fail "ref N linked"; }
 python3 tools/mesh.py build > b.txt 2>&1; grep -q "check: 0 errors" b.txt && pass "the vault builds clean after cite --update" || { grep -E "^error" b.txt | head; fail "build after update"; }
+# 26. two false alarms of check: a reanalysis that bears out the paper's number, and near-identical concept names told apart in their definitions (issue #34)
+cp -r "$ROOT/demo-vault" "$T/fa"; cd "$T/fa"; cp "$MESH" tools/mesh.py; S1=$(ls -d sources/P001*)
+cat > $S1/P001-012-capacity-recomputed-from-replicates.md <<'CARD'
+---
+type: observation
+status: derived
+updated: 2026-11-22
+---
+# Recomputed from the three replicate films, the capacity at 45 °C in water is 1.3, as printed
+
+Recomputed by Claude from the replicate values: the mean [[binding-capacity|binding capacity]] at 45 °C in [[water]] is 1.3, the value the paper prints.
+
+## Codes
+- id:: P001-012
+- value:: [[binding-capacity]] = 1.3 (recomputed from the replicates)
+- when:: [[temperature]] = 45 degC
+- when:: [[solvent]] = [[water]]
+- supports:: [[P001-004-capacity-1-3-at-45c-water]] — the printed value is reproduced
+- origin:: claude
+- anchor:: [[P001_text#^b0004]]
+- loc:: "At 45 °C it decreased to 1.3"
+CARD
+python3 tools/mesh.py build > b.txt 2>&1; grep -q "check: 0 errors" b.txt && ! grep -q "P001-0[01][0-9]: duplicates P001-0[01][0-9]" b.txt && pass "a reanalysis (origin:: claude) that supports the card it reproduces is not that card's duplicate" || { grep -E "^ERROR" b.txt | head; fail "reanalysis duplicate"; }
+sed -i '/^- origin:: claude$/d' $S1/P001-012-*.md; python3 tools/mesh.py build > b.txt 2>&1
+grep -E -q "P001-012: duplicates P001-004|P001-004: duplicates P001-012" b.txt && pass "the same card in the authors' voice is still a duplicate" || { grep -E "^ERROR" b.txt | head; fail "duplicate still caught"; }
+rm $S1/P001-012-*.md
+for k in 12 13; do
+  case $k in 12) V="unchanged relative to film A1 after one wash";; 13) V="lost after a second wash, relative to film A1";; esac
+  printf -- "---\ntype: observation\nstatus: measured\nupdated: 2026-11-22\n---\n# Wash test %s\n\nAt 60 °C in [[water]] the [[binding-capacity|binding capacity]] was %s.\n\n## Codes\n- id:: P001-0%s\n- value:: [[binding-capacity]] = %s\n- when:: [[temperature]] = 60 degC\n- when:: [[solvent]] = [[water]]\n- anchor:: [[P001_text#^b0004]]\n- loc:: \"At 45 °C it decreased to 1.3\"\n" $k "$V" $k "$V" > $S1/P001-0$k-wash-test-$k.md
+done
+python3 tools/mesh.py build > b.txt 2>&1; ! grep -q "P001-013: duplicates P001-012" b.txt && pass "two values with no number and different words are not duplicates (issue #34)" || { grep -E "^ERROR" b.txt | head; fail "no-number values"; }
+sed -i 's/^- value:: \[\[binding-capacity\]\] = lost after a second wash, relative to film A1$/- value:: [[binding-capacity]] = Unchanged relative to film A1  after one wash/' $S1/P001-013-*.md; python3 tools/mesh.py build > b.txt 2>&1
+grep -q "P001-013: duplicates P001-012" b.txt && pass "two values with no number and the same words are" || { grep -E "^ERROR" b.txt | head; fail "same words"; }
+sed -i 's/^- value:: .*/- value:: [[binding-capacity]] = unchanged relative to filmA1, 2 washes/' $S1/P001-012-*.md; sed -i 's/^- value:: .*/- value:: [[binding-capacity]] = lost relative to filmA1, 3 washes/' $S1/P001-013-*.md; python3 tools/mesh.py build > b.txt 2>&1
+! grep -q "P001-013: duplicates P001-012" b.txt && pass "a digit inside a name (filmA1) is not read as the value" || { grep -E "^ERROR" b.txt | head; fail "digit in a name"; }
+rm $S1/P001-012-*.md $S1/P001-013-*.md
+for k in i ii; do cat > concepts/class-$k-film.md <<CON
+---
+type: concept
+aliases: ["Class $k film"]
+updated: 2026-11-22
+---
+# Class $k film
+
+**Definition.** An imprinted film of class $k.
+
+## Where it appears
+<!--AUTO:START-->
+<!--AUTO:END-->
+
+## Codes
+- id:: class-$k-film
+- kind:: entity
+CON
+done
+python3 tools/mesh.py build > b.txt 2>&1; grep -q "concepts class-i-film and class-ii-film have near-identical names" b.txt && pass "check warns of two concepts with near-identical names" || { grep near-identical b.txt; fail "near-identical warned"; }
+sed -i 's/^\*\*Definition\.\*\* An imprinted film of class i\.$/**Definition.** An imprinted film of class i, cured at room temperature, unlike a [[class-ii-film]]./' concepts/class-i-film.md
+python3 tools/mesh.py build > b.txt 2>&1; grep -q "concepts class-i-film and class-ii-film have near-identical names" b.txt && pass "one definition naming the other is not enough" || { grep -c near-identical b.txt; fail "near-identical one side"; }
+sed -i 's/^\*\*Definition\.\*\* An imprinted film of class ii\.$/**Definition.** An imprinted film of class ii, cured at 80 °C, unlike a [[class-i-film]]./' concepts/class-ii-film.md
+python3 tools/mesh.py build > b.txt 2>&1; ! grep -q "class-i-film and class-ii-film" b.txt && grep -q "check: 0 errors" b.txt && pass "two concepts whose definitions each link the other are told apart" || { grep near-identical b.txt; fail "near-identical told apart"; }
 echo "ALL TESTS PASSED"

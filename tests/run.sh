@@ -1228,4 +1228,25 @@ python3 tools/mesh.py report changes --since P003 > r.txt 2>&1 && grep -q "^Chan
 rm -rf reports; python3 tools/mesh.py report all > r.txt; [ "$(ls reports/*.md | wc -l)" = 7 ] && pass "report all writes the seven reports that need no argument" || { cat r.txt; fail "report all"; }
 python3 tools/mesh.py build > build.txt; grep -q "check: 0 errors" build.txt && grep -q "^\*\*Reports\*\* .*\[\[$D-frontier|Frontier map, $D\]\]" MAP.md && pass "MAP links the latest report of each kind, and the vault builds with reports in it" || { cat build.txt; grep -n Reports MAP.md; fail "reports in MAP"; }
 python3 tools/mesh.py report weather > r.txt 2>&1 && fail "an unknown report kind was accepted" || grep -q "kind 'weather' is not one of frontier, contradictions" r.txt && pass "an unknown report kind is refused" || fail "report kind"
+# 22. large files are linked, not committed; ingest/ is a drop folder git ignores (1.17.0)
+if command -v git > /dev/null; then
+  cp -r "$ROOT/demo-vault" "$T/lg"; cd "$T/lg"; cp "$MESH" tools/mesh.py
+  printf '__pycache__/\n' > .gitignore; python3 "$MESH" upgrade . > /dev/null
+  grep -q "^ingest/$" .gitignore && pass "upgrade adds the ingest/ drop folder to .gitignore" || { cat .gitignore; fail "ingest ignored"; }
+  git init -q --bare "$T/lg.git"; git init -q -b main .; git config user.email t@t; git config user.name t; git remote add origin "$T/lg.git"
+  git add -A > /dev/null; git commit -qm init; git push -q -u origin main 2> /dev/null
+  python3 -c "import json; c = json.load(open('MESH.json')); c['large_file_mb'] = 0.002; json.dump(c, open('MESH.json', 'w'), indent=1)"
+  python3 tools/mesh.py linked --all > lk.txt; grep -q "^linked: 4 file(s) newly linked" lk.txt && grep -q "^| P001.pdf | 0.0 | [0-9a-f]\{64\} | " ledger/linked-files.md && grep -q "^| P001_marked.pdf | .* | rebuilt by \`mesh.py build\` from the original |" ledger/linked-files.md && grep -q "^sources/P001\*/P001.pdf$" .gitignore && pass "linked --all links the files over the limit and lists them in .gitignore" || { cat lk.txt ledger/linked-files.md .gitignore; fail "linked --all"; }
+  python3 tools/mesh.py sync "link large files" > "$T/lg-s.txt" 2>&1; [ -z "$(git ls-files sources | grep '\.pdf$')" ] && [ -z "$(git -C "$T/lg.git" ls-tree -r --name-only main sources | grep '\.pdf$')" ] && [ -f "$(ls -d sources/P001*)/P001.pdf" ] && pass "sync stops tracking linked files but keeps them in the folder" || { cat "$T/lg-s.txt"; git ls-files sources | grep pdf; fail "linked untracked"; }
+  S1=$(ls -d sources/P001*); mv "$S1/P001.pdf" "$T/p1.pdf"
+  (python3 tools/mesh.py check || true) | grep -q "P001: P001.pdf is a linked file (kept out of git) and is not in this copy of the vault; get it from " && pass "check names an absent linked original and where to get it" || fail "check linked absent"
+  python3 tools/mesh.py linked --verify > "$T/lg-v.txt" 2>&1 && fail "linked --verify passed with a file missing" || { grep -q "^missing  P001.pdf" "$T/lg-v.txt" && pass "linked --verify reports a missing original" || { cat "$T/lg-v.txt"; fail "verify missing"; }; }
+  cp "$T/p1.pdf" "$S1/P001.pdf"; python3 tools/mesh.py linked --verify > "$T/lg-v.txt" 2>&1 && grep -q "4 of 4 linked files present and unchanged" "$T/lg-v.txt" && pass "linked --verify passes once the original is back" || { cat "$T/lg-v.txt"; fail "verify ok"; }
+  head -c 50000 /dev/urandom > big.bin; python3 tools/mesh.py sync "a stray large file" > "$T/lg-s.txt" 2>&1 && fail "sync committed a large file outside the sources" || { grep -q "would be committed: big.bin" "$T/lg-s.txt" && [ -z "$(git ls-files big.bin)" ] && pass "sync refuses a large file outside the source folders" || { cat "$T/lg-s.txt"; fail "sync large stray"; }; }
+  mkdir -p ingest; mv big.bin ingest/; python3 tools/mesh.py sync "papers waiting in ingest" > "$T/lg-s.txt" 2>&1; [ -z "$(git ls-files ingest)" ] && grep -q "sync: committed\|up to date" "$T/lg-s.txt" && pass "papers in ingest/ are never committed" || { cat "$T/lg-s.txt"; fail "ingest committed"; }
+  python3 -c "
+import fitz, os
+d = fitz.open(); p = d.new_page(); p.insert_text((50, 72), 'A long paper about binding in water.', fontsize=11); d.embfile_add('blob.bin', os.urandom(20000)); d.save('ingest/big.pdf')"
+  python3 tools/mesh.py anchor P004 ingest/big.pdf > "$T/lg-a.txt" 2>&1; grep -q "^linked P004.pdf (0.0 MB, over the 0.002 MB limit)" "$T/lg-a.txt" && grep -q "^| P004.pdf | " ledger/linked-files.md && grep -q "^sources/P004\*/P004.pdf$" .gitignore && pass "anchor links a source file over the limit" || { cat "$T/lg-a.txt"; fail "anchor links"; }
+fi
 echo "ALL TESTS PASSED"

@@ -2,6 +2,12 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.17.0 (2026-11-22)
+
+- **Large files are linked, not committed.** A source file over the vault's size limit (`large_file_mb` in `MESH.json`, 10 MB unless set), whether an original PDF, a supplementary PDF or data file, or a marked copy, is kept out of git: it stays in its source folder, so every command and Obsidian work as before; it is listed in a managed block of `.gitignore`; and `ledger/linked-files.md` records its size, checksum and where to get it again (the DOI page, or "rebuilt by build" for a marked copy). `anchor` and `build` link such files as they write them, and `sync` links any it finds before committing. Large marked copies, rewritten whenever a source's cards change, no longer add a full copy to the history each time.
+- New command `linked`: list the linked files; `linked --all` links the large files of a vault that had them before; `linked <file> --from <url>` links one by hand or records where it can be had; `linked --verify` checks that every linked original is present and unchanged. `check` names a linked original absent from this copy of the vault and where to get it.
+- `sync` refuses to commit a binary file over the limit outside the source folders, naming it (text files are always committed), and `init` and `upgrade` add `ingest/` to `.gitignore` as the drop folder for papers and supplementary files waiting to be anchored (issue #22).
+
 ## 1.16.2 (2026-11-22)
 
 From the first run of the reports on a real vault.

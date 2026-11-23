@@ -59,6 +59,24 @@ Under `## What it claims`, two to eight lines, each one statement the abstract m
 
 Set `status: queued` if the work now looks worth reading in full, and say why in `## Notes`.
 
+## 4a. Set its priority: this one is yours to judge
+
+A concept is the user's call, but **the priority of a cited work is the indexer's**. Set it as you index, with the reason on the card:
+
+```
+python3 tools/mesh.py priority R0266 high "3,000 mouse sensory neurons against 125 odorants: the measurement the brain's combinatorial-code cards assume but do not rest on"
+```
+
+- **high** — the work is significant in its field (a first measurement, a method everything else uses, a result others argue with), **or** central to what this vault is about, **or** it would fill a hole the brain plainly has: a concept carried by many cited works and few read sources, an open gap, a contradiction that turns on it, a finding stuck at single-source.
+- **low** — the brain cites it only for a method, a reagent or a passing fact, and reading it would change nothing.
+- **normal** — everything else; leave it alone rather than setting it.
+
+Be sparing with high: it is a reading list, not a bibliography. A handful per hundred works is right. Say which of the three reasons applies, in a few words, so the user can judge the call.
+
+## 4b. Watch for concepts the brain is missing
+
+The abstracts are where a missing concept shows itself. As you read them, note any term that keeps recurring across works and that `concept <name>` does not find. Report those in your summary with the ids that use them, and propose the clearest few (`propose <slug> "<definition>" --from <a citing source>`). After a run, `mesh.py beyond` raises the same candidates from the abstracts automatically, and the user decides.
+
 ## 5. What the index is for
 
 After a run, `python3 tools/mesh.py build` then:

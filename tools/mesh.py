@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.24.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.24.1"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -4230,6 +4230,14 @@ def cmd_literature(m, args):
     for _s, con, nh, ni, q in rows[:30]:
         if not ni and not nh: continue
         print(f"{con.id[:34]:34} {nh:5d} {ni:6d} {q:7d}" + ("  ← high priority" if con.priority == "high" else ""))
+    hot = sorted((r for r in m.cards.values() if r.fam == "reference" and not r.get("retired") and r.status != "held" and r.priority == "high"),
+                 key=lambda r: (-len(r.all("cited_by")), r.id))
+    if hot:
+        print(f"\nCited works set high priority while indexing ({len(hot)}): read these first")
+        for r in hot[:15]:
+            why = (r.all("prioritised") or [""])[-1]
+            tail = one(why.split("—", 1)[-1].strip(), 110) if "—" in why else ""
+            print(f"  {r.id} {one(r.title, 76)}" + (f"\n      {tail}" if tail else ""))
     if "--unindexed" in args:
         print("\nCited works with no concepts yet, by the source that cites them:")
         for p in sorted(unidx, key=lambda p: -len(unidx[p]))[:8]:
@@ -7511,6 +7519,17 @@ def corpus(m):
     return m._corpus
 
 
+def ref_text(r):
+    """What a cited work says about itself: its title, and, once indexed, its abstract and the claims drawn from it.
+    An abstract carries far more of a field's vocabulary than a title, so it is where a concept the brain lacks shows
+    up first, long before the brain reads the work."""
+    parts = [r.get("title") or r.title]
+    mo = re.search(r"(?m)^## Abstract\s*$(.*?)(?=^## |\Z)", r.raw, re.S)
+    if mo: parts.append(mo.group(1))
+    parts += [re.sub(r"\(\[\[.*?\]\].*?\)\s*$", "", l[2:]) for l in section_bullets(r.raw, "What it claims")]
+    return " ".join(parts)
+
+
 def ref_titles(m):
     """The titles of the works the sources cite: [(reference id, normalised title, sources citing it, card)]."""
     if getattr(m, "_reftitles", None) is None:
@@ -7691,10 +7710,13 @@ def shared_terms(m, scope=None):
 
 
 def cited_terms(m):
-    """Phrases in the titles of three or more works the sources cite, cited by two or more sources, that the brain has no concept for."""
+    """Phrases the works a vault cites keep using, that the brain has no concept for: in three or more works, cited by
+    two or more sources. Once a work is indexed its abstract and the claims drawn from it are read as well as its
+    title, which is where a term the field takes for granted usually shows up first (the citation index)."""
     cnt, who, ids = Counter(), defaultdict(set), defaultdict(list); judged_ = beyond_log(m)[0]
-    for rid, t, srcs, _r in sorted(ref_titles(m), key=lambda r: r[0]):
-        for key in set(grams(t.split())): cnt[key] += 1; who[key] |= srcs; ids[key].append(rid)
+    for rid, t, srcs, r_ in sorted(ref_titles(m), key=lambda r: r[0]):
+        text = " " + nrm(ref_text(r_)) + " " if r_.get("indexed") else t
+        for key in set(grams(text.split())): cnt[key] += 1; who[key] |= srcs; ids[key].append(rid)
     keep = nested({k: n for k, n in cnt.items() if n >= 3 and len(who[k]) >= 2})
     frag, stop = name_fragments(m), {nrm(x) for x in (m.cfg.get("beyond_stop") or [])}
     out = [(n + len(who[k]), k, n, sorted(who[k]), ids[k][:4]) for k, n in keep.items() if nrm(k) not in judged_ and k not in frag and nrm(k) not in stop and not concept_named(m, k)]
@@ -7967,14 +7989,14 @@ def cmd_beyond(m, args):
             elif concept_arg(m, a): scope = (scope or set()) | {concept_arg(m, a)}
             else: sys.exit(f"beyond terms: '{a}' is neither a concept nor topic:<slug>")
         rows = shared_terms(m, scope); cited = cited_terms(m) if not scope else []
-        head = [f"Terms the sources share that the ontology has no concept for" + (f", in paragraphs that name {', '.join(rest)}" if scope else "") + f": {len(rows)} in the text" + (f", {len(cited)} in the titles of cited works." if not scope else "."),
+        head = [f"Terms the sources share that the ontology has no concept for" + (f", in paragraphs that name {', '.join(rest)}" if scope else "") + f": {len(rows)} in the text" + (f", {len(cited)} in what they cite (titles, and the abstracts of those indexed)." if not scope else "."),
                 "A term the field uses and the brain cannot name is invisible to every miner. Each line is a prompt: a concept to propose, an alias to add, or nothing."]
         tl = []
         for _sc, k, kind_, wh, ext, (s_, a) in rows[:top]:
             nr = [c for c in near_concepts(m, s_, a) if c not in ext]
             tl.append(f"{k}" + (" [acronym]" if kind_ == "acronym" else "") + f" — {mentions(wh)}" + (f" · extends: {', '.join(ext[:3])}" if ext else "") + (f" · beside: {', '.join(nr)}" if nr else "") + f" · e.g. {s_} ^{a}")
-        cl = [f"{k} — in {n} cited titles, cited by {', '.join(who[:5])} ({', '.join(ids)})" for _sc, k, n, who, ids in cited[:top]]
-        emit(head, [("In the sources' text", tl, 0.65), ("In the titles of the works they cite", cl, 0.35)],
+        cl = [f"{k} — in {n} cited works, cited by {', '.join(who[:5])} ({', '.join(ids)})" for _sc, k, n, who, ids in cited[:top]]
+        emit(head, [("In the sources' text", tl, 0.65), ("In the works they cite: titles, and abstracts where indexed", cl, 0.35)],
              ["Judge each: `mesh.py propose <slug> \"<definition>\" --from <source>` for a concept the user should adopt, an alias on a concept card, or `mesh.py beyond judge \"<term>\" skip \"<why>\"`. `--top n` shows more."], budget)
         return
     if sub == "pointers":

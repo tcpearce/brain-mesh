@@ -2,6 +2,17 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.24.1 (2026-11-23)
+
+**The abstracts feed discovery, and the indexer sets a cited work's priority.**
+
+Indexing a citation is where the field's own vocabulary enters the vault. Two changes make that count.
+
+- **`beyond terms` reads the abstracts.** Until now it mined the titles of cited works for phrases the ontology has no concept for. A title is a few words; an abstract is the paragraph where a term the field takes for granted actually appears, long before the brain reads the work. For an indexed card it now reads the abstract and the claims drawn from it as well as the title, so a missing concept shows up on the strength of how often the literature uses it.
+- **Priority on a cited work is the indexer's to set**, unlike a concept's, which stays the user's. An agent indexing a reference may set `high` where the work is significant in its field, central to the vault's subject, or would fill a hole the brain plainly has, and `low` where the brain cites it only for a method or a passing fact — with the reason on the card, as `priority` always records.
+- **`mesh.py literature` heads its output with those works**, most-cited first, each with the reason given: the reading list the index exists to produce.
+- `FORMATS.md` and the `brain-mesh-citation-index` skill state both rules; tests section 35 covers them.
+
 ## 1.24.0 (2026-11-23)
 
 **The citation index: the works a vault cites but has not read, indexed from their abstracts.**

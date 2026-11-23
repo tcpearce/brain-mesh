@@ -1512,7 +1512,7 @@ B="python3 tools/mesh.py beyond"
 $B > by.txt; grep -q "^Beyond the ontology: 0 comparisons recorded, 0 terms judged" by.txt && grep -q "^Topics never compared with an outside map (2 of 2)" by.txt && grep -q "Start with .mesh.py beyond terms." by.txt && pass "beyond with no record says where to start and which topics were never compared" || { cat by.txt; fail "beyond empty"; }
 $B terms > bt.txt; grep -q "^surface plasmon resonance — 5 mentions in 2 sources (P004, P005) .* e.g. P004 ^b0001" bt.txt && grep -q "^SPR \[acronym\] — 5 mentions in 2 sources" bt.txt && pass "terms: a phrase and an acronym two sources share with no concept are raised, with a paragraph to read" || { cat bt.txt; fail "beyond terms"; }
 ! grep -q "^polymer film\|^competing interest\|^imprinted polymer" bt.txt && pass "terms: a piece of a concept's name and the words of a paper's furniture are not raised" || { cat bt.txt; fail "beyond terms noise"; }
-grep -q "^molecular imprinting — in 3 cited titles, cited by P001, P002 (R0001, R0002, R0003)" bt.txt && pass "terms: a phrase in the titles of works two sources cite is raised" || { cat bt.txt; fail "beyond cited terms"; }
+grep -q "^molecular imprinting — in 3 cited works, cited by P001, P002 (R0001, R0002, R0003)" bt.txt && pass "terms: a phrase in the works two sources cite is raised" || { cat bt.txt; fail "beyond cited terms"; }
 $B terms binding-capacity | grep -q "^SPR \[acronym\] — 2 mentions in 2 sources" && ($B terms topic:nosuch 2>&1 || true) | grep -q "no topic 'nosuch'" && pass "terms: a concept or topic narrows it to the paragraphs that name it" || fail "beyond terms scope"
 $B pointers > bp.txt; grep -q "^P004 ^b0003 — By analogy with vision" bp.txt && grep -q "^P004 ^b0004 — Future work could use neutron reflectometry" bp.txt && grep -q "^## Points to another field" bp.txt && grep -q "^## Says what it would take" bp.txt && pass "pointers: a paragraph that points to another field, and one that says what a question would take" || { cat bp.txt; fail "beyond pointers"; }
 $B probe "Quartz crystal microbalance" "Swelling" "binding capacities" "Isothermal titration calorimetry" "Ellipsometry" "Atomic force microscopy" --frame "Claude's map of film sensing" --scope binding-capacity > pr.txt
@@ -1703,4 +1703,100 @@ sed -i 's/^- id:: R0900$/- id:: R0900\n- indexed:: 2026-11-23 — from the publi
 sed -i 's/^- The films swell by 12 per cent over the same range (\[\[swelling\]\])$/- The films swell by 12 per cent over the same range/' references/R0900-*.md
 python3 tools/mesh.py build > b.txt 2>&1
 grep -q "R0900: a claim from the abstract names no concept" b.txt && pass "a claim that names no concept is flagged" || { grep "R0900" b.txt; fail "claim no concept"; }
+# 35. the citation index feeds discovery: abstracts raise terms the brain cannot name, and a high-priority work heads the reading list
+cp -r "$ROOT/demo-vault" "$T/cid"; cd "$T/cid"; cp "$MESH" tools/mesh.py; mkdir -p references
+cat > references/R0901-doe-2019-capacity-of-imprinted-films.md <<'REF'
+---
+type: reference
+status: not-held
+updated: 2026-11-23
+---
+# Doe & Roe (2019) Capacity of imprinted films
+
+## Abstract
+
+Rebinding was measured against cavity rigidity in a series of films. Stiffer cavities held more analyte.
+
+## What it claims
+- Capacity rises with stiffer cavities ([[binding-capacity]])
+
+## Notes
+
+## Codes
+- id:: R0901
+- authors:: Doe, J.; Roe, R.
+- year:: 2019
+- title:: Capacity of imprinted films
+- journal:: J. Test
+- kind:: article
+- concepts:: [[binding-capacity]]
+- indexed:: 2026-11-23 — abstract from the publisher's page
+- cited_by:: [[P001]] ref 1 — b0004
+REF
+cat > references/R0902-doe-2020-films-cast-from-toluene.md <<'REF'
+---
+type: reference
+status: not-held
+updated: 2026-11-23
+---
+# Doe & Roe (2020) Films cast from toluene
+
+## Abstract
+
+Casting solvent set the cavity rigidity of the finished film, and with it the capacity.
+
+## What it claims
+- Casting solvent sets capacity ([[binding-capacity]])
+
+## Notes
+
+## Codes
+- id:: R0902
+- authors:: Doe, J.; Roe, R.
+- year:: 2020
+- title:: Films cast from toluene
+- journal:: J. Test
+- kind:: article
+- concepts:: [[binding-capacity]]
+- indexed:: 2026-11-23 — abstract from the publisher's page
+- cited_by:: [[P002]] ref 2 — b0004
+REF
+cat > references/R0903-doe-2021-a-model-of-rebinding.md <<'REF'
+---
+type: reference
+status: not-held
+updated: 2026-11-23
+---
+# Doe & Roe (2021) A model of rebinding
+
+## Abstract
+
+A two-parameter model in which cavity rigidity and swelling together set the capacity.
+
+## What it claims
+- Two parameters account for capacity ([[binding-capacity]])
+
+## Notes
+
+## Codes
+- id:: R0903
+- authors:: Doe, J.; Roe, R.
+- year:: 2021
+- title:: A model of rebinding
+- journal:: J. Test
+- kind:: article
+- concepts:: [[binding-capacity]]
+- indexed:: 2026-11-23 — abstract from the publisher's page
+- cited_by:: [[P001]] ref 3 — b0004
+REF
+python3 tools/mesh.py build > b.txt 2>&1; grep -q "check: 0 errors" b.txt && pass "three indexed citations build clean" || { grep -E "^ERROR|^warn  R090" b.txt | head -4; fail "indexed trio build"; }
+python3 tools/mesh.py beyond terms > bt.txt 2>&1
+grep -q "cavity rigidity — in 3 cited works" bt.txt && pass "a term only the abstracts use is raised for the user to judge" || { grep -i "cavity\|cited works" bt.txt | head -5; fail "abstract term not raised"; }
+grep -q "titles, and abstracts where indexed" bt.txt && pass "the cited section says it reads abstracts too" || { grep -n "they cite" bt.txt; fail "cited section heading"; }
+sed -i 's/^- indexed:: .*$//' references/R090*.md; python3 tools/mesh.py beyond terms > bt2.txt 2>&1
+! grep -q "cavity rigidity" bt2.txt && pass "with the cards unindexed the same term stays invisible: it comes from the abstracts" || { grep -i "cavity" bt2.txt; fail "term raised without the index"; }
+sed -i 's/^- concepts:: /- indexed:: 2026-11-23 — from the publisher\n- concepts:: /' references/R090*.md
+python3 tools/mesh.py priority R0901 high "the measurement every card here assumes and none rests on" > /dev/null 2>&1
+python3 tools/mesh.py build > b.txt 2>&1; python3 tools/mesh.py literature > lit.txt 2>&1
+grep -q "Cited works set high priority while indexing (1)" lit.txt && grep -q "R0901" lit.txt && grep -q "the measurement every card here assumes" lit.txt && pass "a cited work set high while indexing heads the reading list, with its reason" || { cat lit.txt; fail "high-priority reading list"; }
 echo "ALL TESTS PASSED"

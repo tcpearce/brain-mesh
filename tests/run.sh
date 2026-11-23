@@ -1749,4 +1749,34 @@ python3 tools/mesh.py figure P001 1 "70,100,340,320" F9 --force --ycal "0@300,10
 python3 tools/mesh.py figure P001 1 "70,100,302,320" F10 > ax3.txt 2>&1
 ! grep -q "SECOND Y AXIS" ax3.txt && pass "a box holding one axis is read as before" || { cat ax3.txt; fail "one axis unchanged"; }
 else echo "skip second y axis tests: PyMuPDF not installed"; fi
+
+# 33. reference lists: run together in one paragraph, author-year, and a supplement's own list (issues #23, #5, #28)
+cp -r "$ROOT/demo-vault" "$T/rf"; cd "$T/rf"; cp "$MESH" tools/mesh.py; S1=$(ls -d sources/P001*); S2=$(ls -d sources/P002*); S3=$(ls -d sources/P003*)
+# issue #23: the heading and the numbered list in one block, and the list split in two by the Methods
+rm -f $S1/P001_refs.md
+printf '\nReferences 1. Dulac, C. & Torello, A. T. Molecular detection of pheromone signals. Nat. Rev. Neurosci. 4, 551-562 (2003). 2. Belluscio, L. & Katz, L. C. Symmetry of odorant maps. J. Neurosci. 19, 1-10 (1999). ^b0200\n' >> $S1/P001_text.md
+printf '\nMETHODS ^b0201\n' >> $S1/P001_text.md
+printf '\nReferences 3. Mayer, C. et al. Developmental diversification of interneurons. Nature 555, 457-462 (2018). ^b0202\n' >> $S1/P001_text.md
+python3 tools/mesh.py refs P001 --force > r1.txt 2>&1
+grep -q "^## 3$" $S1/P001_refs.md && grep -q "Developmental diversification of interneurons" $S1/P001_refs.md && grep -q "P001: 3 references (numbered list)" r1.txt && pass "refs reads a numbered list run on after its heading, in two parts split by the Methods (issue #23)" || { cat r1.txt; grep -c "^## " $S1/P001_refs.md; fail "run-on refs"; }
+# issue #5: an author-year list, with the citing paragraphs found by surname and year
+rm -f $S2/P002_refs.md
+printf '\nWe followed the published metric (Snitz et al. 2013) and the earlier account (Haddad and Sobel, 2008). Laska et al. (1999a) disagree. ^b0300\n' >> $S2/P002_text.md
+printf '\nREFERENCES ^b0301\n' >> $S2/P002_text.md
+printf '\nHaddad, R., and Sobel, N. (2008). A metric for odorant comparison. Nature Methods 5, 425-429. https://doi.org/10.1038/nmeth.1197 Laska, M., Teubner, P. (1999a). Olfactory discrimination ability for homologous series. Chemical Senses 24, 263-270. Snitz, K., Yablonka, A., Weiss, T. (2013). Predicting odor perceptual similarity from odor structure. PLoS Computational Biology 9, e1003184. ^b0302\n' >> $S2/P002_text.md
+python3 tools/mesh.py refs P002 --force > r2.txt 2>&1
+grep -q "P002: 3 references (author-year list)" r2.txt && grep -q "^- title:: A metric for odorant comparison$" $S2/P002_refs.md && grep -q "^- doi:: 10.1038/nmeth.1197$" $S2/P002_refs.md && pass "refs parses an author-year reference list (issue #5)" || { cat r2.txt; cat $S2/P002_refs.md; fail "author-year refs"; }
+grep -A12 "^## 3$" $S2/P002_refs.md | grep -q "^- cited_at:: b0300$" && grep -A12 "^## 1$" $S2/P002_refs.md | grep -q "^- cited_at:: b0300$" && pass "an author-year citation is traced to its paragraph by surname and year, 1999a included" || { grep -A12 "^## " $S2/P002_refs.md | grep -E "^## |cited_at"; fail "author-year tracing"; }
+# issue #28: a supplement with its own numbered list
+rm -f $S3/P003_refs.md
+printf '\nREFERENCES ^b0400\n' >> $S3/P003_text.md
+printf '\n1. Main, A. The main list only work. J. Main 1, 1-9 (2001). ^b0401\n' >> $S3/P003_text.md
+printf '\nThe supplementary method follows earlier work1. ^s0400\n' >> $S3/P003_SI_text.md
+printf '\nReferences 1. Supp, B. A work only the supplement cites. J. Supp 2, 10-19 (2002). ^s0401\n' >> $S3/P003_SI_text.md
+python3 tools/mesh.py refs P003 --force > r3.txt 2>&1
+grep -q "^## S1$" $S3/P003_refs.md && grep -A12 "^## S1$" $S3/P003_refs.md | grep -q "A work only the supplement cites" && grep -q "the supplement's own list, S1 onwards" r3.txt && pass "refs writes a supplement's own reference list as S1 onwards (issue #28)" || { cat r3.txt; grep "^## " $S3/P003_refs.md; fail "SI refs block"; }
+grep -A12 "^## 1$" $S3/P003_refs.md | grep -q "The main list only work" && ! grep -A12 "^## 1$" $S3/P003_refs.md | grep -q "s0400" && pass "a supplement paragraph's number is not read against the main text's list" || { grep -A12 "^## 1$" $S3/P003_refs.md; fail "SI refs not crossed"; }
+python3 tools/mesh.py cite P003 > r4.txt 2>&1
+grep -q "cited_by:: \[\[P003\]\] ref S1" references/R*-supp-2002-*.md && pass "cite makes a card for an S entry like any other" || { cat r4.txt; ls references; fail "cite S entry"; }
+python3 tools/mesh.py build > b.txt 2>&1; grep -q "check: 0 errors" b.txt && pass "the vault builds clean with a supplement's own references" || { grep -E "^ERROR" b.txt | head -3; fail "build after SI refs"; }
 echo "ALL TESTS PASSED"

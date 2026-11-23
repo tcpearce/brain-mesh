@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.23.1"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.23.2"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -386,22 +386,33 @@ def fixnames(root):
     return moves
 
 
+REF_HEAD = r"\s*(?:REFERENCES AND NOTES|References and Notes|REFERENCES|References|LITERATURE CITED|Literature cited|BIBLIOGRAPHY|Bibliography)"
+REF_STOP = r"\s*(ACKNOWLEDG|Acknowledg|AUTHOR CONTRIBUTIONS|Author contributions|COMPETING|Competing interests|SUPPLEMENTARY MATERIALS|Supplementary Materials|Correspondence|METHODS\s*$|ONLINE METHODS)"
+
 def ref_region(blocks):
     """The paragraphs holding a source's reference list: after a REFERENCES heading, or from the last paragraph that
-    starts '1. ' followed by a name, up to acknowledgements, author contributions or the end."""
+    starts '1. ' followed by a name, up to acknowledgements, author contributions or the end. A heading with the list
+    run on after it ('References 1. Dulac, C. & Torello, A. T. …') starts the region at that paragraph, and a list
+    broken in two by the Methods is picked up in both places so its numbering continues (issue #23)."""
     ids = list(blocks)
-    start = next((k + 1 for k, b in enumerate(ids) if re.match(r"\s*(REFERENCES|References)(\s+AND\s+NOTES|\s+and\s+Notes)?\s*$", blocks[b][1])), None)
-    if start is None:
-        firsts = [k for k, b in enumerate(ids) if re.match(r"\s*1\.\s+[A-ZÀ-ɏ]", blocks[b][1]) and k > len(ids) * 0.4]
-        start = firsts[0] if firsts else None
-    if start is None: return []
-    out = []
-    for b in ids[start:]:
+    starts = []
+    for k, b in enumerate(ids):
         t = blocks[b][1]
-        if re.match(r"\s*(ACKNOWLEDG|Acknowledg|AUTHOR CONTRIBUTIONS|Author contributions|COMPETING|Competing interests|SUPPLEMENTARY MATERIALS|Supplementary Materials|Correspondence|METHODS\s*$|ONLINE METHODS)", t): break
-        if re.match(r"\s*(NATURE |©|ARTICLES\s*$|RESEARCH\s*\||Published online|\d{1,4}\s*$)", t): continue  # page furniture
-        out.append((b, t))
-    return out
+        if re.match(REF_HEAD + r"\s*$", t): starts.append(k + 1)                        # a heading on its own
+        elif re.match(REF_HEAD + r"\s+\d{1,3}\.\s+[A-ZÀ-ɏ\"“(]", t): starts.append(k)   # the list runs on after the heading
+    if not starts:
+        firsts = [k for k, b in enumerate(ids) if re.match(r"\s*1\.\s+[A-ZÀ-ɏ]", blocks[b][1]) and k > len(ids) * 0.4]
+        starts = [firsts[0]] if firsts else []
+    if not starts: return []
+    out, seen = [], set()
+    for start in starts:
+        for b in ids[start:]:
+            if b in seen: continue
+            t = blocks[b][1]
+            if re.match(REF_STOP, t): break
+            if re.match(r"\s*(NATURE |©|ARTICLES\s*$|RESEARCH\s*\||Published online|\d{1,4}\s*$)", t): continue  # page furniture
+            seen.add(b); out.append((b, re.sub(REF_HEAD + r"\s+(?=\d{1,3}\.\s)", "", t, count=1)))
+    return sorted(out, key=lambda r: r[0])
 
 
 def split_refs(text, limit=600):
@@ -413,6 +424,66 @@ def split_refs(text, limit=600):
         if not mo: break
         starts.append((n, mo.start(), mo.end())); pos = mo.end()
     return [(n, " ".join(text[e:(starts[k + 1][1] if k + 1 < len(starts) else len(text))].split()).rstrip()) for k, (n, s_, e) in enumerate(starts)]
+
+
+SURNAME = r"(?:[A-ZÀ-ÞŒ][\w'’\-]+|(?:de|van|von|da|di|del|der|du|le|la|den|ten|ter|dos|das|Mc|Mac)\s?[A-ZÀ-ÞŒ][\w'’\-]+)"
+AY_START = re.compile(r"(?:(?<=\s)|^)(" + SURNAME + r",\s+(?:[A-ZÀ-ÞŒ]\.|[A-ZÀ-ÞŒ][\w'’\-]+)[\s\S]{0,220}?\(?(?:19|20)\d{2}[a-z]?\)?[.,])\s")
+
+def split_refs_author_year(text):
+    """Split an author-year reference list into [(n, text)], numbered in the order printed (issue #5). An entry starts
+    with a surname, a comma and an initial or given name, and reaches its year within the first part of the entry:
+    'Snitz, K., Yablonka, A., … (2013). Predicting odor perceptual similarity …'. Numbering lets the rest of the
+    pipeline, `cite` and `cites:: ref N`, work as it does for a numbered list."""
+    starts = [mo.start(1) for mo in AY_START.finditer(" " + text)]
+    starts = [s - 1 for s in starts]  # the space prepended above
+    out, keep = [], []
+    for k, s in enumerate(starts):  # an entry must be long enough to be one: a year inside a title is not a new entry
+        if keep and s - keep[-1] < 40: continue
+        keep.append(s)
+    for k, s in enumerate(keep):
+        out.append((k + 1, " ".join(text[s:(keep[k + 1] if k + 1 < len(keep) else len(text))].split()).rstrip()))
+    return out
+
+
+def ref_order(n):
+    """Sort key for a reference number as written: the main list's '12' before the supplement's own 'S3' (issue #28)."""
+    s = str(n).strip()
+    return (1, int(s[1:])) if s[:1].upper() == "S" and s[1:].isdigit() else ((0, int(s)) if s.isdigit() else (2, 0))
+
+
+AY_YEAR = re.compile(r"\(?((?:19|20)\d{2})[a-z]?\)?\s*[.,]")
+
+def parse_ref_author_year(raw):
+    """The fields of an author-year entry, 'Snitz, K., Yablonka, A. (2013). Title. Journal 9, e1003184.' The year is
+    moved to the end so that the same field parser reads it as it reads a numbered entry (issue #5)."""
+    mo = AY_YEAR.search(raw)
+    if not mo: return parse_ref(raw)
+    who = re.sub(r",?\s*(?:and|&)\s*$", "", re.sub(r"[,;]\s*$", "", raw[:mo.start()].strip())).strip()
+    tail = raw[mo.end():].strip().lstrip(").,; ")
+    link = re.search(r"\s*((?:https?://|doi:\s*|www\.)\S+)\s*\.?\s*$", tail)  # a link at the end would come between the pages and the year
+    core = tail[:link.start()] if link else tail
+    f = parse_ref(f"Anon, {core} ({mo.group(1)}). {link.group(1) if link else ''}".strip())  # everything before the year is the authors, so the parser is left only the tail
+    people = re.findall(SURNAME + r",\s*(?:[A-ZÀ-ÞŒ]\.?(?:\s?-?[A-ZÀ-ÞŒ]\.?)*|[A-ZÀ-ÞŒ][\w'’\-]+(?:\s+[A-ZÀ-ÞŒ]\.?)*)", who)
+    f["authors"] = "; ".join(" ".join(p.split()) for p in people) or who
+    f["year"], f["raw"] = mo.group(1), raw
+    return f
+
+
+def author_year_cites(main, refs):
+    """{entry number: paragraphs citing it} for an author-year list: '(Snitz et al. 2013)', '(Snitz and Sobel, 2013)',
+    'Snitz et al. (2013)', with the letter of '2013a' kept (issue #5)."""
+    want = {}
+    for n, raw in refs:
+        f = parse_ref_author_year(raw)
+        sur = squeeze(first_surname(f.get("authors")) or raw.split(",")[0])
+        yr = (f.get("year") or "").strip()
+        if sur and yr: want.setdefault((sur, yr), []).append(n)
+    at = defaultdict(set)
+    for b, (_pg, t) in main.items():
+        for mo in re.finditer(r"(" + SURNAME + r")(?:[^()]{0,60}?)??[\s,]*(?:et al\.?|and\s+" + SURNAME + r"|&\s*" + SURNAME + r")?[\s,]*\(?((?:19|20)\d{2})([a-z])?\)?", t):
+            key = (squeeze(mo.group(1)), mo.group(2) + (mo.group(3) or ""))
+            for n in want.get(key, []) or want.get((key[0], mo.group(2)), []): at[n].add(b)
+    return at
 
 
 JABBR = set("""j z a b c d e r proc natl nat acad sci biol chem phys neurosci neurol neurophysiol neurobiol physiol comp comput opt soc trans int
@@ -2201,7 +2272,7 @@ def cmd_build(root):
         for t in EVIDENCE_TYPES:
             rows = [c for c in ev if c.type == t]
             if rows: L += [f"**{t.capitalize()} ({len(rows)})**"] + [f"- {lk(c, one(c.title, 120))} · {c.status}" for c in rows] + [""]
-        cites_ = sorted(((int(rn), r) for r in m.cards.values() if r.fam == "reference" and not r.get("retired") for pid, rn, _b in ref_cites(r) if pid == src.id), key=lambda x: (x[0], x[1].id))  # two cards may share a number (issue #9)
+        cites_ = sorted(((rn, r) for r in m.cards.values() if r.fam == "reference" and not r.get("retired") for pid, rn, _b in ref_cites(r) if pid == src.id), key=lambda x: (ref_order(x[0]), x[1].id))  # two cards may share a number (issue #9)
         cl = m.cards.get(src.id + "-claims")
         if cl: L = [f"**Claims** ({1 if cl.all('main_claim') else 0} main, {len(cl.all('sub_claim'))} sub): [[{cl.name}|{one(cl.all('main_claim')[0].split(' — ')[0], 140) if cl.all('main_claim') else 'claims card'}]]", ""] + L
         for pre, label in (("D", "Data sets"), ("C", "Code")):
@@ -2295,10 +2366,10 @@ def cmd_build(root):
         if r.get("held"): L += [f"**In the brain** as {r.get('held')}.", ""]
         L.append("**Cited by**")
         for v in r.all("cited_by"):
-            mo = re.search(r"(P\d{3})\S*\s+ref\s+(\d+)(?:\s*—\s*(.*))?", v)
+            mo = re.search(r"(P\d{3})\S*\s+ref\s+(S?\d+)(?:\s*—\s*(.*))?", v)
             if not mo: continue
             pid, rn, bs = mo.group(1), mo.group(2), re.findall(r"[bsc]\d{4}", mo.group(3) or "")
-            bysrc[pid].append((int(rn), r))
+            bysrc[pid].append((ref_order(rn), r))  # 'S1' sorts after the main list's numbers (issue #28)
             src = m.cards.get(pid)
             where = ", ".join(f"[[{pid}_text#^{b}|{b}]]" for b in bs)
             cards = sorted({c.id: c for b in bs for c in at.get((pid, b), [])}.values(), key=lambda c: c.id)
@@ -3567,7 +3638,7 @@ def cite_marks(m, pid):
     for r in m.cards.values():
         if r.fam == "reference" and not r.get("retired"):
             for p_, n, _bs in ref_cites(r):
-                if p_ == pid: num[int(n)].append(r)
+                if p_ == pid and str(n).isdigit(): num[int(n)].append(r)  # the main text's numbers only: 'S3' is the supplement's own (issue #28)
     if not num: return {}, num
     pos = defaultdict(list)
     cite_places(m, pid, m.blocks(pid), max(num), pos)
@@ -5277,31 +5348,51 @@ def cmd_refs(m, pid, force=False):
     if os.path.exists(out) and not force: sys.exit(f"{os.path.relpath(out, m.root)} exists and may hold corrections; --force rebuilds it from the text")
     bl = {k: v for k, v in m.blocks(pid).items() if k[0] == "b"}
     region = ref_region(bl)
-    refs = split_refs(" ".join(t for _b, t in region))
-    if not refs: sys.exit(f"{pid}: no numbered reference list found in {pid}_text.md (author-year lists are not supported yet: write {pid}_refs.md by hand in the same format)")
-    first_ref_block = region[0][0] if region else None
-    main = {b: v for b, v in bl.items() if first_ref_block is None or b < first_ref_block}
-    at = cite_places(m, pid, main, len(refs))
+    refs, style = split_refs(" ".join(t for _b, t in region)), "numbered"
+    if len(refs) < 2:  # an author-year list, common in chemical senses, psychophysics and food science (issue #5)
+        ay = split_refs_author_year(" ".join(t for _b, t in region))
+        if len(ay) > len(refs): refs, style = ay, "author-year"
+    if not refs: sys.exit(f"{pid}: no reference list found in {pid}_text.md. Check that the list is in the anchored text, or write {pid}_refs.md by hand in the same format")
+    inref = {b for b, _t in region}  # every paragraph of the list, so the Methods between a split list's two parts still count as text (issue #23)
+    main = {b: v for b, v in bl.items() if b not in inref}
+    traced = author_year_cites(main, refs) if style == "author-year" else cite_places(m, pid, main, len(refs))
+    at = {str(k): v for k, v in traced.items()}  # keyed by the entry's number as written: '12', and 'S3' for the supplement's own list
     lines = [f"# {pid} reference list", "", "Extracted by `mesh.py refs`. Correct the fields against the paper (titles, authors, DOIs), then run `mesh.py cite " + pid + "`.",
              "`cited_at` lists the paragraphs where the reference is cited, found automatically.", ""]
     own_doi = ((m.cards[pid].get("doi") if pid in m.cards else "") or "").strip()
-    refs = [(n, strip_furniture(raw, own_doi)) for n, raw in refs]  # page counters, download stamps and the paper's own DOI (issue #26)
+    refs = [(str(n), strip_furniture(raw, own_doi)) for n, raw in refs]  # page counters, download stamps and the paper's own DOI (issue #26)
+    # A supplement with its own numbered list: its paragraphs' numbers mean its own works, not the main text's (issue #28)
+    sbl = {k: v for k, v in m.blocks(pid).items() if k[0] == "s"}
+    sregion = ref_region(sbl) if sbl else []
+    srefs = split_refs(" ".join(t for _b, t in sregion))
+    if len(srefs) < 2 and sregion:
+        say = split_refs_author_year(" ".join(t for _b, t in sregion))
+        if len(say) > len(srefs): srefs = say
+    if srefs:
+        stext = {b: v for b, v in sbl.items() if b not in {x for x, _t in sregion}}
+        sat = author_year_cites(stext, srefs) if style == "author-year" else cite_places(m, pid, stext, len(srefs), part="_SI")
+        at.update({f"S{n}": bs for n, bs in sat.items()})
+        refs += [(f"S{n}", strip_furniture(raw, own_doi)) for n, raw in srefs]
+        lines.insert(4, f"Entries S1 onwards are the supplement's own reference list ({len(srefs)} entries), whose numbers its paragraphs cite; "
+                        "fold an entry that repeats a main-text work into that entry's `cited_at` and delete it here.")
+    pr = parse_ref_author_year if style == "author-year" else parse_ref
     for n, raw in refs:
-        f = parse_ref(raw)
+        f = pr(raw)
         lines += [f"## {n}", f"- raw:: {raw}"] + [f"- {k}:: {f.get(k, '')}" for k in REF_FIELDS if f.get(k)]
         lines += [f"- cited_at:: {', '.join(sorted(at[n]))}" if at.get(n) else "- cited_at::", ""]
     wr(out, "\n".join(lines))
-    print(f"{pid}: {len(refs)} references -> {os.path.relpath(out, m.root)}; {sum(1 for n, _r in refs if at.get(n))} traced to the paragraphs that cite them")
-    thin = [n for n, raw in refs if not parse_ref(raw).get("year") or not parse_ref(raw).get("authors")]
+    print(f"{pid}: {len(refs)} references ({style} list)" + (f" ({len(srefs)} of them the supplement's own list, S1 onwards)" if srefs else "")
+          + f" -> {os.path.relpath(out, m.root)}; {sum(1 for n, _r in refs if at.get(n))} traced to the paragraphs that cite them")
+    thin = [n for n, raw in refs if not pr(raw).get("year") or not pr(raw).get("authors")]
     if thin: print(f"  check by hand: references {', '.join(map(str, thin[:20]))} parsed without a year or authors")
 
 
-def cite_places(m, pid, main, top, pos=None):
+def cite_places(m, pid, main, top, pos=None, part=""):
     """{reference number: paragraphs citing it}. From the PDF when there is one: superscript numbers (Nature, Cell) and
     italic numbers (Science) traced back to their paragraph, so that counts in brackets, '(13)', are not taken for
     citations. Without the PDF: every bracketed number, '(3)', '(4, 5)', '(6–9)', which overcounts."""
     at = defaultdict(set)
-    pdf = J(SRC(m.root, pid), pid + ".pdf")
+    pdf = J(SRC(m.root, pid), pid + part + ".pdf")  # part="_SI" traces the supplement against its own list (issue #28)
     try:
         try: import pymupdf as fitz
         except ImportError: import fitz
@@ -5353,12 +5444,13 @@ def expand_nums(t, top):
 
 
 def read_refs(path):
-    """Entries of a P012_refs.md file: [(number, {field: value})]."""
+    """Entries of a P012_refs.md file: [(number, {field: value})]. The number is a string, '12' for the main list and
+    'S3' for the supplement's own list (issue #28)."""
     out = []
     for blk in re.split(r"^## ", rd(path), flags=re.M)[1:]:
         head, *body = blk.split("\n")
-        if not head.strip().isdigit(): continue
-        out.append((int(head.strip()), {k: v.strip() for k, v in re.findall(r"^- ([a-z_]+)::[ \t]*(.*)$", "\n".join(body), re.M)}))
+        if not re.fullmatch(r"S?\d+", head.strip()): continue
+        out.append((head.strip(), {k: v.strip() for k, v in re.findall(r"^- ([a-z_]+)::[ \t]*(.*)$", "\n".join(body), re.M)}))
     return out
 
 
@@ -5384,7 +5476,7 @@ def cmd_cite(m, pid, update=False):
     index, byref = defaultdict(list), {}
     for r in [c for c in m.cards.values() if c.fam == "reference" and not c.get("retired")]:
         for k in ref_keys(r.fields()): index[k].append(r)
-        for p, n, _b in ref_cites(r): byref.setdefault((p, int(n)), r)  # a card already made for this source's ref n (issue #20)
+        for p, n, _b in ref_cites(r): byref.setdefault((p, n), r)  # a card already made for this source's ref n (issue #20)
     srcs = {k: c for c in m.cards.values() if c.fam == "source" for k in ref_keys(source_fields(c))}
     own = m.cards.get(pid); ownkeys = set(ref_keys(source_fields(own))) if own and own.fam == "source" else set()
     def only_ours(c):  # a card this source alone cites, and not a work held in the brain: the checked list may rewrite it
@@ -5446,9 +5538,9 @@ def cmd_cite(m, pid, update=False):
     conv, left = 0, 0
     for c in [c for c in m.cards.values() if c.id.startswith(pid + "-") and not c.get("retired")]:  # every card of the source, cited cards too: `- cites:: ref 12 — why` becomes a link to ref 12's card
         t = rd(c.path)
-        t2, k_ = re.subn(r"(?m)^- cites:: ref (\d+)\b", lambda mo: f"- cites:: [[{placed[int(mo.group(1))]}]]" if int(mo.group(1)) in placed else mo.group(0), t)
-        left += len(re.findall(r"(?m)^- cites:: ref \d+\b", t2))
-        if t2 != t: wr(c.path, t2); conv += k_ - len(re.findall(r"(?m)^- cites:: ref \d+\b", t2))
+        t2, k_ = re.subn(r"(?m)^- cites:: ref (S?\d+)\b", lambda mo: f"- cites:: [[{placed[mo.group(1)]}]]" if mo.group(1) in placed else mo.group(0), t)
+        left += len(re.findall(r"(?m)^- cites:: ref S?\d+\b", t2))
+        if t2 != t: wr(c.path, t2); conv += k_ - len(re.findall(r"(?m)^- cites:: ref S?\d+\b", t2))
     print(f"{pid}: {made} new reference cards, {merged} references matched to existing cards"
           + (f"; {fixed} cards rewritten from the checked list, {retired} duplicates merged into the card of the same work" if update else "")
           + (f"; {conv} 'cites:: ref N' lines linked" if conv else "") + ". Run `mesh.py build` to write the BibTeX and the reading queue.")

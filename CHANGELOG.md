@@ -2,6 +2,14 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.23.2 (2026-11-23)
+
+Three reference lists `refs` could not read.
+
+- **A numbered list run together in one paragraph** (issue #23). Some two-column PDFs come out as a few long blocks, `References 1. Dulac, C. & Torello, A. T. … 2. Belluscio, L. …`, and the heading sits in the same block as the first entries, so `refs` found no list at all and said, wrongly, that the list was author-year. A heading with the list run on after it now starts the region at that paragraph, and a list broken in two by the Methods is picked up in both places so its numbering continues. The paragraphs between the two parts count as text, so citations in the Methods are traced too.
+- **Author-year lists** (issue #5), common in chemical senses, psychophysics and food science, are parsed: entries are split at a surname followed by initials and a year, the fields are read by moving the year to the end and reusing the same field parser (so journal, volume, pages and DOI come out as before), and the citing paragraphs are found by surname and year, `(Snitz et al. 2013)`, `(Haddad and Sobel, 2008)`, `Laska et al. (1999a)`, with the letter of `1999a` kept. Entries are numbered in the order printed, so `cite` and `cites:: ref N` work unchanged.
+- **A supplement's own reference list** (issue #28). Its numbers mean its own works, not the main text's, so cards anchored in the supplement were told to cite the wrong papers. `refs` now writes it as entries `S1` onwards, traces the supplement's paragraphs against it (through `P012_SI.pdf` where there is one), and `cite` makes cards from `S` entries like any other. Reference numbers are carried as written throughout, and `S` entries sort after the main list.
+
 ## 1.23.1 (2026-11-23)
 
 - **A panel with a second y axis is no longer read silently through the first** (issue #15). `figure` calibrates one y axis per box, taking whichever side carries more tick labels, so in a panel with a left and a right axis every series was converted through one of them and the other came out wrong, with nothing to show it. It now detects numeric tick labels on both sides of the plot area, prints both ranges, says in the CSV header which axis the values went through, and flags every row with a y value ("second y axis: verify this series' scaling"). Read the panel once per axis, with a box that takes in only that axis's labels, or pass `--ycal value@position,...` for the axis you want: a calibration given by hand is trusted and the flag goes.

@@ -2,6 +2,14 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.23.7 (2026-11-23)
+
+Found while measuring how the tooling scales on a vault grown to four times its size.
+
+- **A miner's scores no longer depend on which miners ran before it.** The rarity weighting every miner shares read a variable that the `links` miner reassigned, so every miner after it (`unify`, `recognised`, `limits` and the others added in 1.21.0) was scored with counts taken over another set of cards whenever `links` had run first. `discover links unify` and `discover unify` now rank `unify` the same way, and `zoom` and `routes` rest on the intended weights. Expect some scores in `discover` to move.
+- **Scoring pairs of cards is about twice as fast on a large vault.** A card's own part of the comparison (its concepts, their summed weight, its title words) is worked out once for each weighting. `zoom` on 4,400 evidence cards: 14 s to 6 s, with the same output.
+- **`routes` prints the same lines on every run.** The three techniques named in "obtained by" were picked in an order that varied between runs when counts tied.
+
 ## 1.23.6 (2026-11-23)
 
 What the review of pull requests #41 and #43 found, each seen on real papers.

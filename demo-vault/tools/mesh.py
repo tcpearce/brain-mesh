@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, bisect, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.23.6"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.23.7"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -5347,10 +5347,16 @@ def rarity(m):
 
 
 def relevance(m, a, b, w):
-    sa, sb = m.terms(a), m.terms(b)
-    den = math.sqrt(sum(w(t) for t in sa) * sum(w(t) for t in sb)) or 1.0
-    words = lambda c: toks(c.title) - STOP
-    return 0.75 * sum(w(t) for t in sa & sb) / den + 0.25 * jac(words(a), words(b))
+    """How alike two cards are: the concepts they share, weighted by rarity, and the words of their titles. A card's own
+    part (its concepts, their summed weight, its title words) is kept on the card for each weighting, because the
+    miners score very many pairs."""
+    def part(c):
+        d = c.__dict__.setdefault("_relparts", {})
+        if w not in d: ts = m.terms(c); d[w] = (ts, sum(w(t) for t in ts), toks(c.title) - STOP)
+        return d[w]
+    (sa, wa, ta), (sb, wb, tb) = part(a), part(b)
+    den = math.sqrt(wa * wb) or 1.0
+    return 0.75 * sum(w(t) for t in sa & sb) / den + 0.25 * jac(ta, tb)
 
 
 def cmd_place(m, target, top=4, floor=0.15, by_card=False):
@@ -6571,11 +6577,11 @@ def mine(m, want):
             for t, n in ranked(near, 3): add("analogies", 0.5 + 0.1 * n, f"{A.id}:extend:{t}", f"{A.id}: [[{t}]] sits beside mapped concepts on the base side; what is its counterpart on the target side?", [f"held with mapped concepts by cards from {n} sources"], (t,), [A.id])
     if "links" in want:
         pool = [c for c in ev if c.type not in ("cited", "definition")]
-        df = Counter(t for c in pool for t in m.terms(c)); cap = max(5, len(pool) // 10)
+        pdf_ = Counter(t for c in pool for t in m.terms(c)); cap = max(5, len(pool) // 10)  # its own name: `w` above reads `df`, and must keep meaning rarity over evidence and findings
         by_t = defaultdict(list)
         for c in pool:
             for t in m.terms(c):
-                if df[t] <= cap: by_t[t].append(c)
+                if pdf_[t] <= cap: by_t[t].append(c)
         cand = {(a.id, b.id) for cs_ in by_t.values() for a, b in itertools.combinations(sorted(cs_, key=lambda c: c.id), 2) if a.id[:4] != b.id[:4]}
         for x, y in sorted(cand):
             a, b = m.cards[x], m.cards[y]
@@ -7129,7 +7135,7 @@ def ingredient(m, L, o, name):
         if not ts:
             ts = Counter(t for v in Q for t in L.measured.get(v, {}))
             return ("yes", "the brain holds a technique for it: " + ", ".join(t for t, _n in ts.most_common(3))) if ts else ("unknown", "how it was, or could be, measured is not recorded")
-        return "yes", "obtained by " + ", ".join(t for t, _n in ts.most_common(3))
+        return "yes", "obtained by " + ", ".join(t for t, _n in sorted(ts.items(), key=lambda r: (-r[1], r[0]))[:3])  # ties by name, so two runs print the same line
     if name == "data":
         ds = sorted({d for c in cards for d in L.data[c.id] if d[0] == "D"} | (set(named_data(m, page)) if page is not None else set()) | {i for i in o["ids"] if i[0] == "D"})
         good = [d for d in ds if d in m.cards and m.cards[d].status in ("open", "on-request")]

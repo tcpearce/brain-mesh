@@ -1849,4 +1849,29 @@ print("one load ok")
 PY
 grep -q "^one load ok$" bk.txt && pass "a workbook is opened once for both the cell check and the recomputation" || { cat bk.txt; fail "workbook loads"; }
 else echo "skip a workbook is opened once (no openpyxl)"; fi
+
+# 37. a miner's scores do not depend on which miners ran before it, and pair scoring keeps its values (1.23.7)
+cd "$T/rt"
+python3 - > sc.txt 2>&1 <<'PY'
+import importlib.util, math
+spec = importlib.util.spec_from_file_location("mesh", "tools/mesh.py"); mesh = importlib.util.module_from_spec(spec); spec.loader.exec_module(mesh)
+bad = []
+for x in mesh.MINERS:
+    if x == "links": continue
+    a = mesh.mine(mesh.Mesh("."), {x})[0].get(x, []); b = mesh.mine(mesh.Mesh("."), {"links", x})[0].get(x, [])
+    if [(round(r[0], 9), r[1]) for r in a] != [(round(r[0], 9), r[1]) for r in b]: bad.append(x)
+assert not bad, bad
+import inspect
+src = inspect.getsource(mesh.mine); head = src.index("w = lambda t:")
+assert "\n        df = " not in src[head:] and "; df = " not in src[head:] and "n_ = " not in src[head + 40:], "mine() reassigns a variable the shared weighting reads"
+m = mesh.Mesh("."); w = mesh.rarity(m); ev = sorted(m.evidence(), key=lambda c: c.id)[:12]
+def plain_score(a, b):
+    sa, sb = m.terms(a), m.terms(b); den = math.sqrt(sum(w(t) for t in sa) * sum(w(t) for t in sb)) or 1.0
+    return 0.75 * sum(w(t) for t in sa & sb) / den + 0.25 * mesh.jac(mesh.toks(a.title) - mesh.STOP, mesh.toks(b.title) - mesh.STOP)
+for a in ev:
+    for b in ev: assert abs(mesh.relevance(m, a, b, w) - plain_score(a, b)) < 1e-12, (a.id, b.id)
+print("scores ok")
+PY
+grep -q "^scores ok$" sc.txt && pass "every miner scores the same whether or not links ran first; the cached pair score equals the plain one" || { cat sc.txt; fail "miner scores depend on order"; }
+python3 tools/mesh.py routes > ra.txt 2>&1; PYTHONHASHSEED=7 python3 tools/mesh.py routes > rb.txt 2>&1; PYTHONHASHSEED=99 python3 tools/mesh.py routes > rc2.txt 2>&1; cmp -s rb.txt rc2.txt && cmp -s ra.txt rb.txt && pass "routes prints the same lines on every run" || { diff rb.txt rc2.txt | head -4; fail "routes varies between runs"; }
 echo "ALL TESTS PASSED"

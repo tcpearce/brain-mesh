@@ -2,6 +2,10 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.23.1 (2026-11-23)
+
+- **A panel with a second y axis is no longer read silently through the first** (issue #15). `figure` calibrates one y axis per box, taking whichever side carries more tick labels, so in a panel with a left and a right axis every series was converted through one of them and the other came out wrong, with nothing to show it. It now detects numeric tick labels on both sides of the plot area, prints both ranges, says in the CSV header which axis the values went through, and flags every row with a y value ("second y axis: verify this series' scaling"). Read the panel once per axis, with a box that takes in only that axis's labels, or pass `--ycal value@position,...` for the axis you want: a calibration given by hand is trusted and the flag goes.
+
 ## 1.22.2 (2026-11-23)
 
 Three false alarms cleared and a title that keeps its capitals (issues #31, #36, #39, #40).

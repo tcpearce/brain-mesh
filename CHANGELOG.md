@@ -2,6 +2,11 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.23.0 (2026-11-23)
+
+- **A summary the authors computed from a data file is recomputed from its rows** (issue #30, the part left open). A mean or an s.e.m. the paper prints sits in no cell of its deposited source data, so `check` could only report "value not found". A card may now say how the number was made, `- computed:: <op> of <column> [where <column> = <value>] [in <sheet or file>]`, with `mean`, `median`, `sum`, `count`, `min`, `max`, `sd` or `sem`. `check` reads the file (`.csv` and `.tsv` directly, a workbook through openpyxl), recomputes the number and compares it with the value: the paper's own summary is now checked against the rows it rests on, and when they disagree the warning names both numbers. A line `check` cannot read leaves the value unchecked and says why. Columns and sheets are matched ignoring case and punctuation; anything after ` — ` is a note.
+- **A deposited `.csv` or `.tsv` is read at full precision**, like a workbook since 1.22.1: a value the card rounds from it is confirmed within half a unit in its last decimal place. A number printed in the running text still has to match as printed.
+
 ## 1.22.2 (2026-11-23)
 
 Three false alarms cleared and a title that keeps its capitals (issues #31, #36, #39, #40).

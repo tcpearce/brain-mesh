@@ -1424,4 +1424,35 @@ sed -i 's/^\*\*Definition\.\*\* An imprinted film of class i\.$/**Definition.** 
 python3 tools/mesh.py build > b.txt 2>&1; grep -q "concepts class-i-film and class-ii-film have near-identical names" b.txt && pass "one definition naming the other is not enough" || { grep -c near-identical b.txt; fail "near-identical one side"; }
 sed -i 's/^\*\*Definition\.\*\* An imprinted film of class ii\.$/**Definition.** An imprinted film of class ii, cured at 80 °C, unlike a [[class-i-film]]./' concepts/class-ii-film.md
 python3 tools/mesh.py build > b.txt 2>&1; ! grep -q "class-i-film and class-ii-film" b.txt && grep -q "check: 0 errors" b.txt && pass "two concepts whose definitions each link the other are told apart" || { grep near-identical b.txt; fail "near-identical told apart"; }
+# 27. check reads a source-data workbook: its text for loc:: phrases, its cells for values, rounded as the card prints them (issue #37)
+if python3 -c "import openpyxl" 2>/dev/null; then
+cp -r "$ROOT/demo-vault" "$T/xl"; cd "$T/xl"; cp "$MESH" tools/mesh.py; S1=$(ls -d sources/P001*)
+python3 - "$S1/P001_SI-source-data.xlsx" <<'PY'
+import sys, openpyxl
+wb = openpyxl.Workbook(); ws = wb.active; ws.title = "Fig S2"
+ws.append(["Film", "Capacity after washing (normalised)"]); ws.append(["A", 0.8230456]); ws.append(["B", 0.6011]); wb.save(sys.argv[1])
+PY
+cat > $S1/P001-012-capacity-after-washing.md <<'CARD'
+---
+type: observation
+status: measured
+updated: 2026-11-23
+---
+# After washing, film A kept 0.82 of its binding capacity
+
+In the source data, film A kept 0.82 of its [[binding-capacity|binding capacity]] after washing in [[water]] at 60 °C.
+
+## Codes
+- id:: P001-012
+- value:: [[binding-capacity]] = 0.82 of the unwashed film (source data)
+- when:: [[temperature]] = 60 degC
+- when:: [[solvent]] = [[water]]
+- anchor:: SI-source-data
+- loc:: "Capacity after washing (normalised)"
+- via:: si
+CARD
+python3 tools/mesh.py build > b.txt 2>&1; grep -q "check: 0 errors" b.txt && ! grep -q "P001-012: value" b.txt && ! grep -q "P001-012: loc phrase" b.txt && pass "a value rounded from a workbook cell, and a loc phrase in its header, are found" || { grep "P001-012" b.txt; fail "workbook read"; }
+sed -i 's/^- value:: \[\[binding-capacity\]\] = 0.82 /- value:: [[binding-capacity]] = 0.83 /' $S1/P001-012-*.md; python3 tools/mesh.py build > b.txt 2>&1
+grep -q "P001-012: value 0.83 not found in the anchored source" b.txt && pass "a value the workbook does not hold still warns" || { grep "P001-012" b.txt; fail "workbook value missing"; }
+else echo "skip workbook tests: openpyxl not installed"; fi
 echo "ALL TESTS PASSED"

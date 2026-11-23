@@ -2,6 +2,10 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.20.3 (2026-11-23)
+
+- **`check` reads source-data workbooks** (issue #37). An `SI-…` anchor to an `.xlsx` or `.xlsm` file was never read, so every value anchored to a paper's source data warned "not found in the anchored source" (77 in the odour-coding vault). With openpyxl installed (an optional dependency, like PyMuPDF), its text cells join the anchored text, so `loc::` phrases and labels are found, and its numeric cells are matched exactly or, since a cell holds full precision, within half a unit in the last decimal place the card prints (a cell of 0.8230456 confirms 0.82). Rounding is accepted only for workbook cells; text sources still need the printed number. A mean or other summary the authors computed from the rows is in no cell and still warns: anchor the passage or legend that prints it, or mark the value derived. Without openpyxl nothing changes. In the odour-coding vault the warnings fell from 77 to 45.
+
 ## 1.20.2 (2026-11-22)
 
 Three false alarms of `check` met in a six-paper batch (issue #34).

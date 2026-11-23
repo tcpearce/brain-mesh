@@ -1658,4 +1658,56 @@ python3 tools/mesh.py independence P001 P002 > i40.txt; grep -q "^P001$" i40.txt
 printf -- '- used_by:: [[P003-own-2026-heat-cool-cycle-results]] — looked up the structure of analyte X\n' >> data-sets/D001-*.md
 python3 tools/mesh.py independence K001 > k40.txt; grep -q "2 sources, 2 independent groups: P001 | P003" k40.txt && grep -q "^   not counted, lookup resources: D001 (ChemLookup; used by P001, P003)$" k40.txt && pass "a finding's groups name the lookup resources left out, and stay apart" || { cat k40.txt; fail "lookup role on findings"; }
 sed -i 's/^- role:: lookup$/- role:: reference/' data-sets/D001-*.md; (python3 tools/mesh.py check || true) | grep -q "D001: role 'reference' is not data or lookup" && pass "check questions a role it does not know" || fail "role value"
+# 31. a summary the authors computed from a deposited data file is recomputed from its rows (issue #30)
+cp -r "$ROOT/demo-vault" "$T/cv"; cd "$T/cv"; cp "$MESH" tools/mesh.py; S1=$(ls -d sources/P001*)
+cat > $S1/P001_SI-source-data.csv <<'CSV'
+# Fig S4 source data, one row per film
+Film,Group,Capacity after washing
+A,washed,0.8230456
+B,washed,0.6011
+C,washed,0.9158
+D,control,4.2
+CSV
+cat > $S1/P001-012-mean-capacity-after-washing.md <<'CARD'
+---
+type: observation
+status: measured
+updated: 2026-11-23
+---
+# Averaged over the three washed films, binding capacity after washing is 0.78 of the unwashed film
+
+The three washed films kept a mean 0.78 of their [[binding-capacity|binding capacity]] in [[water]] at 60 degC.
+
+## Codes
+- id:: P001-012
+- value:: [[binding-capacity]] = 0.78 of the unwashed film (mean of three films, source data)
+- when:: [[temperature]] = 60 degC
+- when:: [[solvent]] = [[water]]
+- computed:: mean of Capacity after washing where Group = washed
+- anchor:: SI-source-data
+- loc:: "Capacity after washing"
+- via:: si
+CARD
+python3 tools/mesh.py build > b.txt 2>&1; grep -q "check: 0 errors" b.txt && ! grep -q "P001-012: value" b.txt && pass "a mean the data file does not hold is recomputed from the rows a computed:: line names" || { grep "P001-012" b.txt; fail "computed mean"; }
+sed -i 's/= 0.78 of the unwashed film/= 0.55 of the unwashed film/' $S1/P001-012-*.md; python3 tools/mesh.py build > b.txt 2>&1
+grep -q "P001-012: value 0.55 does not match what '- computed::' recomputes from the anchored data (0.779982)" b.txt && pass "a value that disagrees with the recomputation is named with both numbers" || { grep "P001-012" b.txt; fail "computed mismatch"; }
+sed -i 's/= 0.55 of the unwashed film/= 0.78 of the unwashed film/; s/^- computed:: mean of Capacity after washing where Group = washed$/- computed:: the mean of the washed films/' $S1/P001-012-*.md; python3 tools/mesh.py build > b.txt 2>&1
+grep -q "P001-012: value 0.78 rests on '- computed::' but it could not be recomputed (not in the form" b.txt && pass "a computed:: line check cannot read leaves the value unchecked, and says so" || { grep "P001-012" b.txt; fail "computed unparsed"; }
+sed -i "s/^- computed:: the mean of the washed films$/- computed:: sd of Capacity after washing where Group = washed/" $S1/P001-012-*.md
+sed -i 's/= 0.78 of the unwashed film/= 0.16 of the unwashed film/' $S1/P001-012-*.md; python3 tools/mesh.py build > b.txt 2>&1
+grep -q "check: 0 errors" b.txt && ! grep -q "P001-012: value" b.txt && pass "sd and sem are recomputed the same way" || { grep "P001-012" b.txt; fail "computed sd"; }
+sed -i 's/^- computed:: .*$/- computed:: mean of Capacity after washing where Group = washed/; s/= 0.16 of the unwashed film/= 0.7799 of the unwashed film/' $S1/P001-012-*.md
+sed -i 's/^- anchor:: SI-source-data$/- anchor:: [[P001_text#^b0004]]/' $S1/P001-012-*.md; python3 tools/mesh.py build > b.txt 2>&1
+grep -q "P001-012: value 0.7799 rests on '- computed::' but it could not be recomputed (no data file is anchored" b.txt && pass "a computed:: line with no data file anchored says the value is unchecked" || { grep "P001-012" b.txt; fail "computed no file"; }
+cat > cv.py <<'PYEOF'
+import sys
+sys.path.insert(0, sys.argv[2])
+import mesh
+tabs = mesh.data_tables(sys.argv[1])
+for spec in ["count of Film where Group = washed", "count of Film", "max of Capacity after washing", "mean of Film", "mean of Capacity after washing", "mean of Capacity after washing where Group = washed in P001_SI-source-data"]:
+    v, why = mesh.computed_value(tabs, spec)
+    print(spec, "->", "None" if v is None else format(v, ".6g"), "|", why)
+PYEOF
+python3 cv.py "$S1/P001_SI-source-data.csv" "$ROOT/tools" > cv.txt 2>&1
+grep -q "^count of Film where Group = washed -> 3 | $" cv.txt && grep -q "^count of Film -> 4 | $" cv.txt && grep -q "^max of Capacity after washing -> 4.2 | $" cv.txt && grep -q "^mean of Film -> None | no numbers in a column matching 'Film'$" cv.txt && grep -q "^mean of Capacity after washing -> 1.63499 | $" cv.txt && grep -q "^mean of Capacity after washing where Group = washed in P001_SI-source-data -> 0.779982 | $" cv.txt && pass "count works on a column of names, where and in filter the rows and the file, and a column with no numbers says so" || { cat cv.txt; fail "computed count"; }
 echo "ALL TESTS PASSED"

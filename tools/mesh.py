@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.22.2"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.23.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -115,6 +115,69 @@ def sheet_cells(path):
         except Exception: text, nums = [], []
         _SHEETS[key] = (" ".join(text), nums)
     return _SHEETS[key]
+_TABLES = {}
+def data_tables(path):
+    """A data file as [(name, [header], [[cell …]])]: a .csv or .tsv, or every sheet of a .xlsx or .xlsm through
+    openpyxl. The header is the first row holding two or more non-empty cells, so title rows, '#' comment lines and
+    notes above it are skipped. [] for a file that cannot be read. Cached per file and version (issue #30)."""
+    key = (path, os.path.getmtime(path))
+    if key not in _TABLES:
+        out = []
+        try:
+            if path.lower().endswith((".csv", ".tsv", ".txt")):
+                import csv
+                with open(path, encoding="utf-8-sig", newline="") as fh:
+                    rows = [r for r in csv.reader(fh, delimiter="\t" if path.lower().endswith(".tsv") else ",") if not (r and r[0].lstrip().startswith("#"))]
+                out = [(os.path.basename(path), rows)]
+            else:
+                import openpyxl
+                wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+                out = [(ws.title, [["" if v is None else v for v in row] for row in ws.iter_rows(values_only=True)]) for ws in wb.worksheets]
+                wb.close()
+        except Exception: out = []
+        tabs = []
+        for name, rows in out:
+            head = next((k for k, r in enumerate(rows) if sum(1 for v in r if str(v).strip()) >= 2), None)
+            if head is not None: tabs.append((name, [str(v).strip() for v in rows[head]], rows[head + 1:]))
+        _TABLES[key] = tabs
+    return _TABLES[key]
+
+
+COMPUTED_RE = re.compile(r"^\s*(mean|median|sum|count|min|max|sd|sem)\s+of\s+(.+?)(?:\s+where\s+(.+?))?(?:\s+in\s+(.+?))?\s*$", re.I)
+def computed_value(tables, spec):
+    """The number a '- computed:: <op> of <column> [where <column> = <value>] [in <sheet>]' line asks for, and why it
+    could not be worked out. Columns and sheets are matched loosely, ignoring case and punctuation (issue #30)."""
+    spec = spec.split(" — ")[0]
+    mo = COMPUTED_RE.match(spec)
+    if not mo: return None, "not in the form '<op> of <column> [where <column> = <value>] [in <sheet>]'"
+    op, col, cond, sheet = mo.group(1).lower(), squeeze(mo.group(2)), mo.group(3), mo.group(4)
+    if not tables: return None, "no data file is anchored on the card, or it could not be read"
+    tabs = [t for t in tables if not sheet or squeeze(sheet) in squeeze(t[0])] or tables
+    want, wval = (squeeze(cond.split("=")[0]), cond.split("=", 1)[1].strip()) if cond and "=" in cond else (None, None)
+    vals, filled = [], 0
+    for _name, head, rows in tabs:
+        ci = next((k for k, h in enumerate(head) if squeeze(h) == col), None)
+        if ci is None: ci = next((k for k, h in enumerate(head) if col and col in squeeze(h)), None)
+        if ci is None: continue
+        wi = next((k for k, h in enumerate(head) if want and squeeze(h) == want), None) if want else None
+        if want and wi is None: continue
+        for r in rows:
+            if ci >= len(r): continue
+            if wi is not None and (wi >= len(r) or squeeze(r[wi]) != squeeze(wval)): continue
+            if str(r[ci]).strip(): filled += 1  # count asks how many rows, whatever the column holds
+            try: vals.append(float(str(r[ci]).replace("−", "-").replace(",", "").strip("% ")))
+            except (ValueError, TypeError): continue
+    if op == "count": return (float(filled), "") if filled else (None, f"no rows with a column matching '{mo.group(2).strip()}'" + (f" where {cond}" if cond else ""))
+    if not vals: return None, f"no numbers in a column matching '{mo.group(2).strip()}'" + (f" with {cond}" if cond else "")
+    n = len(vals)
+    if op == "mean": return sum(vals) / n, ""
+    if op == "sum": return sum(vals), ""
+    if op == "min": return min(vals), ""
+    if op == "max": return max(vals), ""
+    if op == "median": return (sorted(vals)[n // 2] if n % 2 else (sorted(vals)[n // 2 - 1] + sorted(vals)[n // 2]) / 2), ""
+    if n < 2: return None, "a spread needs two or more rows"
+    sd = (sum((x - sum(vals) / n) ** 2 for x in vals) / (n - 1)) ** 0.5
+    return (sd if op == "sd" else sd / n ** 0.5), ""
 OWN_NUMBER = re.compile(r"(?<![A-Za-z0-9.])[-+−]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?(?![A-Za-z]*\d)")
 def value_number(rest):
     """The number a `value::` line states (issue #31): the first that stands on its own, before the note in brackets.
@@ -758,7 +821,7 @@ class Mesh:
                     if ws: W.append(f"{i}: its passage cites {', '.join(f'{r.id} {short_cite(r)}' for r in ws[:5])}{' …' if len(ws) > 5 else ''}; add '- cites:: [[R…]] — what it supports' for each work the statement rests on, or '- cites:: none — <why>' (`mesh.py scan {pid}` shows the works cited in its own sentence)")
                 for k, _v in c.codes:
                     if k in LINK_KEYS and k not in EVIDENCE_RELS + UNIVERSAL and not (k == "also_cited_by" and c.type == "cited"): E.append(f"{i}: '{k}::' is not an evidence relation {EVIDENCE_RELS}")
-                bl, src, has_block, an, xnums = s.blocks(pid), "", False, s.anchors(c), []
+                bl, src, has_block, an, xnums, dfiles = s.blocks(pid), "", False, s.anchors(c), [], []
                 if not an: E.append(f"{i}: no '- anchor::' code")
                 for a in an:
                     if re.fullmatch(r"[bsc]\d{4}", a):
@@ -771,9 +834,12 @@ class Mesh:
                         else: W.append(f"{i}: table {a} has no sources/{pid}/{os.path.basename(p)}")
                     elif re.fullmatch(r"SI-[\w.-]+", a) and glob.glob(J(SRC(s.root, pid), f"{pid}_{a}.*")):
                         for f in glob.glob(J(SRC(s.root, pid), f"{pid}_{a}.*")):
-                            if f.lower().endswith((".csv", ".tsv", ".txt", ".md")): src += " " + rd(f)
+                            if f.lower().endswith((".csv", ".tsv", ".txt", ".md")):
+                                src += " " + rd(f)
+                                if f.lower().endswith((".csv", ".tsv")):  # a deposited data file holds full precision, like a workbook (issue #30)
+                                    dfiles.append(f); xnums += [abs(float(x)) for x in re.findall(r"-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?", re.sub(r"(?<=\d),(?=\d{3}\b)", "", rd(f)))]
                             elif f.lower().endswith((".xlsx", ".xlsm")):  # a source-data workbook (issue #37)
-                                st, sn = sheet_cells(f); src += " " + st; xnums += sn
+                                st, sn = sheet_cells(f); src += " " + st; xnums += sn; dfiles.append(f)
                     elif not re.fullmatch(r"(F\d+[a-z]*|p\d+|eq[0-9a-z]+|SI\S*|CR-p\d+)", a): E.append(f"{i}: bad anchor '{a}'")
                 vals = [s.pair(v) for v in c.all("value")]
                 firstlink = lambda v: (WIKI.search(v).group(1).strip() if WIKI.search(v) else "")
@@ -793,6 +859,7 @@ class Mesh:
                     near = lambda x: any(math.isclose(n, x, rel_tol=1e-6) for n in nums + xnums)
                     # a spreadsheet cell holds full precision, so a value the card rounds from it is found too: within half a unit in its last decimal place (issue #37)
                     rounded = lambda x, d: d > 0 and any(abs(n - x) <= 0.5 * 10 ** -d + 1e-12 for n in xnums)
+                    tabs = None
                     for _var, rest in vals:
                         num = value_number(rest)
                         v = float(num.group(0).replace("−", "-")) if num else 0
@@ -800,7 +867,15 @@ class Mesh:
                             ex = math.floor(math.log10(abs(v)))
                             dec = len(num.group(0).split(".")[1]) if "." in num.group(0) and "e" not in num.group(0).lower() else 0
                             if not (any(near(abs(v) * 10 ** (3 * k)) for k in range(-4, 5)) or rounded(abs(v), dec) or (near(abs(v) / 10 ** ex) and near(10) and near(abs(ex)))):
-                                W.append(f"{i}: value {num.group(0)} not found in the anchored source")
+                                # a mean or other summary is in no cell of the data file: recompute it from the rows the card names (issue #30)
+                                if tabs is None: tabs = [t for f in dfiles for t in data_tables(f)]
+                                got = [(sp, computed_value(tabs, sp)) for sp in c.all("computed")]
+                                tol = max(0.5 * 10 ** -dec, abs(v) * 1e-9) + 1e-12
+                                if any(x is not None and abs(abs(x) - abs(v)) <= tol for _sp, (x, _why) in got): pass  # recomputed from the data, and it agrees
+                                elif any(x is not None for _sp, (x, _why) in got):
+                                    W.append(f"{i}: value {num.group(0)} does not match what '- computed::' recomputes from the anchored data ({', '.join(f'{x:.6g}' for _sp, (x, _why) in got if x is not None)}); check the value, the columns it names, or the rounding")
+                                elif got: W.append(f"{i}: value {num.group(0)} rests on '- computed::' but it could not be recomputed ({got[0][1][1]}), so it is unchecked")
+                                else: W.append(f"{i}: value {num.group(0)} not found in the anchored source" + ("; if the authors computed it from the data, say how with '- computed:: <op> of <column> [where <column> = <value>]'" if dfiles else ""))
                 if via == "figure" and vals: s.figure_values(c, pid, an, vals, W)
                 if c.type == "observation" and not vals and not c.get("stat") and result_numbers(c.prose()):
                     W.append(f"{i}: the prose states result numbers ({', '.join(result_numbers(c.prose())[:4])}) but Codes have no '- value::' or '- stat::' line, so searches and comparisons cannot see them")

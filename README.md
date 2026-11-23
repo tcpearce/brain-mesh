@@ -34,8 +34,7 @@ Papers go in, and each one is woven into what the brain already holds. The brain
 | 1 Add papers | "Add this paper" (attach the PDF and its supplementary files); "Add these eight as a batch" | `brain-mesh-add-paper`, `brain-mesh-batch` | `anchor`, `refs`, `cite`, `split`, `check`, `staged`, `adopt` |
 | 2 Weave them in | Done as part of adding. To go back over old papers: "Scan all sources for concepts" | `brain-mesh-add-paper`, `brain-mesh-concept-scan` | `scan`, `contradictions`, `place`, `independence`, `build` |
 | 3 Find what is missing | "What are the key gaps on …? What should I read next?" | `brain-mesh-gaps` | `gaps`, `gapsdoc`, `matrix` |
-| 4 Mine for ideas | "Run a discovery session on …" | `brain-mesh-discover` | `discover`, `facts`, `dismiss`, `theories` |
-| 4b Look beyond the brain | "What is missing from the brain on …? What would other fields bring?" | `brain-mesh-beyond` | `beyond terms`, `pointers`, `probe`, `wiki`, `works`, `judge` |
+| 4 Mine for ideas | "Run a discovery session on …"; "What is in reach with what I have?"; "What is missing from the brain on …? What would other fields bring?" | `brain-mesh-discover`, `brain-mesh-beyond` | `zoom`, `routes`, `profile`, `outside`, `beyond`, `discover`, `facts`, `dismiss` |
 | 5 Test ideas | "Turn that into a hypothesis and design the experiment"; later "Here are my results" | `brain-mesh-experiment` | `matrix`, `impact` |
 | 6 Write and check | "Write the background on … from the brain"; "Audit this draft against the brain" | `brain-mesh-write` | `table`, `draft` |
 | Decide what next | "Give me a frontier map"; "Why do these results disagree?"; "Is this idea new?"; "What changed this week?" | `brain-mesh-report` | `report` |
@@ -82,31 +81,104 @@ Skipping a rung is the usual mistake: proposing an experiment that page 7 of a p
 
 ### 4. Mine for ideas
 
-Run discovery on a brain that is integrated, never on half-added papers. After every paper or batch, `discover --recheck` says which earlier ideas the new evidence strengthened, weakened or dissolved. Hold a full session when you want new ideas, and work the miners in this order:
+Discovery looks for what the brain implies and no paper states. It finds the open needs in the brain (a contradiction, a gap, an oddity, an untested assumption, a thinly supported finding, a ceiling nobody has explained), matches each to a way a paper makes a contribution, marks whether you could do it, and checks it against what lies outside the brain. Everything it shows is a prompt for you to judge, worked out afresh from the cards at every call.
+
+**What to ask Claude**
+
+| You want | Ask | Claude runs |
+|---|---|---|
+| A first session | "Interview me for my research profile, then run a discovery session" | `profile`, `zoom`, `routes` |
+| Ideas on one topic | "Run a discovery session on odour intensity" | `zoom`, `routes topic:<slug>` |
+| What you could start now | "What is in reach with what I have? What is one ingredient short?" | `routes --reach in` |
+| One kind of contribution | "Which findings most need replicating?" "Where would a new method move most?" | `routes --route replication`, `--route new-method` |
+| To know whether an idea is new | "Check V003 outside the brain" | `outside V003` |
+| What the brain is missing | "What does the brain lack on receptor coding? Compare it with Wikipedia and the MeSH terms" | `beyond terms`, `beyond wiki`, `beyond probe` |
+| Tools from other fields | "What would other fields bring to G004?" | `outside G004`, `beyond pointers`, `beyond judge … tool` |
+| What new papers changed | "What did the last batch change?" | `discover --recheck` |
+| More from discovery | "What would let discovery see more?" | `routes --readiness` |
+
+**Before the first session.** Five things decide how good every later session is.
+
+1. **Finish weaving the papers in.** Run discovery on a brain that is integrated, never on half-added papers.
+2. **Set priority** on the few concepts, gaps and papers your work turns on. Priority is what `zoom` ranks by first.
+3. **Give your research profile.** Tell Claude which of the brain's techniques, organisms and preparations you have, which you could reach through a partner and which are out; the kinds of study you run; the data you can get; what you bring from outside the field; where you could apply a finding. It takes a few minutes (`python tools/mesh.py profile` lists what to ask about, most used first) and is kept in `PROFILE.md`. Without it nothing can be ranked by what you could do. Update it when your lab changes.
+4. **Read `routes --readiness`.** It lists each thing discovery reads from the cards, how much of it is coded, and which routes that limits. A low line is housekeeping that pays: conditions written as `when::` codes, methods linked to their technique, results that name the data set they use, a definition card for a much-used variable.
+5. **Run `beyond terms` and `beyond pointers`.** A term the papers use and the brain has no concept for is invisible to every step below.
+
+**A session, step by step.** One topic per session works better than a sweep of the whole brain.
+
+1. **`zoom`** shows the topics, hottest first: your priorities, then open contradictions, tensions and gaps, then fresh signals; once you have a profile, each topic also shows how many routes are in reach. Pick your focus, or the hottest topic not explored lately.
+2. **`routes topic:<slug>`** is the agenda, best first, in about 1,500 tokens. Each opportunity reads like this:
+
+   ```
+   4. resolve-contradiction: V003 [contradiction, open] The paper says ... · topic:odour-intensity
+      has: measured or derived on 2 of 2 cards · conditions recorded on 1 of 1 observations · data available: D004 (open)
+      missing: nothing works on it · no hypothesis or registered prediction
+      not coded: not checked outside the brain (`mesh.py outside V003`)
+      reach: in reach (reanalysis of D004 (open))
+      next: propose a seed or hypothesis that takes it up · proof it would need: each side reproduced ...
+   ```
+
+   `has` is what the cards already show, `missing` what they show is absent, and `not coded` what they do not say either way. `reach` is the best of three ways of doing the work: from the published record alone, by reanalysing data the cards use, or by measuring again with a technique and in a system your profile has. An opportunity marked `ONE INGREDIENT SHORT` is the best prompt there is.
+3. **Verify the best three to five on their cards.** The tooling read only the coded lines. Claude opens the need (`zoom <id>`), lists the facts on its concepts (`facts`), and reads the page for anything a decision will rest on.
+4. **Supply the missing ingredient where that is cheap:** a lens pass over a paper already held, a definition card, a link to the data set.
+5. **Check outside the brain.** `outside <need>` gives the questions, one for each ingredient the brain lacks. Claude answers first from what it knows of the field, then searches the literature, and records what came back with its date. The last question is always the cross-field one: said without this field's words, what kind of problem is this, and what do other fields use for it?
+6. **Hear the proposals.** Three to seven, each naming its route, its ingredients, its reach, what the outside check found and the proof it would need. Accept, reject with the reason (`dismiss`), or leave for later. Only what you accept is written, as a seed, a hypothesis, a gap or a theory card.
+7. **Record.** `zoom topic:<slug> --explored "<what was done>"` so the next session starts somewhere new, and `routes --record` so the next batch of papers can show what it moved.
+
+**The twenty routes.** `routes --list` describes each with its ingredients; `routes --route <name>` keeps one.
+
+| Kind of contribution | Routes | What the brain must already hold |
+|---|---|---|
+| Recombining what is published | `resolve-contradiction`, `unification`, `joining-literatures`, `pooling`, `framework` | independent groups, measured results, definitions that agree, conditions recorded |
+| Established means, well aimed | `fill-gap`, `decisive-test`, `mechanism`, `extension`, `replication`, `scale` | a gap whose literature was searched, rival accounts, a technique that measures the variable, data you can get |
+| A borrowed means | `tool-transfer`, `concept-transfer` | a technique or formalism used elsewhere in the brain, kept from outside it, or brought by you |
+| Surprise | `new-phenomenon`, `overturn-assumption`, `existence-proof` | an oddity nobody explains, an assumption much rests on, a statement that something cannot be done |
+| A new means | `new-method`, `new-model`, `new-resource` | a technique with recorded limits, a score no method gets past, data the field lacks |
+| Outward | `translation` | a probable or established finding, and an application you named |
+
+Seven need no new data: `unification`, `joining-literatures`, `pooling`, `framework`, `scale`, `concept-transfer` and `new-model`.
+
+**Looking beyond the brain.** The steps above can only work on what the brain can name. `beyond` compares the brain with something outside it and sorts every name into one of four places: a concept already; in the papers' text with no concept (a hole to fill: propose a concept or add an alias); only in the titles of cited works (reading); nowhere in the brain (out of scope, a paper to find, or a tool from another field).
+
+| Compare the brain with | Command | Needs |
+|---|---|---|
+| The papers' own words | `beyond terms [topic:<slug>]` | nothing |
+| The papers' own pointers to other fields, and to what a question would take | `beyond pointers` | nothing |
+| Wikipedia: a concept's neighbours, links between concepts the brain does not connect, the family a technique belongs to | `beyond wiki <concept or topic:<slug>> [--family]` | a network (pages are cached in the vault and sync) |
+| Any list of names: Claude's own map of a topic, MeSH headings, a review's headings | `beyond probe … --frame "<where from>"` | a literature connector or web search |
+| A review's reference list, related or citing articles | `beyond works … --frame "<where from>"` | the same |
+
+Compare each topic once, when you first mine it. Claude records every verdict (`beyond judge`: skip, concept, alias, lead or tool), so nothing is raised twice, and a tool kept from another field shows up in `routes` and in `outside <need>` from then on. `python tools/mesh.py beyond` lists what has been compared and which topics never were.
+
+**After new papers.** Nothing above is stored as a result, so it all moves when the brain does. `discover --recheck`, run at the end of every paper or batch, reports three things:
+
+- **Your earlier ideas:** which seeds, theories and rejected signals the new evidence strengthened, weakened, dissolved or reopened.
+- **The routes:** opportunities the papers brought, ingredients that arrived or went, what came into reach, since the last `routes --record`.
+- **Beyond the brain:** a lead or an outside tool that a paper now names, and a term you set aside that twice as many papers now use.
+
+Then run `beyond terms` again: a shared term appears only once two papers use it.
+
+**What makes it work**
+
+- **Signals are prompts, not findings.** The rank orders prompts; it does not measure worth.
+- **Proposals must respect the evidence** (`facts <concept>`). One may go against a card only where a logged contradiction covers that card.
+- **"Not coded" is not "missing".** It means the cards do not say. Often the paper does, and a lens pass settles it.
+- **Out of reach is not untrue.** Those opportunities stay on the books (`routes --reach out`) as work for a collaborator.
+- **Outside knowledge is a lead.** What Claude knows, what a search finds and what Wikipedia says go onto a card only when the paper is in the brain. "Nothing found" is recorded with where and when, never as "nobody has done this".
+- **A name not found is only a name not found.** Before treating something as absent, check its other names; and check that `beyond wiki` read the right article.
+- **Reject with a reason** (`dismiss`). A rejected signal stays away until a new paper bears on it.
+- **Record conditions as codes.** Species, preparation, method and level of organisation written as conditions can be mined across; left in the prose, they cannot.
+
+**Single miners.** `routes` gathers the signals of all twenty-two miners under the route each feeds. Turn to one miner when you want more of one kind (`discover bridges --focus topic:<slug>`), and work them in this order, since scores do not compare across miners:
 
 | Order | Miners | What they settle |
 |---|---|---|
 | 1 Check the ground | `contradictions`, `definitions`, `constraints`, `links` | Are the clashes logged? Do the sources mean the same thing by a term and measure it the same way? Do the numbers agree across papers? |
 | 2 Explain disagreements | `moderators`, then a read through the open contradictions | What differs between the two sides: a condition, a method, a definition? |
 | 3 Extend what holds | `transfer`, `implied`, `bridges`, `analogies` | What is established here and untried there; what follows from chaining effects; which concepts nobody has put together |
-| 4 Stress the structure | `assumptions`, `oddities`, `genealogy`, `theories` | What everything rests on; what nobody has explained; which rival accounts nothing yet separates |
-
-**Routes: from a need to a contribution.** `python tools/mesh.py routes` is where a session starts. It matches every open need in the brain (a contradiction, a gap, an oddity, an untested assumption, a thinly supported finding, an unexplained ceiling) to one of twenty ways a paper makes a contribution, from resolving a contradiction or unifying separate findings to borrowing a tool, replicating a cornerstone or proving something possible. For each it lists the ingredients the brain already shows, the ones missing, the ones the cards do not say, the next step and the proof that route would need. An opportunity one ingredient short is the best prompt there is. `routes --list` describes the routes.
-
-**Your research profile.** Tell Claude what you can do: the techniques, organisms and preparations you have, those you could reach through a partner and those that are out; the kinds of study you run; what you bring from outside the field. `python tools/mesh.py profile` records it in `PROFILE.md`. Every opportunity is then marked in reach, with a partner, unclear or out of reach. Nothing is hidden for good: what is out of reach stays true and is listed as work for a collaborator.
-
-**Outside the brain.** Before anything is proposed as new, Claude checks it against what it knows of the field and then against the literature (`python tools/mesh.py outside <need>` gives the questions, one for each ingredient the brain lacks). What comes back is recorded as a search with its date, or as a lead from Claude's own knowledge. Neither goes onto a card until the paper is in the brain.
-
-**Beyond the ontology.** The miners can only work on what the brain can name, so `python tools/mesh.py beyond` looks for what it cannot. From the sources themselves, with no network: the terms two or more papers share that have no concept (`beyond terms`), and the paragraphs where an author points to another field or says what a question would take (`beyond pointers`). Against a map from outside: `beyond wiki` compares a concept's Wikipedia article with the brain (its neighbours, the links Wikipedia makes between concepts the brain does not connect, the family a technique belongs to); `beyond probe` does the same for any list of names, such as Claude's own map of a topic, MeSH headings or a review's headings; `beyond works` sorts a review's reference list or a set of related articles into sources, cited works and works unknown to the brain. Each name lands in one of four places: a concept already; in the sources' text with no concept (a hole in the ontology); only in the titles of cited works (reading); nowhere in the brain (a lead, or a tool from another field kept for the import pass). Every verdict is recorded with where the term stood that day, so a later source shows what it moved. Nothing found this way is evidence until its source is carded (`brain-mesh-beyond`).
-
-**It moves as the brain grows.** Nothing discovery shows is stored as a result: it is computed from the sources and their coding each time. `routes --record` keeps what a session saw, and after new papers `routes --changes` (part of `discover --recheck`) says which opportunities they brought, which gained or lost an ingredient, what came into reach, and which ideas you set aside that a new paper reopens. `routes --readiness` says how much of each thing discovery reads is coded, so you can see where coding more would let it see more.
-
-- **Signals are prompts, not findings.** Claude judges each against its cards and the page, then proposes the worthwhile ones with the case for each. Only what you accept is written.
-- **Proposals must respect the evidence** (`facts <concept>`). One may go against a card only where a logged contradiction covers that card.
-- **Reject with a reason** (`dismiss`). A rejected signal stays away until new evidence bears on it.
-- **Work top-down** (`zoom`, then `routes topic:<slug>` for the hottest topic) rather than reading every miner's list at once.
-- **Mine around a question:** `discover --focus <concept>`, with that concept set to high priority.
-- **Record conditions as codes.** The miners see only what is in a card's coded lines. Species, preparation, method and level of organisation written as conditions can be mined across; left in the prose, they cannot.
+| 4 Stress the structure | `assumptions`, `oddities`, `genealogy`, `theories`, `cornerstones`, `mechanism`, `limits` | What everything rests on; what nobody has explained; which rival accounts nothing separates; what one group alone holds up; what was never tested by intervention; what is said to be impossible |
+| 5 Look at the means | `tools`, `unify`, `recognised`, `bottlenecks`, `ceilings`, `data` | A technique never brought to a question; one driver behind several outcomes; gaps the field already agrees on; where a new method or model would move most; open data nobody else has used |
 
 ### 5. Test ideas
 
@@ -143,8 +215,9 @@ A report is a snapshot: run it again when the brain changes, and never treat it 
 | When | What |
 |---|---|
 | Every session | `sync` first and last |
-| Every paper or batch | Stages 1 and 2, then `discover --recheck` and `report changes` |
-| Every five to ten papers, or monthly | `health`, `gaps`, the reading queue, `report frontier` and `report robustness`, a discovery session |
+| Once, and when your lab changes | The research profile (`profile`) |
+| Every paper or batch | Stages 1 and 2, then `discover --recheck` (your earlier ideas, the routes and the leads from outside that the papers moved) and `report changes` |
+| Every five to ten papers, or monthly | `health`, `gaps`, the reading queue, `report frontier` and `report robustness`; a discovery session on the hottest topic; `beyond terms`, and that topic compared with an outside map; `routes --readiness` |
 | Now and then | An audit: `sample P012 10` puts ten cards beside their source text, to check meaning rather than typing |
 | Before an experiment | `report contradictions` and `report novelty` on the idea; discovery on the question; a hypothesis with rivals; registered predictions |
 | Before submitting text | `draft` |
@@ -156,22 +229,22 @@ A rough guide; it depends on how closely the papers bear on one another.
 
 | Papers | What pays off |
 |---|---|
-| 1 to 3 | Claims against evidence within each paper, contradictions, definitions, evidence tables, draft audits. Most gaps are reading-list gaps. |
-| 5 to 20 | Findings with independent support, tensions and their moderators, numbers pooled across papers, transfer, research gaps that survive a search. |
-| 20 and up | Bridges, chains of effects, rival theories against the findings, analogies, batches and scheduled passes. |
+| 1 to 3 | Claims against evidence within each paper, contradictions, definitions, evidence tables, draft audits. Most gaps are reading-list gaps. From discovery: `beyond pointers`, and a first comparison with an outside map to see what the papers leave out. |
+| 5 to 20 | Findings with independent support, tensions and their moderators, numbers pooled across papers, transfer, research gaps that survive a search. `routes` starts to pay: resolving contradictions, pooling, extension, replication, reanalysis of open data. `beyond terms` finds the shared vocabulary the brain has no concept for. |
+| 20 and up | Bridges, chains of effects, rival theories against the findings, analogies, batches and scheduled passes. The routes that need breadth: joining literatures, unification, decisive tests, tools and concepts carried across. |
 
 ### Asking the brain
 
 Ask Claude a question about your field and it answers from the brain with `python tools/mesh.py ask "<the question>"`. In one call, within about 2,500 tokens, that returns the brain's conclusions on the question with their grades, the hub facts, the relations with their basis, the most relevant evidence cards and what was not read in full, each line carrying a card id. Claude opens only the cards the answer needs.
 
-To explore rather than answer, Claude uses `python tools/mesh.py zoom`. It shows the brain as a hierarchy, revealed on a need-to-know basis: the topics first (groups of concepts that appear together), ranked by your priorities, their open contradictions and gaps, and the signals the miners find in them; then one topic, one concept, one finding or contradiction, one evidence card and its page, each level in about 1,000 tokens. Discovery runs top-down: the hottest topic, the miners inside it only, a shortlist for you, and a note of the branch explored so the next session starts somewhere new.
+To explore rather than answer, Claude uses `python tools/mesh.py zoom`. It shows the brain as a hierarchy, revealed on a need-to-know basis: the topics first (groups of concepts that appear together), ranked by your priorities, their open contradictions and gaps, and the signals the miners find in them; then one topic, one concept, one finding or contradiction, one evidence card and its page, each level in about 1,000 tokens. Discovery runs top-down: the hottest topic, the routes inside it only, a shortlist for you, and a note of the branch explored so the next session starts somewhere new.
 
 Both keep a session's context small however large the brain grows. The commands rank and trim their output too: `find` shows the 25 most relevant hits, `show` cuts long generated lists, `table` shows the 25 most relevant rows, and each says how many more there are. Claude never reads a hub or `index/` whole, and hands wide sweeps (a full discovery pass, a scan of many papers, the audit of a long draft) to subagents that report back only their conclusions.
 
 ### Habits that pay
 
 1. **Check the page.** Every card links to its place in the PDF. Open it whenever a value or a wording matters.
-2. **Use priority to steer.** Set high the few concepts, papers and gaps your work turns on, each with a reason, and review them when your question changes. Only you set priority.
+2. **Use priority to steer.** Set high the few concepts, papers and gaps your work turns on, each with a reason, and review them when your question changes. Only you set priority. The same goes for your research profile: it says what you can do, and only you say it.
 3. **Count groups, not papers,** and say how far each relation is causal.
 4. **Log contradictions** rather than settling them informally.
 5. **Climb the gap ladder** before calling anything unknown. "Not in the brain" is not "not in the literature".
@@ -194,7 +267,7 @@ Both keep a session's context small however large the brain grows. The commands 
 | `skills/brain-mesh-report/SKILL.md` | Dated reports assembled from the cards: frontier map, contradiction dossier, theory scorecard, causal map, robustness audit, methods and data landscape, novelty check, what-changed digest. |
 | `skills/brain-mesh-gaps/SKILL.md` | Finding key gaps, hunting papers that fill them, the research-gaps document. |
 | `skills/brain-mesh-experiment/SKILL.md` | Hypotheses, experiment design, registered predictions, assessing outcomes. |
-| `skills/brain-mesh-discover/SKILL.md` | Mining the brain with the user for new hypotheses and links; theory, analogy and seed cards; rechecking them as sources arrive. |
+| `skills/brain-mesh-discover/SKILL.md` | Discovery sessions with the user: topics by need to know, routes to a contribution, the research profile, checks outside the brain, the miners; theory, analogy and seed cards; rechecking them as sources arrive. |
 | `skills/brain-mesh-beyond/SKILL.md` | Finding what the ontology lacks by comparing it with something outside it: the sources' own words, Wikipedia, MeSH, a review, the literature around the sources, and the tools other fields use for the same kind of problem. |
 | `skills/brain-mesh-housekeeping/SKILL.md` | Health report, merges, corrections and retractions, audits, edits made in Obsidian. |
 | `tools/mesh.py` | The tooling. One file, Python 3.8+, standard library plus PyMuPDF for PDFs. `python3 tools/mesh.py help` lists the commands. |

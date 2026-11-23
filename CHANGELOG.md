@@ -2,6 +2,16 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.23.6 (2026-11-23)
+
+What the review of pull requests #41 and #43 found, each seen on real papers.
+
+- **`check` is no slower for reading data files.** Reading workbooks and deposited CSV files had taken `check` on a twenty-source vault from 15 to 23 seconds: every workbook was opened a second time whenever a value was not found, whether or not the card had a `computed::` line, and every value was compared with every number of the file. A workbook is now opened once for both uses, its rows are read only for a card that has a `computed::` line, and a number is looked up in a sorted list. Back to 15 seconds, with the same warnings.
+- **A work cited only by a supplement's list is read back as cited.** `ref_cites` did not read `ref S1`, so such a reference card dropped out of its paper's reference list, of the reading queue's counts and of every other reader of `cited_by::`.
+- **A numbered protocol in a supplement is not taken for references.** A supplement's numbered list is kept only when at least half of its entries carry a year; otherwise `refs` leaves it out and says so. (A numbered algorithm in one supplement had become five reference entries.) A supplement's list is also parsed in its own style when that differs from the main list's.
+- **Author-year entries.** A publisher's place (`Montclair, NJ: Author.`) no longer starts an entry, and APA's `Journal, 30(5), 342–361` gives journal, volume and pages.
+- Known limits: an author-year list with no comma between surname and initials and no brackets round the year (`Buck L, Axel R. 1991.`) is read only in the PLOS and eLife forms; book entries give no publisher field.
+
 ## 1.23.5 (2026-11-23)
 
 - **A trailing `DOI: https://…` no longer swallows the journal.** eLife ends each entry with a `DOI:` label before the link; the reader stripped the link but left the label, so the volume and pages stayed inside the title and 68 of one paper's 75 entries came out wrong. The label is stripped with the link, and the match is case-insensitive.

@@ -4,10 +4,10 @@ Source of truth: tools/mesh.py in the brain-mesh repository. Vaults carry a copy
 Every card is a markdown note: a human-readable part first, then a `## Codes` list of `- key:: value` lines.
 Standard library only; PDF text needs one of PyMuPDF, pdftotext (poppler), pdfplumber, pypdf.
 Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists commands)"""
-import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
+import sys, os, re, json, glob, math, bisect, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.23.5"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.23.6"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -95,27 +95,38 @@ def wr(p, t):  # always LF line endings: a build on Windows must produce the sam
     os.makedirs(os.path.dirname(p), exist_ok=True)
     with open(p, "w", encoding="utf-8", newline="\n") as f: f.write(t)
 def squeeze(s): return re.sub(r"[^a-z0-9]+", "", unicodedata.normalize("NFKC", str(s)).lower())
-_SHEETS = {}
-def sheet_cells(path):
-    """A spreadsheet's text cells joined, and its numeric cells as numbers (issue #37). Needs openpyxl, an optional
-    dependency like PyMuPDF; without it, or for a file it cannot open, ("", []). Cached per file and version."""
+_BOOKS, _SHEETS, _TABLES, _CSVNUMS = {}, {}, {}, {}
+def book_rows(path):
+    """Every sheet of a .xlsx or .xlsm as [(title, [[cell …]])], through openpyxl (an optional dependency, like
+    PyMuPDF); [] without it or for a file it cannot open. Opened once per file and version: a workbook is slow to
+    read, and both the cell check and the recomputation of a summary need it."""
     key = (path, os.path.getmtime(path))
-    if key not in _SHEETS:
-        text, nums = [], []
+    if key not in _BOOKS:
         try:
             import openpyxl
             wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
-            for ws in wb.worksheets:
-                for row in ws.iter_rows(values_only=True):
-                    for v in row:
-                        if isinstance(v, bool) or v is None: continue
-                        if isinstance(v, (int, float)): nums.append(abs(float(v)))
-                        else: text.append(str(v))
+            _BOOKS[key] = [(ws.title, [list(row) for row in ws.iter_rows(values_only=True)]) for ws in wb.worksheets]
             wb.close()
-        except Exception: text, nums = [], []
+        except Exception: _BOOKS[key] = []
+    return _BOOKS[key]
+def sheet_cells(path):
+    """A spreadsheet's text cells joined, and its numeric cells as numbers (issue #37); ("", []) when it cannot be read."""
+    key = (path, os.path.getmtime(path))
+    if key not in _SHEETS:
+        text, nums = [], []
+        for _title, rows in book_rows(path):
+            for row in rows:
+                for v in row:
+                    if isinstance(v, bool) or v is None: continue
+                    if isinstance(v, (int, float)): nums.append(abs(float(v)))
+                    else: text.append(str(v))
         _SHEETS[key] = (" ".join(text), nums)
     return _SHEETS[key]
-_TABLES = {}
+def csv_numbers(path):
+    """The numbers of a deposited .csv or .tsv at full precision, read once per file and version (issue #30)."""
+    key = (path, os.path.getmtime(path))
+    if key not in _CSVNUMS: _CSVNUMS[key] = [abs(float(x)) for x in re.findall(r"-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?", re.sub(r"(?<=\d),(?=\d{3}\b)", "", rd(path)))]
+    return _CSVNUMS[key]
 def data_tables(path):
     """A data file as [(name, [header], [[cell …]])]: a .csv or .tsv, or every sheet of a .xlsx or .xlsm through
     openpyxl. The header is the first row holding two or more non-empty cells, so title rows, '#' comment lines and
@@ -129,11 +140,7 @@ def data_tables(path):
                 with open(path, encoding="utf-8-sig", newline="") as fh:
                     rows = [r for r in csv.reader(fh, delimiter="\t" if path.lower().endswith(".tsv") else ",") if not (r and r[0].lstrip().startswith("#"))]
                 out = [(os.path.basename(path), rows)]
-            else:
-                import openpyxl
-                wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
-                out = [(ws.title, [["" if v is None else v for v in row] for row in ws.iter_rows(values_only=True)]) for ws in wb.worksheets]
-                wb.close()
+            else: out = [(title, [["" if v is None else v for v in row] for row in rows]) for title, rows in book_rows(path)]
         except Exception: out = []
         tabs = []
         for name, rows in out:
@@ -141,6 +148,20 @@ def data_tables(path):
             if head is not None: tabs.append((name, [str(v).strip() for v in rows[head]], rows[head + 1:]))
         _TABLES[key] = tabs
     return _TABLES[key]
+
+
+def close_in(lists, x, rel=1e-6):
+    """Is x in one of these sorted lists of non-negative numbers, to a relative 1e-6? The nearest neighbours of x decide."""
+    for L in lists:
+        k = bisect.bisect_left(L, x)
+        if (k < len(L) and math.isclose(L[k], x, rel_tol=rel)) or (k and math.isclose(L[k - 1], x, rel_tol=rel)): return True
+    return False
+def within_in(lists, x, tol):
+    """Does one of these sorted lists hold a number within tol of x?"""
+    for L in lists:
+        k = bisect.bisect_left(L, x - tol)
+        if k < len(L) and L[k] <= x + tol: return True
+    return False
 
 
 COMPUTED_RE = re.compile(r"^\s*(mean|median|sum|count|min|max|sd|sem)\s+of\s+(.+?)(?:\s+where\s+(.+?))?(?:\s+in\s+(.+?))?\s*$", re.I)
@@ -433,7 +454,8 @@ def split_refs(text, limit=600):
 
 
 SURNAME = r"(?:[A-ZÀ-ÞŒ][\w'’\-]+|(?:de|van|von|da|di|del|der|du|le|la|den|ten|ter|dos|das|Mc|Mac)\s?[A-ZÀ-ÞŒ][\w'’\-]+)"
-AY_HEAD = ("(?:" + SURNAME + r",\s+(?:[A-ZÀ-ÞŒ]\.|[A-ZÀ-ÞŒ][\w'’\-]+)"      # Snitz, K.  /  Snitz, Kobi
+# what follows the surname is an initial or a given name, never a word before a colon: 'Montclair, NJ: Author' is a publisher's place
+AY_HEAD = ("(?:" + SURNAME + r",\s+(?:[A-ZÀ-ÞŒ]\.|[A-ZÀ-ÞŒ][\w'’\-]+(?![\w'’\-:]))"      # Snitz, K.  /  Snitz, Kobi
            "|" + SURNAME + r"\s+[A-ZÀ-ÞŒ]{1,3}[,.])")                            # Snitz K,  /  Qian WW.  (PLOS, BMC, eLife)
 AY_START = re.compile(r"(?:(?<=\s)|^)(" + AY_HEAD + r"[\s\S]{0,220}?\(?(?:19|20)\d{2}[a-z]?\)?[.,]?)\s")
 
@@ -499,6 +521,8 @@ def parse_ref_author_year(raw):
     tail = raw[mo.end():].strip().lstrip(").,; ")
     link = re.search(r"\s*(?:doi:\s*)?((?:https?://|doi:\s*|www\.)\S+)\s*\.?\s*$", tail, re.I)  # a trailing link, with or without a 'DOI:' label, would come between the pages and the year
     core = tail[:link.start()] if link else tail
+    core = re.sub(r",\s*(\d{1,4})\s*\(\s*[\w–\-]+\s*\)\s*,\s*", r" \1, ", core)  # APA: 'Journal, 30(5), 342–361' is 'Journal 30, 342–361' to the field parser
+    core = re.sub(r",\s*(\d{1,4})\s*,\s*(?=[A-Za-z]?\d)", r" \1, ", core).rstrip(" .")  # and 'Journal, 17, 55' is 'Journal 17, 55'
     f = parse_ref(f"Anon, {core} ({mo.group(1)}). {link.group(1) if link else ''}".strip())  # everything before the year is the authors, so the parser is left only the tail
     people = re.findall(SURNAME + r",\s*(?:[A-ZÀ-ÞŒ]\.?(?:\s?-?[A-ZÀ-ÞŒ]\.?)*|[A-ZÀ-ÞŒ][\w'’\-]+(?:\s+[A-ZÀ-ÞŒ]\.?)*)", who)
     f["authors"] = "; ".join(" ".join(p.split()) for p in people) or who
@@ -954,7 +978,7 @@ class Mesh:
                             if f.lower().endswith((".csv", ".tsv", ".txt", ".md")):
                                 src += " " + rd(f)
                                 if f.lower().endswith((".csv", ".tsv")):  # a deposited data file holds full precision, like a workbook (issue #30)
-                                    dfiles.append(f); xnums += [abs(float(x)) for x in re.findall(r"-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?", re.sub(r"(?<=\d),(?=\d{3}\b)", "", rd(f)))]
+                                    dfiles.append(f); xnums += csv_numbers(f)
                             elif f.lower().endswith((".xlsx", ".xlsm")):  # a source-data workbook (issue #37)
                                 st, sn = sheet_cells(f); src += " " + st; xnums += sn; dfiles.append(f)
                     elif not re.fullmatch(r"(F\d+[a-z]*|p\d+|eq[0-9a-z]+|SI\S*|CR-p\d+)", a): E.append(f"{i}: bad anchor '{a}'")
@@ -973,9 +997,12 @@ class Mesh:
                         if squeeze(loc) not in squeeze(src): W.append(f"{i}: loc phrase not found in the anchored source")
                     elif via == "text" and has_block: W.append(f"{i}: no '- loc::' phrase")
                     nums = [float(x) for x in re.findall(r"\d+(?:\.\d+)?", re.sub(r"(?<=\d),(?=\d{3}\b)", "", src))]
-                    near = lambda x: any(math.isclose(n, x, rel_tol=1e-6) for n in nums + xnums)
+                    if not hasattr(s, "_xsorted"): s._xsorted = {}
+                    if tuple(dfiles) not in s._xsorted: s._xsorted[tuple(dfiles)] = sorted(xnums)  # a data file many cards anchor is sorted once
+                    snums, xs = sorted(nums), s._xsorted[tuple(dfiles)]
+                    near = lambda x: close_in((snums, xs), x)
                     # a spreadsheet cell holds full precision, so a value the card rounds from it is found too: within half a unit in its last decimal place (issue #37)
-                    rounded = lambda x, d: d > 0 and any(abs(n - x) <= 0.5 * 10 ** -d + 1e-12 for n in xnums)
+                    rounded = lambda x, d: d > 0 and within_in((xs,), x, 0.5 * 10 ** -d + 1e-12)
                     tabs = None
                     for _var, rest in vals:
                         num = value_number(rest)
@@ -985,7 +1012,7 @@ class Mesh:
                             dec = len(num.group(0).split(".")[1]) if "." in num.group(0) and "e" not in num.group(0).lower() else 0
                             if not (any(near(abs(v) * 10 ** (3 * k)) for k in range(-4, 5)) or rounded(abs(v), dec) or (near(abs(v) / 10 ** ex) and near(10) and near(abs(ex)))):
                                 # a mean or other summary is in no cell of the data file: recompute it from the rows the card names (issue #30)
-                                if tabs is None: tabs = [t for f in dfiles for t in data_tables(f)]
+                                if tabs is None and c.all("computed"): tabs = [t for f in dfiles for t in data_tables(f)]  # only a card that says how its value was computed needs the rows
                                 got = [(sp, computed_value(tabs, sp)) for sp in c.all("computed")]
                                 tol = max(0.5 * 10 ** -dec, abs(v) * 1e-9) + 1e-12
                                 if any(x is not None and abs(abs(x) - abs(v)) <= tol for _sp, (x, _why) in got): pass  # recomputed from the data, and it agrees
@@ -5410,26 +5437,29 @@ def cmd_refs(m, pid, force=False):
     # A supplement with its own numbered list: its paragraphs' numbers mean its own works, not the main text's (issue #28)
     sbl = {k: v for k, v in m.blocks(pid).items() if k[0] == "s"}
     sregion = ref_region(sbl) if sbl else []
-    srefs = split_refs(" ".join(t for _b, t in sregion))
+    srefs, sstyle, left_out = split_refs(" ".join(t for _b, t in sregion)), "numbered", 0
     if len(srefs) < 2 and sregion:
         say = split_refs_author_year(" ".join(t for _b, t in sregion))
-        if len(say) > len(srefs): srefs = say
+        if len(say) > len(srefs): srefs, sstyle = say, "author-year"
+    if srefs and sum(1 for _n, raw in srefs if re.search(r"\b(?:1[89]|20)\d{2}[a-z]?\b", raw)) * 2 < len(srefs):
+        left_out, srefs = len(srefs), []  # a numbered protocol or algorithm: few of its entries carry a year
     if srefs:
         stext = {b: v for b, v in sbl.items() if b not in {x for x, _t in sregion}}
-        sat = author_year_cites(stext, srefs) if style == "author-year" else cite_places(m, pid, stext, len(srefs), part="_SI")
+        sat = author_year_cites(stext, srefs) if sstyle == "author-year" else cite_places(m, pid, stext, len(srefs), part="_SI")
         at.update({f"S{n}": bs for n, bs in sat.items()})
         refs += [(f"S{n}", strip_furniture(raw, own_doi)) for n, raw in srefs]
         lines.insert(4, f"Entries S1 onwards are the supplement's own reference list ({len(srefs)} entries), whose numbers its paragraphs cite; "
                         "fold an entry that repeats a main-text work into that entry's `cited_at` and delete it here.")
-    pr = lambda raw: parse_entry(raw, style)
+    pr = lambda raw, n="": parse_entry(raw, sstyle if str(n)[:1] == "S" else style)  # the supplement's list may be in another style than the main one
     for n, raw in refs:
-        f = pr(raw)
+        f = pr(raw, n)
         lines += [f"## {n}", f"- raw:: {raw}"] + [f"- {k}:: {f.get(k, '')}" for k in REF_FIELDS if f.get(k)]
         lines += [f"- cited_at:: {', '.join(sorted(at[n]))}" if at.get(n) else "- cited_at::", ""]
     wr(out, "\n".join(lines))
     print(f"{pid}: {len(refs)} references ({style} list)" + (f" ({len(srefs)} of them the supplement's own list, S1 onwards)" if srefs else "")
           + f" -> {os.path.relpath(out, m.root)}; {sum(1 for n, _r in refs if at.get(n))} traced to the paragraphs that cite them")
-    thin = [n for n, raw in refs if not pr(raw).get("year") or not pr(raw).get("authors")]
+    if left_out: print(f"  a numbered list of {left_out} entries in the supplement was not taken for references: fewer than half carry a year (a protocol or an algorithm?). If it is a reference list, add its entries to the file by hand as S1 onwards")
+    thin = [n for n, raw in refs if not pr(raw, n).get("year") or not pr(raw, n).get("authors")]
     if thin: print(f"  check by hand: references {', '.join(map(str, thin[:20]))} parsed without a year or authors")
 
 
@@ -5612,7 +5642,7 @@ def ref_cites(r):
     """[(source id, reference number, [paragraphs])] from a reference card's cited_by:: lines."""
     out = []
     for v in r.all("cited_by"):
-        mo = re.search(r"(P\d{3})\S*\s+ref\s+(\d+)(?:\s*—\s*(.*))?", v)
+        mo = re.search(r"(P\d{3})\S*\s+ref\s+(S?\d+)(?:\s*—\s*(.*))?", v)  # 'S3' is an entry of the supplement's own list (issue #28)
         if mo: out.append((mo.group(1), mo.group(2), re.findall(r"[bsc]\d{4}", mo.group(3) or "")))
     return out
 

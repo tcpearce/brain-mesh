@@ -1799,4 +1799,54 @@ python3 tools/mesh.py refs P001 --force > e1.txt 2>&1
 grep -q "P001: 2 references (author-year list)" e1.txt && pass "refs reads an eLife-style list whose heading runs on into the first entry" || { cat e1.txt; fail "elife list"; }
 grep -A12 "^## 1$" $S1/P001_refs.md | grep -q "^- authors:: Alvarez-Melis, D.; Fusi, N.$" && grep -A12 "^## 2$" $S1/P001_refs.md | grep -q "^- authors:: Lee, B. K.; Mayhew, E. J.; Sanchez-Lengeling, B.$" && pass "a bare year and a soft hyphen inside a surname do not stop the authors parsing" || { grep -A12 "^## 1$" $S1/P001_refs.md; fail "elife authors"; }
 grep -A12 "^## 1$" $S1/P001_refs.md | grep -q "cited_at:: b0600" && grep -A12 "^## 2$" $S1/P001_refs.md | grep -q "cited_at:: b0600" && pass "both are traced to the paragraph that cites them" || { grep -E "^## |cited_at" $S1/P001_refs.md; fail "elife tracing"; }
+
+# 36. what the review of pull requests #41 and #43 found (1.23.6)
+cp -r "$ROOT/demo-vault" "$T/rv"; cd "$T/rv"; cp "$MESH" tools/mesh.py; S2=$(ls -d sources/P002*); S3=$(ls -d sources/P003*)
+rm -f $S3/P003_refs.md
+printf '\nREFERENCES ^b0400\n' >> $S3/P003_text.md; printf '\n1. Main, A. The main list only work. J. Main 1, 1-9 (2001). ^b0401\n' >> $S3/P003_text.md
+printf '\nThe supplementary method follows earlier work1. ^s0400\n' >> $S3/P003_SI_text.md; printf '\nReferences 1. Supp, B. A work only the supplement cites. J. Supp 2, 10-19 (2002). 2. Extra, C. Another work of the supplement. J. Supp 3, 20-29 (2003). ^s0401\n' >> $S3/P003_SI_text.md
+python3 tools/mesh.py refs P003 --force > /dev/null; python3 tools/mesh.py cite P003 > /dev/null; python3 tools/mesh.py build > /dev/null
+SC=$(ls $S3/P003-own-*.md | grep -v "P003-0" | head -1); R=$(grep -l "ref S1" references/R*.md | head -1)
+[ -n "$R" ] && grep -q "$(basename "$R" .md | cut -c1-5)" "$SC" && pass "a work cited only by the supplement's list (ref S1) is read back as cited, and the paper's card lists it" || { grep -n "R000" "$SC"; ls references; fail "ref S1 read back"; }
+python3 - > rc.txt 2>&1 <<'PY'
+import importlib.util
+spec = importlib.util.spec_from_file_location("mesh", "tools/mesh.py"); mesh = importlib.util.module_from_spec(spec); spec.loader.exec_module(mesh)
+m = mesh.Mesh(".")
+got = sorted(n for r in m.cards.values() if r.fam == "reference" for p, n, _b in mesh.ref_cites(r) if p == "P003")
+assert got == ["1", "S1", "S2"], got
+# an author-year list in APA style: a publisher's place is not an author, and 'Journal, 30(5), 342–361' gives its fields
+text = ("Arctander, S. (1969). Perfume and flavor chemicals (aroma chemicals). Montclair, NJ: Author. "
+        "Bushdid, C., Magnasco, M. O., & Keller, A. (2014). Humans can discriminate more than 1 trillion olfactory stimuli. Science, 343(6177), 1370–1372. https://doi.org/10.1126/science.1249168 "
+        "Keller, A., & Vosshall, L. B. (2016). Olfactory perception of chemically diverse molecules. BMC Neuroscience, 17, 55.")
+refs = mesh.split_refs_author_year(text)
+assert len(refs) == 3 and refs[1][1].startswith("Bushdid, C.") and refs[0][1].endswith("Montclair, NJ: Author."), refs
+f = mesh.parse_entry(refs[1][1], "author-year"); assert (f.get("journal"), f.get("volume"), f.get("pages"), f.get("year")) == ("Science", "343", "1370--1372", "2014"), f
+f = mesh.parse_entry(refs[2][1], "author-year"); assert (f.get("journal"), f.get("volume"), f.get("pages")) == ("BMC Neuroscience", "17", "55"), f
+# a number is looked up in sorted lists as it was by scanning
+assert mesh.close_in(([1.0, 4.2, 100.0],), 4.2000001) and not mesh.close_in(([1.0, 4.2, 100.0],), 4.21) and mesh.close_in(([], [0.5]), 0.5) and not mesh.close_in(([],), 1.0)
+assert mesh.within_in(([0.8349, 12.0],), 0.83, 0.005) and not mesh.within_in(([0.8349, 12.0],), 0.82, 0.005) and not mesh.within_in(([],), 1.0, 0.5)
+print("review fixes ok")
+PY
+grep -q "^review fixes ok$" rc.txt && pass "author-year entries: a publisher's place starts no entry and APA volume(issue), pages are read; sorted number lookup agrees with a scan" || { cat rc.txt; fail "review fixes"; }
+cp -r "$ROOT/demo-vault" "$T/rw"; cd "$T/rw"; cp "$MESH" tools/mesh.py; S3=$(ls -d sources/P003*); rm -f $S3/P003_refs.md
+printf '\nREFERENCES ^b0400\n' >> $S3/P003_text.md; printf '\n1. Main, A. The main list only work. J. Main 1, 1-9 (2001). ^b0401\n' >> $S3/P003_text.md
+printf '\nSupplementary protocol for the wash. ^s0500\n' >> $S3/P003_SI_text.md
+printf '\nReferences 1. Weigh the dry film on the balance. 2. Rinse the film in water for ten minutes. 3. Dry the film at room temperature. 4. Weigh it again and record the loss. ^s0501\n' >> $S3/P003_SI_text.md
+python3 tools/mesh.py refs P003 --force > r2.txt 2>&1 || true
+grep -q "a numbered list of 4 entries in the supplement was not taken for references" r2.txt && grep -q "P003: 1 references (numbered list) ->" r2.txt && ! grep -q "^## S1$" $S3/P003_refs.md && pass "a numbered protocol in a supplement is not taken for a reference list, and refs says so" || { cat r2.txt; fail "protocol taken for references"; }
+if python3 -c "import openpyxl" 2>/dev/null; then
+python3 - > bk.txt 2>&1 <<'PY'
+import importlib.util, openpyxl
+spec = importlib.util.spec_from_file_location("mesh", "tools/mesh.py"); mesh = importlib.util.module_from_spec(spec); spec.loader.exec_module(mesh)
+wb = openpyxl.Workbook(); ws = wb.active; ws.title = "Fig 1"; ws.append(["group", "value"]); ws.append(["a", 0.8349]); ws.append(["a", 0.9]); wb.save("book.xlsx")
+calls = []; real = openpyxl.load_workbook
+openpyxl.load_workbook = lambda *a, **k: (calls.append(1), real(*a, **k))[1]
+text, nums = mesh.sheet_cells("book.xlsx"); tabs = mesh.data_tables("book.xlsx"); mesh.sheet_cells("book.xlsx")
+assert len(calls) == 1, calls
+assert sorted(nums) == [0.8349, 0.9] and "group" in text and tabs[0][0] == "Fig 1" and tabs[0][1] == ["group", "value"] and len(tabs[0][2]) == 2, (text, nums, tabs)
+assert mesh.computed_value(tabs, "mean of value where group = a") is not None
+print("one load ok")
+PY
+grep -q "^one load ok$" bk.txt && pass "a workbook is opened once for both the cell check and the recomputation" || { cat bk.txt; fail "workbook loads"; }
+else echo "skip a workbook is opened once (no openpyxl)"; fi
 echo "ALL TESTS PASSED"

@@ -54,6 +54,7 @@ Keep the vault's tooling current: from the repository clone run `python3 tools/m
 
 ```
 MAP.md  CLAUDE.md  MESH.json  SCHEMA.md   home note; agent instructions; marker file; cheat sheet
+PROFILE.md                                 the research profile: what the user's group can do (theirs to set, like priority)
 concepts/<slug>.md                         concept cards (the hubs)
 sources/P012-<first author>-<year>-<words>/  one folder per source:
   P012-<slug>.md  P012-007-<slug>.md  P012-claims.md     source card, evidence cards, claims card
@@ -66,7 +67,8 @@ hypotheses/H###  experiments/E###          the workbench
 theories/T###  analogies/A###  seeds/S###  discovery cards
 data-sets/D###  code/C###                  what the studies use
 reports/<date>-<kind>.md                   dated snapshots, never sources
-ledger/                                    changelog, reading queue, contradictions register, checksums, removed ids, rejected signals and concepts
+ledger/                                    changelog, reading queue, contradictions register, checksums, removed ids, rejected signals and concepts,
+                                           explored branches, the routes record, outside checks
 index/                                     generated tables: cards.tsv, edges.tsv, coverage.tsv, priority.tsv, marks.json
 tools/mesh.py  .brain-mesh/                the tooling (a copy) and an offline copy of these instructions
 notes/                                     the user's own notes, ignored by the tooling
@@ -107,7 +109,7 @@ Every card has properties, a title stating its point as a sentence, plain prose,
 
 ## Priority
 
-Every card is `high`, `normal` (the default) or `low`. Priority is the user's statement of interest: attention, never evidence. Only the user sets it (`priority <id> <level> "<why>"`); it spreads one link as *elevated*; `MAP.md` opens with the **Focus**. Details in FORMATS.md.
+Every card is `high`, `normal` (the default) or `low`. Priority is the user's statement of interest: attention, never evidence. The research profile (`PROFILE.md`, `mesh.py profile`) is its companion: the user's statement of what they can do, which marks every discovery opportunity in reach, with a partner or out of reach. Only the user sets it (`priority <id> <level> "<why>"`); it spreads one link as *elevated*; `MAP.md` opens with the **Focus**. Details in FORMATS.md.
 
 ## Links
 
@@ -122,7 +124,7 @@ Every evidence card's **open page** link lands on its highlight in the marked co
 Work from the top down, read only what the question needs, and keep the context small (`brain-mesh-access`, section 2):
 
 1. **`python3 tools/mesh.py ask "<the question>"`** first. Within about 2,500 tokens it returns the brain's conclusions on the question with their grades, the hub facts, the relations with their basis, the most relevant evidence cards and what was not read in full, each with an id to open.
-2. **`zoom`** to explore rather than answer: the topics ranked by need to know, then one topic, concept, finding or card at a time, about 1,000 tokens a level.
+2. **`routes`** for what could be done and whether it is in reach (`brain-mesh-discover`); **`zoom`** to explore rather than answer: the topics ranked by need to know, then one topic, concept, finding or card at a time, about 1,000 tokens a level.
 3. `show <id>` for a card, its source paragraph and what links to it; `find <words>` to search, most relevant first; `table <concept>` to lay the evidence side by side; `facts <concepts>` before proposing anything.
 4. `MAP.md` for the overview and the hubs; `index/*.tsv` for bulk work, searched with grep, never read whole.
 5. When a detail matters, open the PDF page the card points to.

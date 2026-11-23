@@ -90,10 +90,18 @@ Run discovery on a brain that is integrated, never on half-added papers. After e
 | 3 Extend what holds | `transfer`, `implied`, `bridges`, `analogies` | What is established here and untried there; what follows from chaining effects; which concepts nobody has put together |
 | 4 Stress the structure | `assumptions`, `oddities`, `genealogy`, `theories` | What everything rests on; what nobody has explained; which rival accounts nothing yet separates |
 
+**Routes: from a need to a contribution.** `python tools/mesh.py routes` is where a session starts. It matches every open need in the brain (a contradiction, a gap, an oddity, an untested assumption, a thinly supported finding, an unexplained ceiling) to one of twenty ways a paper makes a contribution, from resolving a contradiction or unifying separate findings to borrowing a tool, replicating a cornerstone or proving something possible. For each it lists the ingredients the brain already shows, the ones missing, the ones the cards do not say, the next step and the proof that route would need. An opportunity one ingredient short is the best prompt there is. `routes --list` describes the routes.
+
+**Your research profile.** Tell Claude what you can do: the techniques, organisms and preparations you have, those you could reach through a partner and those that are out; the kinds of study you run; what you bring from outside the field. `python tools/mesh.py profile` records it in `PROFILE.md`. Every opportunity is then marked in reach, with a partner, unclear or out of reach. Nothing is hidden for good: what is out of reach stays true and is listed as work for a collaborator.
+
+**Outside the brain.** Before anything is proposed as new, Claude checks it against what it knows of the field and then against the literature (`python tools/mesh.py outside <need>` gives the questions, one for each ingredient the brain lacks). What comes back is recorded as a search with its date, or as a lead from Claude's own knowledge. Neither goes onto a card until the paper is in the brain.
+
+**It moves as the brain grows.** Nothing discovery shows is stored as a result: it is computed from the sources and their coding each time. `routes --record` keeps what a session saw, and after new papers `routes --changes` (part of `discover --recheck`) says which opportunities they brought, which gained or lost an ingredient, what came into reach, and which ideas you set aside that a new paper reopens. `routes --readiness` says how much of each thing discovery reads is coded, so you can see where coding more would let it see more.
+
 - **Signals are prompts, not findings.** Claude judges each against its cards and the page, then proposes the worthwhile ones with the case for each. Only what you accept is written.
 - **Proposals must respect the evidence** (`facts <concept>`). One may go against a card only where a logged contradiction covers that card.
 - **Reject with a reason** (`dismiss`). A rejected signal stays away until new evidence bears on it.
-- **Work top-down** (`zoom`, then `discover --focus topic:<slug>` for the hottest topic) rather than reading every miner's list at once.
+- **Work top-down** (`zoom`, then `routes topic:<slug>` for the hottest topic) rather than reading every miner's list at once.
 - **Mine around a question:** `discover --focus <concept>`, with that concept set to high priority.
 - **Record conditions as codes.** The miners see only what is in a card's coded lines. Species, preparation, method and level of organisation written as conditions can be mined across; left in the prose, they cannot.
 

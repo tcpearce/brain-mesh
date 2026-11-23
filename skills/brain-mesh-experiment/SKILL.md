@@ -23,7 +23,7 @@ Draw candidates from, roughly in this order of value:
 8. **Method transfer**: a technique carded for one system that has never been applied to another.
 9. **Discovery cards** (`brain-mesh-discover`): seeds the user is developing, theory pairs that nothing in the brain separates (the most decisive experiments), and predictions carried across an analogy. A hypothesis made from a seed sets the seed to `promoted`.
 
-Give the user a shortlist. For each candidate state: what would be done; why, citing card ids; what each possible result would mean; whether the methods already exist as method cards; and whether the literature has been checked for it and when. Rank by how much a result would change the brain, then by feasibility.
+Give the user a shortlist. `python3 tools/mesh.py routes` is where candidates come from: it names the route each would take, the ingredients the brain already holds, the proof that route needs and whether the work is within the research profile. For each candidate state: what would be done; why, citing card ids; what each possible result would mean; whether the methods already exist as method cards; and whether the literature has been checked for it and when. Rank by how much a result would change the brain, then by feasibility.
 
 The brain holds only what was put into it. Before calling an idea novel, make sure its gap has been through the ladder in `brain-mesh-gaps`.
 

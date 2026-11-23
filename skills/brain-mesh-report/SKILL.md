@@ -13,7 +13,7 @@ A report is one dated document that answers one question from the cards as they 
 
 | Report | Command | The question | When |
 |---|---|---|---|
-| Frontier map | `report frontier [--focus <concept>] [--top n]` | Where is a discovery most likely? | Before choosing what to work on, read or bid for. To explore it step by step instead, `zoom` |
+| Frontier map | `report frontier [--focus <concept>] [--top n]` | Where is a discovery most likely? | Before choosing what to work on, read or bid for. To explore it step by step instead, `zoom`; for what could be done about each item and whether it is in reach, `routes` |
 | Contradiction dossier | `report contradictions [V001 X001 ...]` | Why do these results disagree, and what would settle it? | Before designing an experiment; before a discovery session |
 | Theory scorecard | `report theories` | Which account is winning? | Once rival explanations exist; after a theory pass |
 | Causal map | `report causal [--focus <concept>]` | What is known to cause what, and how do we know? | Before claiming a mechanism; when choosing which link to test |

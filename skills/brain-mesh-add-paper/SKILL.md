@@ -215,7 +215,7 @@ Then:
 - **Check the workbench.** Does the source support or undermine an open hypothesis, or already answer a planned or registered experiment? Say so on that card, under `## Amendments` for a registered experiment, and tell the user at once.
 - **Decide on every open gap, tension, contradiction and hypothesis the source bears on** (below).
 - **Write the claims card** (below).
-- **Recheck the discovery cards.** Run `python3 tools/mesh.py discover --recheck` and take every dissolved, strengthened, weakened or re-opened item to the user (`brain-mesh-discover` section 8). A new paper that answers a seed is often the most useful thing it does.
+- **Recheck the discovery cards.** Run `python3 tools/mesh.py discover --recheck` and take every dissolved, strengthened, weakened or re-opened item to the user (`brain-mesh-discover` section 8). It ends with what the new source moved among the routes: opportunities it brought, ingredients that arrived or went, and signals set aside that it reopens. Check too whether the source answers an outside lead or search already on record (`mesh.py outside`). A new paper that answers a seed is often the most useful thing it does.
 - If the source was in `ledger/reading-queue.md`, `build` marks its reference card held by itself (by DOI, or first author, year, volume and page; set `status: held` and `held:: [[P012]]` by hand if it did not match). Revisit the gap or tension it was queued for.
 
 ### Decisions on gaps, tensions and hypotheses

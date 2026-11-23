@@ -17,25 +17,119 @@ The other documents build the brain from what papers say and find what they leav
 4. **Every mined card carries a stamp,** so it can be followed as the brain grows (section 8).
 5. **Nothing is deleted.** A seed is promoted, answered or dropped; a theory abandoned; an analogy failed; always with the reason.
 6. **Brain-relative.** "No card holds both" means in this brain. Before a proposal is promoted to a hypothesis or gap, it climbs the ladder in `brain-mesh-gaps` (coverage of the sources held, then a literature search).
+7. **Outside knowledge is a lead, never evidence.** What Claude knows of the field and what a search finds may aim a proposal and must be reported with it, marked as such. It enters the brain only as a carded source (section **Outside the brain**).
+8. **The research profile is the user's.** Record in it only what they say. It decides what is shown first, never what is true: an opportunity out of reach stays on the books.
+9. **Contingent on the brain as it stands.** Every signal, route and verdict is computed from the sources and Codes of the day. Say so in a proposal, and recheck after every source integrated (section 8).
 
-## Working top-down
+## How a discovery session runs
 
-Read the brain from the top, and only as far down as each signal deserves, so a pass stays small however large the brain grows.
+Everything the miners can find is limited by what the ontology codes, and everything they find is true of the brain as it stands today. So a session reads the brain from the top, matches each need to a way of making a contribution, checks it outside the brain, and records what it saw so that later sources show what they moved.
 
-1. **`python3 tools/mesh.py zoom`.** The topics, hottest first: groups of concepts that appear together on cards (a `broader::` or `part_of::` link keeps a concept with its parent). Heat is need to know: the user's priority first, then the open contradictions, tensions, gaps, hypotheses and seeds in a topic, then its fresh discovery signals. A branch explored with nothing changed since counts half. The view also shows where topics meet and where they do not, and the strongest signals.
-2. **Pick a branch:** the user's focus if they gave one, otherwise the hottest topic not explored lately. Two hot topics that no card joins are a branch too: a bridge to look for.
-3. **`zoom topic:<slug>`:** its concepts ranked, its findings and open questions, the signals inside it, its joins to other topics.
-4. **Mine inside it:** `discover --focus topic:<slug>` (or `--focus <concept>`). Judge only these signals, never the whole list.
-5. **Go down only where a signal survives a first look:** `zoom <concept>`, `zoom <V001 | G002 | K003>`, then `zoom <evidence id>` and the page. Run `facts` on a proposal's concepts before putting it to the user (rule 2).
-6. **Propose** (sections 5 and 6), then **record the branch:** `zoom topic:<slug> --explored "<what was mined, proposed, accepted or dropped>"`, and the same for a concept or card worked on. The next session starts elsewhere, or comes back once something in the branch changes.
-7. **Stop at a shortlist.** Come back up for another topic when the user wants more.
+1. **`python3 tools/mesh.py zoom`.** The topics, hottest first: groups of concepts that appear together on cards (a `broader::` or `part_of::` link keeps a concept with its parent). Heat is need to know: the user's priority first, then the open contradictions, tensions, gaps, hypotheses and seeds in a topic, then its fresh discovery signals. A branch explored with nothing changed since counts half. With a research profile, each topic also shows how many routes are in reach.
+2. **Pick a branch:** the user's focus if they gave one, otherwise the hottest topic not explored lately. Two hot topics that no card joins are a branch too.
+3. **`routes topic:<slug>`** (section **Routes**). The opportunities in that branch: each a need matched to a way of making a contribution, with the ingredients the ontology shows, the ones missing, the ones not coded, and its reach under the research profile. This list is the session's agenda. `discover --focus topic:<slug>` prints the raw signals behind it when a route needs a closer look.
+4. **Verify the best three to five on their cards.** The tooling read the Codes only. `zoom <id>` on the need, `facts` on its concepts (rule 2), the page for anything a decision will rest on. An ingredient the cards do not bear out is struck; a signal that came from a coding slip is housekeeping.
+5. **Supply the missing ingredient where that is cheap.** Each opportunity ends with its next step. An opportunity marked `ONE INGREDIENT SHORT` is the best prompt there is: say which ingredient, and what would supply it.
+6. **Check outside the brain** (section **Outside the brain**): first what Claude knows of the field, then the literature. `outside <need>` gives the questions. Do this before anything goes to the user as new.
+7. **Propose** (sections 5 and 6). Each proposal names its route, its ingredients, its reach, what the outside check found, and the proof it would need.
+8. **Record.** `zoom topic:<slug> --explored "<what was mined, proposed, accepted or dropped>"`, and at the end of the session `routes --record`. After the next sources are integrated, `routes --changes` says what they moved (section 8).
 
-Where the session can start subagents, give each branch to one: it does steps 3 to 5 for its topic and returns a shortlist, each item with its signal key, a line on why it matters, the cards it rests on and the question to put to the user. The main conversation holds the top level and the shortlists, none of the reading. Without subagents, finish one branch and note its shortlist before taking the next.
+Where the session can start subagents, give each branch to one, and each outside check to one: it returns a shortlist, each item with its need, its route, the ingredients it verified, what it found outside and the question to put to the user. The main conversation holds the top level and the shortlists, none of the reading. Without subagents, finish one branch and note its shortlist before the next.
+
+## What discovery reads from the ontology
+
+Every miner, route and reach verdict reads one index of the brain, the lens. What is not coded is invisible to all of them, so the first way to improve discovery is to code more. `python3 tools/mesh.py routes --readiness` says how much of each line below is coded and which routes it limits.
+
+| Dimension | Coded as | What it lets discovery see |
+|---|---|---|
+| Kind of concept | `kind::` entity, variable, technique, concept; `unit::` | what can be measured, what measures, what is a condition |
+| Hierarchy | `broader::`, `part_of::` | topics; a profile mark that covers a family of techniques |
+| Relations | `affects::` with its basis; effects visible in the data | chains, mechanisms never tested, one driver of several outcomes |
+| What a result is of | `value::` | pooling, ceilings, contradictions in the numbers |
+| Conditions and systems | `when::`, categorical values as concepts (species, preparation) | moderators, extension to an untried system, whether two halves can be joined |
+| How a result was obtained | `obtained_by::` to a method card that links a technique concept | which techniques measure what; tools never brought to a question; reach |
+| What is wrong with a method | `limitation` cards that link the technique | bottlenecks: where a new method would move most |
+| What the authors say is open | `question` and `limitation` cards | gaps two or more groups already agree on |
+| Epistemic grade | evidence `status`, finding grade | whether a statement was ever measured; cornerstones thinly supported |
+| The study | `design::`, `sample::`, authors, kind (preprint) | independent groups, not paper counts; what a result can establish |
+| Data and code | `uses_data::`, data-set cards with access | what can be reanalysed today; open data nobody else has used |
+| What was read | `coverage::` | where the answer may already be on a page nobody read |
+| Citations | reference cards, `cites::` | whether two literatures already cite each other; works much leaned on and not held |
+| Synthesis | findings, tensions, contradictions, gaps, hypotheses, theories | the needs themselves, and what already works on each |
+| The user | priority; the research profile | where to look first; what is in reach |
+| History | stamps, `ledger/signals.md`, `ledger/routes.md`, `ledger/outside.md`, `ledger/explored.md` | what was judged, what was shown, what was checked, and what has changed since |
+
+A low line in `--readiness` is a housekeeping task that pays in discovery: a lens pass to code conditions, method cards linked to their technique, `uses_data::` on results, a definition card for a much-used variable.
+
+## The research profile
+
+`PROFILE.md` says what the user's group can do, in the brain's own terms. It is the user's statement, like priority: it directs attention and never counts as evidence. **Record only what the user says.** Never mark a technique from a guess about their lab.
+
+1. `python3 tools/mesh.py profile` lists every technique, organism and preparation the brain uses, most used first, and which are unmarked. `profile init` starts the file.
+2. Interview the user in a few questions, the most used first, with the multiple-choice tool where the session has it: which of these do you have, which could you reach through a partner, which are out? Then the designs they run, the data they can access, what they bring from outside the field, where they could apply a finding, and the scale of one project.
+3. Record: `profile have|reach|out <concept ...> --note "<why, or through whom>"`, `profile designs <design ...>`, `profile data <access ...>`, `profile brings "<name>" "<what it does>"`, `profile applications "<area>"`, `profile scale "<text>"`. A mark on a broader concept covers the techniques that are a kind of it, so one line can rule out a family: propose the broader concept to the user if the brain lacks it.
+
+Every opportunity then carries a verdict: **in reach**, **with a partner**, **unclear** (not enough is recorded, or it is the user's call: a new method, a resource, an application) or **out of reach**. The verdict is the best of three ways of doing the work: from the published record alone, by reanalysing data its cards use, or by measuring again with a technique and in a system the profile has. Out-of-reach opportunities are never dropped: `routes --reach out` lists them, and they go into the research-gaps document as work for a collaborator.
+
+## Routes
+
+A route is one of the ways a paper makes a contribution. Each is a checklist of ingredients, and each ingredient is a question the lens answers from the Codes: present, missing, or not coded. `python3 tools/mesh.py routes --list` prints them all.
+
+| Family | Route | Fed by | The proof it would need |
+|---|---|---|---|
+| Recombining what is published | `resolve-contradiction` | open contradictions and tensions | each side reproduced under its own conditions, the one difference varied alone |
+| | `unification` | `unify` | a new prediction that survives data the account was not built on |
+| | `joining-literatures` | `bridges` | a direct test of A→C |
+| | `pooling` | `constraints` | a pooled estimate with its spread explained |
+| | `framework` | `definitions` | criteria that sort the cases and show what is missing |
+| Established means, well aimed | `fill-gap` | open gaps, `recognised` | a design whose answer matters whichever way it falls |
+| | `decisive-test` | `theories`, hypotheses with rivals | predictions stated beforehand that diverge where one can reach |
+| | `mechanism` | `mechanism`, `implied` | an intervention showing necessity and sufficiency |
+| | `extension` | `transfer` | the same measurement in the new system |
+| | `replication` | `cornerstones` | a well-powered repeat by another group |
+| | `scale` | `data` | a regularity that only shows at that scale |
+| A borrowed means | `tool-transfer` | `tools`, `transfer`, the import pass | a head-to-head with the standard method |
+| | `concept-transfer` | `analogies`, the analogy pass | a prediction the home theories do not make |
+| Surprise | `new-phenomenon` | `oddities` | controls that exclude artefact, and a repeat |
+| | `overturn-assumption` | `assumptions` | a direct test |
+| | `existence-proof` | `limits` | one working instance against a stated criterion |
+| A new means | `new-method` | `bottlenecks` | validation against a known answer |
+| | `new-model` | `ceilings` | the best method beaten on held-out data |
+| | `new-resource` | `data` | open release with one demonstration |
+| Outward | `translation` | probable and established findings, when the profile names an application | a trial against the current standard |
+
+`routes [topic:<slug> | <concept> | <id>]` lists the opportunities, best first, in about 1,500 tokens (`--budget`); `--route <name>` keeps one route; `--reach in|partner|unclear|out|all` filters by reach. The rank weighs the need (priority, how open it is, the heat of its concepts), how many of its ingredients are present, and its reach; it is a way to order prompts, never a measure of worth. Each opportunity prints:
+
+```
+4. resolve-contradiction: V003 [contradiction, open] The paper says ... · topic:odour-intensity
+   has: measured or derived on 2 of 2 cards · conditions recorded on 1 of 1 observations · data available: D004 (open)
+   missing: nothing works on it · no hypothesis or registered prediction
+   not coded: not checked outside the brain (`mesh.py outside V003`)
+   reach: in reach (reanalysis of D004 (open))
+   next: propose a seed or hypothesis that takes it up · proof it would need: each side reproduced ...
+```
+
+The ingredients: `groups` (two or more independent groups behind it), `strength` (measured, not only asserted), `alike` (the sources define and measure the quantity alike), `conditions`, `methods`, `data` (open or on request), `basis` (a relation tested, not only correlated), `rivals` (rival accounts carded), `prediction` (a hypothesis or experiment states one), `works` (some card takes it up), `rests` (how much is built on it), `question` (an open question turns on it), `searched` (a gap's literature search), `uncited` and `system` (two halves that do not cite each other and share a species), `outside` (checked outside the brain) and `read` (its sources read in full). **Not coded is not missing**: it means the cards do not say, and the next step is to look or to code it.
+
+## Outside the brain: what Claude knows, and what the literature holds
+
+The brain holds a handful of sources; the field holds thousands, and Claude has read widely in it. Use both, and keep both apart from the evidence.
+
+1. **`python3 tools/mesh.py outside <need>`** prints the brief for one need (a card id or a signal key): what the brain holds, the sources with their DOIs, search terms from the concepts and their aliases, and one question for each ingredient the ontology lacks. For example: has an independent group reported this; is there an open data set; is there a standard definition; has the relation been tested by intervention; has a preprint since been published or corrected; is a data set of unknown access deposited anywhere.
+2. **Ask what you know first.** Answer each question from your own knowledge of the science: the work that probably exists, the method that would supply the ingredient, the known explanation, the name the idea goes by in another field, the confound a specialist would raise. This aims the search and often says what is missing from the brain. It is not evidence: what Claude knows may be wrong, out of date or misremembered.
+3. **Then search.** Use the literature connectors the session has (PubMed, bioRxiv and the like), then web search; data repositories for data; the papers that cite the brain's sources as well as keywords. Follow rung 2 of `brain-mesh-gaps` for how to search and screen. A search confirms or kills what you believed.
+4. **Record what came back:** `outside add <need> nothing|answered|partly|lead --where "<where searched>" --query "<queries>" --found "<DOIs or links>" --note "<what it means>"`.
+   - `nothing`: a search found no answer. Say where and when: "no answer found in PubMed and bioRxiv on 2026-11-23", never "nobody has done this".
+   - `answered` or `partly`: name what was found. Put the paper on the reading queue (`ledger/reading-queue.md`) and tell the user which PDF to supply. The opportunity becomes a reading task.
+   - `lead`: what Claude believes without a source in hand. It stays a lead until a search finds the source.
+5. **Nothing from outside goes onto an evidence card, a concept hub or a finding until its source is carded** (`brain-mesh-add-paper`). In a proposal, mark each outside statement as "found: <reference>" or "from Claude's knowledge, not verified".
+
+`routes` reads the record: a need checked and found open gains the ingredient `outside`; one answered outside says so and points to the paper; one with only a lead, or checked longer ago than the staleness limit for its priority, is shown as not coded. A gap keeps its own Search log on the gap card. Outside checks are also how uncertainties are cleared: a preprint's later version, a retraction, a data set's access, a reference the sources lean on that nobody here has read.
 
 ## 1. When to run
 
 - The user asks for new ideas, hypotheses or connections, or what the brain implies.
-- After a paper or a batch is integrated: always `discover --recheck` (section 8), then the miners if the user wants new proposals.
+- After a paper or a batch is integrated: always `discover --recheck` (section 8), which also says what the new sources moved among the routes; then `routes` if the user wants new proposals.
 - Before proposing experiments: seeds and unseparated theories feed `brain-mesh-experiment`.
 - Around a session: a frontier map and a contradiction dossier (`brain-mesh-report`) show where the signals sit among the open contradictions and gaps; `report novelty S004` checks a seed against the brain before it is promoted.
 - On a schedule, as an insight pass with nobody watching (section 7).
@@ -61,6 +155,15 @@ Each miner reads only the Codes. Scores rank signals within one miner, never acr
 | `theories` | The theory × finding matrix: findings no theory explains, findings no theory has been judged against, theory pairs nothing separates, active theories in conflict with strong findings, open tensions no theory addresses. | Verdicts on theory cards, a new theory, a discriminating experiment. |
 | `analogies` | Relations true on the base side of an analogy and unstated on the target side; base findings with no target counterpart; concepts that would extend the mapping. | A seed or hypothesis with the analogy as its rationale. |
 | `links` | Cards in different sources that share rare concepts and are not linked. | Housekeeping: link with a reason, or leave. |
+| `unify` | One concept that bears on three or more outcomes, or on outcomes in two topics; one form (a law, a model) fitted to several quantities in different sources. | A seed or theory: one account behind them all, with the prediction it adds. |
+| `tools` | A technique that measures a variable in another source, which the evidence behind an open contradiction, tension or gap never used. | A seed for a method transfer; a design in `brain-mesh-experiment`. |
+| `mechanism` | Relations recorded as correlational, proposed or inferred that nothing has tested by intervention, with what rests on each. | A hypothesis with the intervention that would test it. |
+| `recognised` | Open questions and limits that two or more independent groups state themselves (their `question` and `limitation` cards), and whether a gap card holds them. | A gap, already agreed by the field. |
+| `cornerstones` | Findings held by one group, one source or a preprint, and evidence cards cited by several conclusions that no other source repeats. | A replication; a search for an independent source. |
+| `bottlenecks` | Techniques that carry recorded limitations while observations rest on them; variables only ever inferred, never measured. | A seed for a new method; a gap of kind `method` or `unmeasured`. |
+| `ceilings` | One score compared across methods or representations: the best each reaches. | A seed for a new model, with the benchmark it must beat. |
+| `data` | Open data that only its own source has analysed; data that open questions turn on and that is unavailable; statements several groups make without the data behind them. | A reanalysis; a seed for a resource. |
+| `limits` | Statements that something cannot be done, measured or predicted. | A seed for an existence proof. |
 
 `python3 tools/mesh.py theories` prints the whole theory × finding matrix.
 
@@ -69,7 +172,10 @@ Each miner reads only the Codes. Scores rank signals within one miner, never acr
 1. **Check the ground:** `contradictions` (log or dismiss every candidate), `definitions`, `constraints`, `links`. Before building on a comparison, make sure the sources mean the same thing by the term, measure it the same way, and agree on the numbers.
 2. **Explain disagreements:** `moderators`, then the contradiction pass (section 3).
 3. **Extend what holds:** `transfer`, `implied`, `bridges`, `analogies`.
-4. **Stress the structure:** `assumptions`, `oddities`, `genealogy`, `theories`.
+4. **Stress the structure:** `assumptions`, `oddities`, `genealogy`, `theories`, `cornerstones`, `mechanism`, `limits`.
+5. **Look at the means:** `tools`, `unify`, `recognised`, `bottlenecks`, `ceilings`, `data`.
+
+In practice `routes` gathers every miner's signals under the route each feeds, so a session reads `routes` and turns to a single miner only for more of one kind.
 
 A signal from a later group that rests on an unsettled one from an earlier group waits for it.
 
@@ -83,6 +189,9 @@ Some of the best ideas need reading, not counting. Each pass produces proposals 
 - **Analogy pass.** Look for a system, in another field or another part of this brain, with the same relations as a structure here: the same circuit motif in another species, the same computation in an algorithm, the same physics in another material. Propose the mapping as an analogy card; the miner then lists what carries across.
 - **Inversion pass.** For each established or probable finding that much rests on (`python3 tools/mesh.py impact K003`), ask what would follow if it failed at the edge of its scope, and propose seeds for the most consequential answers.
 - **Levels pass.** Where cards carry a level of organisation (molecule, receptor, cell, circuit, behaviour), check that each claim at one level has evidence at the levels its mechanism needs. A computational claim with no evidence for its implementation is a seed.
+- **Import pass.** For each tool or formalism the research profile lists under `brings`, take the hottest open needs (`routes`) and ask whether it applies: does the need's data have the form the tool takes, and what would it show that the home methods cannot? Propose each fit as a seed with `- miner:: import`.
+- **Limits pass.** Read the `limits` signals in a topic. For each stated impossibility ask what has changed since it was written (a new method, new data, something the profile brings) and whether one working instance would overturn it.
+- **Application pass.** For each probable or established finding, and each application the profile names, ask what the finding would let one build or decide. Propose with `- miner:: application`.
 - **Red-team pass.** For high-stakes proposals, a separate agent that has not seen them tries to break the top ones and the findings they rest on.
 
 ## 4. The axes the miners need
@@ -105,7 +214,10 @@ For each signal worth attention:
 - Why it is worth a card: it turns the swelling account (T001) into a quantitative prediction that the damage account (T002) does not make
 - Already known? X001 mentions both only as a possible explanation; both sources are fully extracted; no literature search yet
 - Respects the facts? Yes: agrees with K001 and every card on binding-capacity and film-thickness; goes against nothing
-- Fastest way to kill it: a paper reporting thickness and capacity on the same films; failing that, one heat cycle with both measured
+- Route and ingredients: joining-literatures; has two independent groups, both halves measured; missing a stated prediction
+- Reach: in reach (the rebinding assay and ellipsometry are in the profile)
+- Outside the brain: no answer found in PubMed and bioRxiv on 2026-11-23; from Claude's knowledge, not verified: hydrogel work links swelling to lost imprint fidelity
+- Proof it would need, and the fastest way to kill it: a paper reporting thickness and capacity on the same films; failing that, one heat cycle with both measured
 - How sure the signal is real: high; both quantities are carded with conditions in two sources
 ```
 
@@ -114,6 +226,8 @@ Ask the user to accept, edit, reject or defer each one, with the multiple-choice
 ## 6. Writing what the user accepts
 
 **Seed** (`seeds/S###-<slug>.md`): an idea, judged worth a card and not yet a hypothesis or gap.
+
+A card made from an opportunity also carries `- route:: <route> — <the need: a card id or signal key>` in its Codes, beside the miner's stamp, so the recheck and the next session can tell which contribution it aims at.
 
 ```markdown
 ---
@@ -212,6 +326,8 @@ In a scheduled or unattended run, do the housekeeping, run `discover --recheck` 
 
 ## 8. After new sources: the recheck
 
+Everything discovery shows is contingent on the sources in the brain and on how they are coded. Nothing is stored as a result: the miners, the routes and the reach verdicts are computed afresh at every call. What is stored is the history, and the recheck compares the brain with it.
+
 The integrate step of `brain-mesh-add-paper` and the merge phase of `brain-mesh-batch` end with `python3 tools/mesh.py discover --recheck`. It re-runs the miners behind every stamped card that is still live, and behind every rejection, and sorts them:
 
 | State | Meaning | What to do, with the user |
@@ -222,6 +338,19 @@ The integrate step of `brain-mesh-add-paper` and the merge phase of `brain-mesh-
 | changed | The score moved with no new source (a lens pass, edits). | Re-read it and replace the stamp. |
 | re-opened | A rejected signal gained a source. | Propose it again, saying what is new and quoting the reason it was rejected. |
 | standing | Nothing changed. | Nothing; the stamp keeps its date. |
+
+The recheck ends with **what moved among the routes** since the last `routes --record` (`routes --changes` prints it alone):
+
+| Heading | Meaning | What to do, with the user |
+|---|---|---|
+| An ingredient arrived | An opportunity gained what it lacked: an independent group, a measurement, data, a prediction. | It may now be ready: verify it and propose it. |
+| Reach changed | The profile changed, or a new source showed another way to measure. | Re-rank; tell the user what came into reach. |
+| New | An opportunity that a source or card added since has brought. | Judge it like any other. |
+| Set aside before, reopened | A signal the user rejected, on which a source added since now bears. | Propose it again, quoting the reason it was set aside. |
+| An ingredient went | A retraction, a correction or a recoding took something away. | Tell the user; the proposal built on it needs another look. |
+| Gone | The need was closed, carded or set aside, or the miner no longer raises it. | Nothing, unless a card was built on it. |
+
+Outside checks age too: one older than the staleness limit for its priority counts as not made, and `routes` asks for it again. After the user has seen the changes, `routes --record` so the next comparison starts from here.
 
 Then run `discover theories` (the new findings appear as unjudged: propose verdicts) and `discover analogies`.
 

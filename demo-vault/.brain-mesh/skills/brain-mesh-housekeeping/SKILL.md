@@ -92,6 +92,8 @@ The user is free to edit prose. After they have, `build` shows what moved: a val
 
 Checks on anchors and numbers catch transcription slips, not misreadings. Every so often run `python3 tools/mesh.py sample P### 10` on a few sources, favouring older ones and those the main findings rest on. Read each card against its passage on the marked PDF for meaning, completeness of conditions and fairness of status.
 
+Run `python3 tools/mesh.py routes --readiness` as part of each audit: it says how much of each dimension discovery reads is coded (methods linked to techniques, conditions, data sets, definitions, reference lists, outside checks) and which routes each limits. The lowest lines are the coding work that would let the miners see most.
+
 Where the session can start subagents, give each source's sample to one; it returns only the cards that need correcting, with what is wrong and the page, so the main conversation does not hold every card read.
 
 Log the result, for example `audit: 30 cards across P004, P011, P019; 1 corrected`. If more than about one card in twenty needs correcting in a source, re-verify that source in full.

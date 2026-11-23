@@ -38,6 +38,7 @@ These instructions and the tooling live in the GitHub repository `tcpearce/brain
 | Find knowledge gaps, hunt papers that fill them, maintain the research-gaps document | `brain-mesh-gaps` |
 | Hypotheses, experiment design, registered predictions, judging outcomes | `brain-mesh-experiment` |
 | Mine the brain for new hypotheses and links with the user; theory, analogy and seed cards; recheck them as sources arrive | `brain-mesh-discover` |
+| Find what the ontology lacks by comparing it with something outside it: terms the sources use with no concept, tools and concepts from other fields, Wikipedia, MeSH, a review, the literature around the sources | `brain-mesh-beyond` |
 | Write from the brain (a literature review, a background or related-work section) or audit a draft against it, claim by claim | `brain-mesh-write` |
 | Dated reports for deciding what to do next: frontier map, contradiction dossier, theory scorecard, causal map, robustness audit, methods and data landscape, novelty check, what-changed digest | `brain-mesh-report` |
 | Health checks, merges, corrections, retractions, periodic audits | `brain-mesh-housekeeping` |
@@ -124,7 +125,7 @@ Every evidence card's **open page** link lands on its highlight in the marked co
 Work from the top down, read only what the question needs, and keep the context small (`brain-mesh-access`, section 2):
 
 1. **`python3 tools/mesh.py ask "<the question>"`** first. Within about 2,500 tokens it returns the brain's conclusions on the question with their grades, the hub facts, the relations with their basis, the most relevant evidence cards and what was not read in full, each with an id to open.
-2. **`routes`** for what could be done and whether it is in reach (`brain-mesh-discover`); **`zoom`** to explore rather than answer: the topics ranked by need to know, then one topic, concept, finding or card at a time, about 1,000 tokens a level.
+2. **`routes`** for what could be done and whether it is in reach (`brain-mesh-discover`); **`beyond`** for what the brain cannot name yet (`brain-mesh-beyond`); **`zoom`** to explore rather than answer: the topics ranked by need to know, then one topic, concept, finding or card at a time, about 1,000 tokens a level.
 3. `show <id>` for a card, its source paragraph and what links to it; `find <words>` to search, most relevant first; `table <concept>` to lay the evidence side by side; `facts <concepts>` before proposing anything.
 4. `MAP.md` for the overview and the hubs; `index/*.tsv` for bulk work, searched with grep, never read whole.
 5. When a detail matters, open the PDF page the card points to.

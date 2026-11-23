@@ -28,6 +28,7 @@ Always read `skills/brain-mesh/SKILL.md` first. It is the map: card families, id
 | Knowledge gaps, papers to read next, the research-gaps document | `skills/brain-mesh-gaps/SKILL.md` |
 | Hypotheses, experiment design, registered predictions, judging outcomes | `skills/brain-mesh-experiment/SKILL.md` |
 | New hypotheses and links: mining the ontology, theories, analogies, seeds, rechecks | `skills/brain-mesh-discover/SKILL.md` |
+| What the ontology lacks: terms with no concept, tools and concepts from other fields, comparison with Wikipedia, MeSH, a review or the literature around the sources | `skills/brain-mesh-beyond/SKILL.md` |
 | Write a literature review or background section from the vault; audit a draft against it, claim by claim | `skills/brain-mesh-write/SKILL.md` |
 | Dated reports: frontier map, contradiction dossier, theory scorecard, causal map, robustness audit, methods and data landscape, novelty check, what-changed digest | `skills/brain-mesh-report/SKILL.md` |
 | Health checks, merges, corrections, retractions, audits | `skills/brain-mesh-housekeeping/SKILL.md` |

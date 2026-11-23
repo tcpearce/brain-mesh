@@ -2,6 +2,20 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.22.0 (2026-11-23)
+
+What the ontology cannot name: found by comparing the brain with something outside it.
+
+- **`beyond terms`** (no network): phrases and acronyms that two or more independent groups of sources use in their anchored text, and phrases in the titles of the works they cite, that no concept names. Each comes with its count, its sources, the concepts beside it and a paragraph to read. A piece of a longer concept name, a paper's furniture (competing interests, funding, repeated page headers) and stock statistics phrases are not raised; `"beyond_stop"` in `MESH.json` adds a vault's own. A concept or `topic:<slug>` narrows it to the paragraphs that name it.
+- **`beyond pointers`** (no network): paragraphs where a source itself points outside the brain, to another field ("by analogy with", "as in vision", "originally developed for", "has transformed") or to what a question would take ("future work could use", "would require").
+- **`beyond probe`**: any list of names from outside (Claude's own map of a topic, MeSH headings, a review's headings, a web page) sorted by where each stands in the brain: a concept already; in the sources' text with no concept; only in the titles of cited works; nowhere in the brain. Names are matched across case, plurals, British and American spelling, hyphens and joined words, and inverted headings ("Receptors, Odorant").
+- **`beyond wiki`**: the same for the Wikipedia articles of some concepts or of a topic's leading concepts, the links of each article's opening section first; plus the links Wikipedia makes between two concepts the brain has and does not connect, the ties the brain makes that neither article does, and with `--family` the other members of an article's categories. The article is the one named by `- wikipedia::` on the concept card, else found by title, slug, alias or search; a name several articles share is said. Pages are cached in `ledger/beyond/wiki/`, which syncs, so a copy with no network uses what another fetched; with neither, the command says how to go round. Only titles are sent.
+- **`beyond works`**: a list of works from outside (a review's reference list, related or citing articles), by DOI, PMID or title, sorted into sources already, cited and held, cited and not held, and unknown to the brain.
+- **`beyond judge`** and `ledger/beyond.md`: a verdict on a term, a pair, a paragraph or a work (`skip`, `concept`, `alias`, `lead`, `tool`), recorded with where it stood that day, so it is not raised again. **`beyond`** alone lists the comparisons made, the topics never compared, and what was added since has moved: a lead or tool a new source now names, a term set aside that twice as many sources now use, a proposal not yet adopted. `discover --recheck` prints the same.
+- **Tools from other fields.** `outside <need>` now ends with the cross-field question (the problem said without this field's words; which fields have it; what they use) and lists the outside tools kept for that need; `routes` names the tools kept for the import pass; `routes --readiness` counts the topics compared with an outside map.
+- New skill `brain-mesh-beyond`: the frames, a session, what each class means and what to do, the import pass by the form of the problem, Wikipedia, and the recheck. `brain-mesh-discover`, `brain-mesh-access`, the map, the loader and the README point to it.
+- Not done: the tooling fetches Wikipedia only. MeSH headings, related and citing articles come through the session's literature connectors or web tools and are compared with `probe` and `works`. A name is matched as written, so a synonym the brain files under another name reads as absent until it is an alias.
+
 ## 1.21.0 (2026-11-23)
 
 Discovery matched to the ways a paper makes a contribution, focused by what the user can do, checked outside the brain, and kept current as sources arrive.

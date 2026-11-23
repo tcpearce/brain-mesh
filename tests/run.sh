@@ -1485,4 +1485,108 @@ printf -- '---\ntype: concept\naliases: ["Acoustic sensing"]\nupdated: 2026-11-2
 sed -i 's/^- kind:: technique$/- kind:: technique\n- broader:: [[acoustic-sensing]] — a kind of acoustic sensing/' concepts/quartz-crystal-microbalance.md
 python3 tools/mesh.py profile drop quartz-crystal-microbalance > /dev/null; python3 tools/mesh.py profile out acoustic-sensing --note "no instrument" > /dev/null
 python3 tools/mesh.py profile | grep -q "^Marked through a broader concept: quartz-crystal-microbalance (out via acoustic-sensing)$" && python3 tools/mesh.py routes --reach out | grep -q "reach: out of reach (quartz-crystal-microbalance (out))" && pass "a mark on a broader concept covers the techniques that are a kind of it" || { python3 tools/mesh.py profile; fail "profile broader"; }
+
+# 28. beyond the ontology: terms with no concept, pointers, probes of outside maps, Wikipedia, works, and what new sources move (1.22.0)
+cp -r "$ROOT/demo-vault" "$T/by"; cd "$T/by"; cp "$MESH" tools/mesh.py; python3 tools/mesh.py build > /dev/null
+src() { python3 tools/mesh.py anchor "$1" "$5" > /dev/null
+  printf -- '=== %s-%s\n---\ntype: source\nstatus: extracted\nupdated: 2026-11-23\n---\n# %s\n\n**What they did.** An invented test source.\n\n## Cards from this source\n<!--AUTO:START-->\n<!--AUTO:END-->\n\n## Codes\n- kind:: article\n- authors:: %s\n- year:: 2026\n- coverage:: all | full | a few paragraphs\n- coverage:: Supplementary material | none | none\n' "$1" "$2" "$4" "$3" > b.md
+  python3 tools/mesh.py split b.md > /dev/null; }
+printf 'Binding to imprinted polymer films was followed by surface plasmon resonance (SPR) in water at 25 C.\n\nThe SPR signal rose with analyte X concentration, and surface plasmon resonance gave the same binding capacity as the batch rebinding assay.\n\nBy analogy with vision, where a colour space maps wavelength onto percept, a binding map could place every analyte by the cavities it fits.\n\nFuture work could use neutron reflectometry to resolve where water sits in the swollen film, which SPR cannot do.\n\nIsothermal titration calorimetry was not available to us.\n' > p4.txt
+printf 'We measured swelling of imprinted polymer films by surface plasmon resonance, using an SPR instrument with a gold chip.\n\nSurface plasmon resonance showed that swelling in water starts within seconds; the SPR angle shifted before binding capacity fell.\n\nThe polymer film thickened in water, and surface plasmon resonance followed the thickening.\n\nCompeting interests The authors declare no competing interests and thank the surface plasmon resonance facility.\n' > p5.txt
+src P004 nakamura-2026-spr-binding "Nakamura, H." "Nakamura (2026) Binding followed by surface plasmon resonance" p4.txt
+src P005 okafor-2026-spr-swelling "Okafor, C." "Okafor (2026) Swelling followed by surface plasmon resonance" p5.txt
+mkdir -p references
+ref() { card "references/$1-$2.md" reference not-held "$3" "x" "- id:: $1
+- authors:: $4
+- year:: $5
+- title:: $6
+- journal:: J. Test
+- kind:: article
+$7"; }
+ref R0001 wulff-1995-molecular-imprinting-polymers "Wulff (1995) Molecular imprinting in cross-linked polymers" "Wulff, G." 1995 "Molecular imprinting in cross-linked polymers" "- doi:: 10.0000/wulff.1995
+- cited_by:: [[P001-smith-2021-temperature-binding-water]] ref 1 — b0005"
+ref R0002 haupt-2000-molecular-imprinting-sensors "Haupt (2000) Molecular imprinting for sensors" "Haupt, K." 2000 "Molecular imprinting for sensors" "- cited_by:: [[P002-garcia-2023-binding-retained-acetonitrile]] ref 1 — b0004"
+ref R0003 sellergren-2001-imprinting-ellipsometry "Sellergren (2001) Molecular imprinting studied by ellipsometry" "Sellergren, B." 2001 "Molecular imprinting studied by ellipsometry" "- cited_by:: [[P001-smith-2021-temperature-binding-water]] ref 2 — b0005
+- cited_by:: [[P002-garcia-2023-binding-retained-acetonitrile]] ref 2 — b0004"
+B="python3 tools/mesh.py beyond"
+$B > by.txt; grep -q "^Beyond the ontology: 0 comparisons recorded, 0 terms judged" by.txt && grep -q "^Topics never compared with an outside map (2 of 2)" by.txt && grep -q "Start with .mesh.py beyond terms." by.txt && pass "beyond with no record says where to start and which topics were never compared" || { cat by.txt; fail "beyond empty"; }
+$B terms > bt.txt; grep -q "^surface plasmon resonance — 5 mentions in 2 sources (P004, P005) .* e.g. P004 ^b0001" bt.txt && grep -q "^SPR \[acronym\] — 5 mentions in 2 sources" bt.txt && pass "terms: a phrase and an acronym two sources share with no concept are raised, with a paragraph to read" || { cat bt.txt; fail "beyond terms"; }
+! grep -q "^polymer film\|^competing interest\|^imprinted polymer" bt.txt && pass "terms: a piece of a concept's name and the words of a paper's furniture are not raised" || { cat bt.txt; fail "beyond terms noise"; }
+grep -q "^molecular imprinting — in 3 cited titles, cited by P001, P002 (R0001, R0002, R0003)" bt.txt && pass "terms: a phrase in the titles of works two sources cite is raised" || { cat bt.txt; fail "beyond cited terms"; }
+$B terms binding-capacity | grep -q "^SPR \[acronym\] — 2 mentions in 2 sources" && ($B terms topic:nosuch 2>&1 || true) | grep -q "no topic 'nosuch'" && pass "terms: a concept or topic narrows it to the paragraphs that name it" || fail "beyond terms scope"
+$B pointers > bp.txt; grep -q "^P004 ^b0003 — By analogy with vision" bp.txt && grep -q "^P004 ^b0004 — Future work could use neutron reflectometry" bp.txt && grep -q "^## Points to another field" bp.txt && grep -q "^## Says what it would take" bp.txt && pass "pointers: a paragraph that points to another field, and one that says what a question would take" || { cat bp.txt; fail "beyond pointers"; }
+$B probe "Quartz crystal microbalance" "Swelling" "binding capacities" "Isothermal titration calorimetry" "Ellipsometry" "Atomic force microscopy" --frame "Claude's map of film sensing" --scope binding-capacity > pr.txt
+grep -q "Concepts already: 3; in the sources' text with no concept: 1; only in cited titles: 1; nowhere in the brain: 1\.$" pr.txt && grep -q "^The concepts: binding-capacity, quartz-crystal-microbalance, swelling$" pr.txt && pass "probe: names are matched to concepts across plurals and case" || { cat pr.txt; fail "beyond probe concepts"; }
+grep -q "^Isothermal titration calorimetry — 1 mention in 1 source (P004) · e.g. P004 ^b0005" pr.txt && grep -q "^Ellipsometry — in the title of 1 cited work (R0003)" pr.txt && sed -n '/^## Nowhere in the brain/,$p' pr.txt | grep -q "^Atomic force microscopy$" && pass "probe: a name in the text with no concept, one only in a cited title, and one nowhere in the brain" || { cat pr.txt; fail "beyond probe classes"; }
+grep -q "^- [0-9-]* | Claude's map of film sensing | probe | binding-capacity | 6 names: 3 concepts, 1 in the text, 1 cited, 1 absent$" ledger/beyond.md && $B | grep -q "^Topics never compared with an outside map (1 of 2), most in need first: solvent$" && pass "probe: a comparison with a frame is recorded, and its topic counts as compared" || { cat ledger/beyond.md; fail "beyond probe record"; }
+($B probe "Swelling" --scope topic:nosuch 2>&1 || true) | grep -q "scope takes topic:<slug> or concepts" && ($B probe 2>&1 || true) | grep -q "give names in quotes" && pass "probe: a scope that is no topic, and a probe of nothing, are refused" || fail "beyond probe refusals"
+$B judge "Ellipsometry" lead > /dev/null 2>&1 && fail "judge took a lead with no note" || pass "judge: a lead needs a note"
+$B judge "SPR" alias > /dev/null 2>&1 && fail "judge took an alias with no concept" || pass "judge: an alias names its concept"
+$B judge "Ellipsometry" lead "thickness of the swollen film without contact; asked of G001" > /dev/null; $B judge "Atomic force microscopy" tool "G001: maps cavity distortion on the film surface; from surface science" > /dev/null
+$B judge "surface plasmon resonance" skip "not a method we follow" > /dev/null; $B judge "P004 b0003" lead "the colour-space analogy: a binding map" > /dev/null
+grep -q "| Ellipsometry | lead | thickness of the swollen film without contact; asked of G001 | was cited:1$" ledger/beyond.md && grep -q "| surface plasmon resonance | skip | not a method we follow | was text:2$" ledger/beyond.md && grep -q "| Atomic force microscopy | tool | .* | was absent$" ledger/beyond.md && pass "judge: a verdict is recorded with where the term stood then" || { cat ledger/beyond.md; fail "beyond judge record"; }
+$B terms > bt2.txt; ! grep -q "^surface plasmon resonance" bt2.txt && grep -q "^SPR \[acronym\]" bt2.txt && ! $B pointers | grep -q "b0003" && $B probe "Ellipsometry" "Atomic force microscopy" | grep -q "judged before: 2" && pass "a judged term, paragraph or name is not raised again" || { cat bt2.txt; fail "beyond judged hidden"; }
+python3 tools/mesh.py routes | grep -q "^From outside the brain, kept for the import pass (.mesh.py beyond.): Atomic force microscopy\.$" && pass "routes names the outside tools kept for the import pass" || { python3 tools/mesh.py routes | head -5; fail "routes kept tools"; }
+python3 tools/mesh.py outside G001 > og.txt; grep -q "^Tools from outside kept for this: Atomic force microscopy (G001: maps cavity distortion" og.txt && grep -q "Said without this field's own words, what kind of problem is this? Which other fields have it" og.txt && pass "outside: the brief asks the cross-field question and shows the tools kept for the need" || { cat og.txt; fail "outside kept tools"; }
+python3 tools/mesh.py routes --readiness | grep -q "topics compared with a map from outside the brain (.beyond.).* 1 of 2" && pass "readiness counts the topics compared with an outside map" || { python3 tools/mesh.py routes --readiness; fail "readiness beyond"; }
+printf 'Film thickness was read by ellipsometry before and after swelling, and by surface plasmon resonance on the same chip.\n\nEllipsometry and surface plasmon resonance agreed to within two percent on every film we made.\n' > p6.txt
+printf 'A surface plasmon resonance chip coated with the imprinted polymer film gave the binding capacity directly in water.\n' > p7.txt
+src P006 ito-2026-ellipsometry "Ito, K." "Ito (2026) Ellipsometry of swollen films" p6.txt
+src P007 baker-2026-spr-chip "Baker, L." "Baker (2026) A surface plasmon resonance chip" p7.txt
+$B > mv.txt; grep -q "^- Ellipsometry: kept as a lead on [0-9-]* when it was only in the titles of cited works; now in the text of P006" mv.txt && grep -q "^- surface plasmon resonance: set aside on [0-9-]* when 2 sources used it; now 4 do (P004, P005, P006, P007)" mv.txt && pass "a new source moves a lead into the text, and brings back a term set aside when twice the sources use it" || { cat mv.txt; fail "beyond moves"; }
+! grep -q "Atomic force microscopy: kept" mv.txt && python3 tools/mesh.py discover --recheck | grep -q "^## Beyond the ontology: moved by what was added (2)" && pass "recheck reports what moved beyond the ontology, and leaves what did not" || fail "beyond recheck"
+$B works "10.0000/wulff.1995" "Haupt 2000 Molecular imprinting for sensors" "Haupt 1987 Molecular imprinting for sensors" "doi:10.0000/psl.2023.014" "10.9999/unknown.2024 A wholly unknown paper on film sensors" --frame "a review's reference list" > wk.txt
+grep -q "Sources in the brain: 1; cited and held: 0; cited, not held: 2; unknown to the brain: 2\.$" wk.txt && grep -q "^R0001 Wulff (1995).* — cited by P001$" wk.txt && grep -q "^R0002 Haupt (2000)" wk.txt && grep -q "^P002 Garcia" wk.txt && sed -n '/^## Unknown/,/^## Cited/p' wk.txt | grep -q "^Haupt 1987" && pass "works: a list from outside is sorted by DOI and by title into sources, cited works and works unknown to the brain; a wrong year is not a match" || { cat wk.txt; fail "beyond works"; }
+mkdir -p ledger/beyond/wiki
+fx() { printf '{"asked": "%s", "title": "%s", "fetched": "2026-11-23", "missing": false, "disambiguation": %s, "links": [%s], "lead": [%s], "categories": [%s], "members": [%s]}\n' "$2" "$2" "$3" "$4" "$5" "$6" "$7" > "ledger/beyond/wiki/en__$1.json"; }
+fx Swelling "Swelling" false '"Hydrogel", "Temperature", "Quartz crystal microbalance", "Flory–Huggins solution theory", "Ellipsometry", "List of polymers", "Isothermal titration calorimetry", "Solvent"' '"Hydrogel", "Solvent"' '"Polymer physics"' ''
+fx Quartz_crystal_microbalance "Quartz crystal microbalance" false '"Sauerbrey equation", "Surface plasmon resonance", "Piezoelectricity", "Hydrogel"' '"Piezoelectricity"' '' ''
+fx Binding_capacity "Binding capacity" false '"Adsorption", "Langmuir adsorption model", "Hydrogel"' '"Adsorption"' '' ''
+fx Category_Polymer_physics "Polymer physics" false '' '' '' '"Swelling", "Reptation", "Flory–Huggins solution theory", "Glass transition"'
+fx Solvent "Solvent" true '"Solvent (chemistry)", "Solvent (album)"' '' '' ''
+sed -i 's/^- kind:: entity$/- kind:: entity\n- wikipedia:: none/' concepts/water.md
+export BRAIN_MESH_OFFLINE=1
+$B wiki swelling --family > wi.txt; grep -q "^Wikipedia against the brain: 1 article read: swelling → Swelling \[6 of 8 links known to the brain\]\.$" wi.txt && grep -q "^Hydrogel — 2 mentions in 2 sources (P001, P002) · opening section" wi.txt && sed -n '/^## Nowhere in the brain/,/^## The same family/p' wi.txt | grep -q "^Flory–Huggins solution theory$" && ! grep -q "List of polymers" wi.txt && pass "wiki: an article's links are sorted by where they stand in the brain, its opening section first, list pages dropped" || { cat wi.txt; fail "beyond wiki"; }
+grep -q "^swelling — quartz-crystal-microbalance: Wikipedia's article Swelling links Quartz crystal microbalance; no card holds both and their concept cards do not link$" wi.txt && ! grep -q "^swelling — temperature" wi.txt && pass "wiki: a link Wikipedia makes between two concepts the brain does not connect is raised; one the brain makes is not" || { cat wi.txt; fail "beyond wiki linkage"; }
+grep -q "^swelling, Category:Polymer physics (4 articles, 3 not concepts): Reptation; Flory–Huggins solution theory; Glass transition$" wi.txt && pass "wiki --family: the other members of the article's categories that the brain has no concept for" || { cat wi.txt; fail "beyond wiki family"; }
+$B wiki swelling quartz-crystal-microbalance binding-capacity solvent water temperature > wj.txt
+grep -q "^binding-capacity — swelling: 3 cards hold both; neither article (Binding capacity, Swelling) links the other$" wj.txt && grep -q "^Hydrogel — .* on 3 of the pages" wj.txt && ! grep -q "^Sauerbrey equation" wj.txt && pass "wiki: with several articles, what they share comes first, and a tie the brain makes that neither article does is shown" || { cat wj.txt; fail "beyond wiki several"; }
+grep -q "^No article for solvent (several articles share the name: Solvent (chemistry); Solvent (album))" wj.txt && grep -q "^Not read, no network and not in the cache: temperature\.$" wj.txt && ! grep -q "water" wj.txt && pass "wiki: a name several articles share, a concept marked as having none, and a page out of reach are each said" || { cat wj.txt; fail "beyond wiki missing"; }
+$B wiki temperature > wn.txt 2>&1 && fail "wiki with no network and no cache did not stop" || { grep -q "Wikipedia cannot be reached from here" wn.txt && grep -q "beyond probe --from <file> --frame" wn.txt && pass "wiki: with no network and no cache it stops and gives the two ways round"; } || { cat wn.txt; fail "beyond wiki offline"; }
+unset BRAIN_MESH_OFFLINE
+grep -c "| Wikipedia (en) | probe | " ledger/beyond.md | grep -q "^2$" && pass "wiki: each comparison is recorded" || fail "beyond wiki record"
+cat > fake.py <<'PY'
+import sys, os, importlib.util
+spec = importlib.util.spec_from_file_location("mesh", "tools/mesh.py"); mesh = importlib.util.module_from_spec(spec); spec.loader.exec_module(mesh)
+calls = []
+def page(pid, title, links, **more): return {"batchcomplete": "", "query": {"pages": {str(pid): dict({"pageid": pid, "ns": 0, "title": title, "links": [{"ns": 0, "title": x} for x in links]}, **more)}}}
+def fake(lang, query):
+    calls.append(query)
+    if "list=categorymembers" in query: return {"batchcomplete": "", "query": {"categorymembers": [{"pageid": 1, "ns": 0, "title": "Reptation"}, {"pageid": 2, "ns": 0, "title": "Gel"}]}}
+    if "list=search" in query: return {"query": {"search": [{"ns": 0, "title": "Film"}, {"ns": 0, "title": "Imprinted polymer"}]}}
+    if "action=parse" in query: return {"parse": {"title": "Gel", "pageid": 9, "links": [{"ns": 0, "exists": "", "*": "Hydrogel"}, {"ns": 10, "exists": "", "*": "Template:Polymers"}, {"ns": 0, "*": "Solvent"}]}}
+    if "titles=Mercury" in query: return page(5, "Mercury", ["Mercury (element)", "Mercury (planet)"], pageprops={"disambiguation": ""})
+    if "titles=Imprinted%20polymer&" in query + "&": return page(7, "Imprinted polymer", ["Template", "Cavity"])
+    if "titles=Gel&" in query + "&" and "plcontinue" not in query:
+        d = page(9, "Gel (polymer)", ["Hydrogel", "Flory–Huggins solution theory"], categories=[{"ns": 14, "title": "Category:Polymer physics"}])
+        d["continue"] = {"plcontinue": "9|0|Quartz", "continue": "||categories|pageprops"}; del d["batchcomplete"]; d["query"]["redirects"] = [{"from": "Gel", "to": "Gel (polymer)"}]
+        return d
+    if "titles=Gel&" in query + "&": return page(9, "Gel (polymer)", ["Quartz crystal microbalance", "Solvent"])
+    return {"batchcomplete": "", "query": {"pages": {"-1": {"ns": 0, "title": "x", "missing": ""}}}}
+mesh.wiki_api = fake
+m = mesh.Mesh(".")
+d = mesh.wiki_get(m, "Gel")
+assert d["title"] == "Gel (polymer)" and d["links"] == ["Flory–Huggins solution theory", "Hydrogel", "Quartz crystal microbalance", "Solvent"], d
+assert d["lead"] == ["Hydrogel", "Solvent"] and d["categories"] == ["Polymer physics"] and not d["missing"], d
+assert any("plcontinue=9%7C0%7CQuartz" in c for c in calls), calls
+n = len(calls); mesh.wiki_get(m, "Gel"); assert len(calls) == n, "a cached article was fetched again"
+assert mesh.wiki_get(m, "Gels", category=True)["members"] == ["Gel", "Reptation"]
+assert mesh.wiki_get(m, "Nothing here")["missing"] and mesh.wiki_get(m, "Mercury")["disambiguation"]
+d, how = mesh.wiki_article(m, m.cards["imprinted-polymer-film"], "en")
+assert how == "search" and d["title"] == "Imprinted polymer", (how, d)
+print("wiki parsing ok")
+PY
+python3 fake.py > fk.txt 2>&1 && grep -q "^wiki parsing ok$" fk.txt && [ -f ledger/beyond/wiki/en__Gel.json ] && pass "wiki: the API's pages, continuation, opening-section links, categories, redirects, missing and shared names are read and cached; a search finds the nearest article" || { cat fk.txt; fail "beyond wiki parsing"; }
+$B nosuch > /dev/null 2>&1 && fail "beyond took an unknown command" || pass "beyond refuses an unknown command"
+python3 tools/mesh.py help | grep -q "^beyond \[terms" && pass "help lists beyond" || fail "help beyond"
 echo "ALL TESTS PASSED"

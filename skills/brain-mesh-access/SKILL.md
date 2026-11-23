@@ -56,6 +56,7 @@ Tools:
 | What could be done, and whether you could do it | `routes [topic:<slug> or <concept> or <id>]`: each open need matched to a way of making a contribution, with the ingredients the ontology shows, the ones missing and its reach under the research profile. `routes --changes` after new sources; `routes --readiness` for what the brain does not code yet (`brain-mesh-discover`) |
 | What the user's group can do | `profile`: the research profile, `PROFILE.md`. The user's statement, like priority: record only what they say |
 | Check a need against what Claude knows and the literature | `outside <id or signal key>` gives the questions; `outside add ...` records what came back |
+| What the brain cannot name: terms the sources share with no concept, where a source points to another field, and names or works from any outside map sorted by where they stand in the brain | `beyond terms`, `beyond pointers`, `beyond probe ...`, `beyond wiki ...`, `beyond works ...` (`brain-mesh-beyond`) |
 | Explore the brain from the top, most need to know first | `zoom`: the topics; then `zoom topic:<slug>`, `zoom <concept>`, `zoom <id>` down to a card's page. Each level fits in about 1,000 tokens; `--explored "<note>"` records a branch worked |
 | Find cards | `find <words>`: most relevant first, 25 shown; narrow with `--type observation`, `--source P012` |
 | See a card, its source paragraph and what links to it | `show <id>`. Long generated lists are cut to their first lines with a count; `--all` prints everything |

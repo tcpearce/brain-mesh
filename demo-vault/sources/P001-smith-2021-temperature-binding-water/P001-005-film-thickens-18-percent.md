@@ -7,7 +7,7 @@ updated: 2026-11-20
 
 The [[film-thickness|thickness]] of the [[imprinted-polymer-film|imprinted polymer film]] in [[water]] increased by 18% between 25 and 45 °C. The measurement method and number of films are not stated.
 
-**Source:** Smith & Jones 2021, Results, p. 1 · [[P001_marked.pdf#page=1&annotation=90R|open page]]
+**Source:** Smith & Jones 2021, Results, p. 1 · [[P001_marked.pdf#page=1&annotation=16R|open page]]
 
 ## Codes
 - id:: P001-005

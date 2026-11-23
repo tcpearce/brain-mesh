@@ -7,7 +7,7 @@ updated: 2026-11-20
 
 The [[batch-rebinding-assay|rebinding assay]] assumes that binding reaches equilibrium within 60 minutes. No kinetic data are shown to support this at either temperature.
 
-**Source:** Smith & Jones 2021, Discussion, p. 2 · [[P001_marked.pdf#page=2&annotation=110R|open page]]
+**Source:** Smith & Jones 2021, Discussion, p. 2 · [[P001_marked.pdf#page=2&annotation=20R|open page]]
 
 ## Codes
 - id:: P001-009

@@ -7,7 +7,7 @@ updated: 2026-11-20
 
 All measurements used a single [[film-thickness|film thickness]] of 200 nm, so any dependence of the result on thickness is unknown.
 
-**Source:** Garcia & Chen 2023, Discussion, p. 1 · [[P002_marked.pdf#page=1&annotation=78R|open page]]
+**Source:** Garcia & Chen 2023, Discussion, p. 1 · [[P002_marked.pdf#page=1&annotation=16R|open page]]
 
 ## Codes
 - id:: P002-007

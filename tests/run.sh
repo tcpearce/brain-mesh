@@ -1239,15 +1239,15 @@ if command -v git > /dev/null; then
   git add -A > /dev/null; git commit -qm init; git push -q -u origin main 2> /dev/null
   git clone -q -b main "$T/lg.git" "$T/lg2"; git -C "$T/lg2" config user.email u@u; git -C "$T/lg2" config user.name u
   python3 -c "import json; c = json.load(open('MESH.json')); c['large_file_mb'] = 0.002; json.dump(c, open('MESH.json', 'w'), indent=1)"
-  python3 tools/mesh.py linked --all > lk.txt; grep -q "^linked: 4 file(s) newly linked" lk.txt && grep -q "^| P001.pdf | 0.0 | [0-9a-f]\{64\} | " ledger/linked-files.md && grep -q "^| P001_marked.pdf | .* | rebuilt by \`mesh.py build\` from the original |" ledger/linked-files.md && grep -q "^sources/P001\*/P001.pdf$" .gitignore && pass "linked --all links the files over the limit and lists them in .gitignore" || { cat lk.txt ledger/linked-files.md .gitignore; fail "linked --all"; }
+  python3 tools/mesh.py linked --all > lk.txt; grep -q "^linked: 2 file(s) newly linked" lk.txt && grep -q "^| P001.pdf | 0.0 | [0-9a-f]\{64\} | " ledger/linked-files.md && ! grep -q "P001_marked" ledger/linked-files.md && grep -q "^sources/\*/P\*_marked.pdf$" .gitignore && grep -q "^sources/P001\*/P001.pdf$" .gitignore && pass "linked --all links the originals over the limit and lists them in .gitignore; marked copies are ignored as a kind" || { cat lk.txt ledger/linked-files.md .gitignore; fail "linked --all"; }
   python3 tools/mesh.py sync "link large files" > "$T/lg-s.txt" 2>&1; [ -z "$(git ls-files sources | grep '\.pdf$')" ] && [ -z "$(git -C "$T/lg.git" ls-tree -r --name-only main sources | grep '\.pdf$')" ] && [ -f "$(ls -d sources/P001*)/P001.pdf" ] && pass "sync stops tracking linked files but keeps them in the folder" || { cat "$T/lg-s.txt"; git ls-files sources | grep pdf; fail "linked untracked"; }
   (cd "$T/lg2" && python3 tools/mesh.py sync > "$T/lg2-s.txt" 2>&1); S2=$(ls -d "$T"/lg2/sources/P001*)
-  [ -f "$S2/P001.pdf" ] && [ -f "$S2/P001_marked.pdf" ] && grep -q "^linked: restored 4 linked file(s) from git history" "$T/lg2-s.txt" && [ -z "$(git -C "$T/lg2" status --porcelain)" ] && pass "another copy of the vault gets back from history the files a pull stopped tracking" || { cat "$T/lg2-s.txt"; ls "$S2"; git -C "$T/lg2" status --porcelain; fail "linked restore on pull"; }
+  [ -f "$S2/P001.pdf" ] && [ -f "$S2/P001_marked.pdf" ] && grep -q "^linked: restored 2 linked file(s) from git history" "$T/lg2-s.txt" && [ -z "$(git -C "$T/lg2" status --porcelain)" ] && pass "another copy of the vault gets back from history the originals a pull stopped tracking, and builds its own marked copies" || { cat "$T/lg2-s.txt"; ls "$S2"; git -C "$T/lg2" status --porcelain; fail "linked restore on pull"; }
   rm "$S2/P001.pdf"; (cd "$T/lg2" && python3 tools/mesh.py linked --restore) | grep -q "^linked --restore: 1 restored from git history$" && [ -f "$S2/P001.pdf" ] && pass "linked --restore brings back a linked file from history" || fail "linked --restore"
   S1=$(ls -d sources/P001*); mv "$S1/P001.pdf" "$T/p1.pdf"
   (python3 tools/mesh.py check || true) > "$T/lg-c.txt"; grep -q "^note  P001: P001.pdf is a linked file (kept out of git) and is not in this copy of the vault; .* otherwise get it from " "$T/lg-c.txt" && ! grep -q "^warn .*P001.pdf is a linked file" "$T/lg-c.txt" && pass "check notes an absent linked original and where to get it, without counting it as a warning" || { cat "$T/lg-c.txt"; fail "check linked absent"; }
   python3 tools/mesh.py linked --verify > "$T/lg-v.txt" 2>&1 && fail "linked --verify passed with a file missing" || { grep -q "^missing  P001.pdf" "$T/lg-v.txt" && pass "linked --verify reports a missing original" || { cat "$T/lg-v.txt"; fail "verify missing"; }; }
-  cp "$T/p1.pdf" "$S1/P001.pdf"; python3 tools/mesh.py linked --verify > "$T/lg-v.txt" 2>&1 && grep -q "4 of 4 linked files present and unchanged" "$T/lg-v.txt" && pass "linked --verify passes once the original is back" || { cat "$T/lg-v.txt"; fail "verify ok"; }
+  cp "$T/p1.pdf" "$S1/P001.pdf"; python3 tools/mesh.py linked --verify > "$T/lg-v.txt" 2>&1 && grep -q "2 of 2 linked files present and unchanged" "$T/lg-v.txt" && pass "linked --verify passes once the original is back" || { cat "$T/lg-v.txt"; fail "verify ok"; }
   head -c 50000 /dev/urandom > big.bin; python3 tools/mesh.py sync "a stray large file" > "$T/lg-s.txt" 2>&1 && fail "sync committed a large file outside the sources" || { grep -q "would be committed: big.bin" "$T/lg-s.txt" && [ -z "$(git ls-files big.bin)" ] && pass "sync refuses a large file outside the source folders" || { cat "$T/lg-s.txt"; fail "sync large stray"; }; }
   mkdir -p ingest; mv big.bin ingest/; python3 tools/mesh.py sync "papers waiting in ingest" > "$T/lg-s.txt" 2>&1; [ -z "$(git ls-files ingest)" ] && grep -q "sync: committed\|up to date" "$T/lg-s.txt" && pass "papers in ingest/ are never committed" || { cat "$T/lg-s.txt"; fail "ingest committed"; }
   python3 -c "
@@ -1954,4 +1954,79 @@ PY
 python3 tools/mesh.py figure P001 1 60,60,300,160 eq4 > /dev/null 2>&1; [ "$(head -c 16 $S1/P001-eq4.webp | tail -c 4)" = "VP8L" ] && pass 'MESH.json "crop_quality": "lossless" writes every new crop lossless' || fail "crop_quality lossless"
 grep -q "^\*.webp binary" .gitattributes && pass "WebP files are binary to git" || fail "gitattributes webp"
 else pass "(Pillow is not installed here, so the WebP checks are skipped)"; fi
+# 40. marked PDFs are built on each computer, not kept in git; card links land on their highlights; the user's own annotations travel in a side file (1.25.0)
+if python3 -c "import fitz" 2>/dev/null; then
+cp -r "$ROOT/demo-vault" "$T/mk"; cd "$T/mk"; cp "$MESH" tools/mesh.py; rm -f sources/*/P*_marked.pdf; S1=$(ls -d sources/P001*)
+cat > "$T/land.py" <<'PY'
+import glob, re, os, sys, fitz
+root, ok, bad, user = sys.argv[1], 0, 0, []
+docs = {}
+for f in sorted(glob.glob(root + "/sources/P*/P*_marked.pdf")):
+    d = fitz.open(f); docs[os.path.basename(f)[:-11]] = {a.xref: (pno, a.info.get("subject")) for pno, pg in enumerate(d, 1) for a in pg.annots()}
+    user += sorted((os.path.basename(f)[:4], pno, a.type[1], [round(v) for v in a.rect], a.info.get("content", ""), [round(c, 2) for c in (a.colors.get("stroke") or [])], a.info.get("title")) for pno, pg in enumerate(d, 1) for a in pg.annots() if a.info.get("title") != "brain-mesh")
+for f in glob.glob(root + "/sources/P*/P*-[0-9][0-9][0-9]-*.md"):
+    mo = re.search(r"\[\[(P\d{3}(?:_SI|_correction)?)_marked\.pdf#page=(\d+)&annotation=(\d+)R", open(f, encoding="utf-8").read())
+    if not mo: continue
+    hit = docs.get(mo.group(1), {}).get(int(mo.group(3)))
+    if hit == (int(mo.group(2)), os.path.basename(f)[:8]): ok += 1
+    else: bad += 1
+print(f"land {ok} miss {bad}")
+for u in user: print("user", u)
+PY
+cat > "$T/annot.py" <<'PY'
+import glob, sys, fitz
+d = fitz.open(glob.glob(sys.argv[1] + "/sources/P001*/P001_marked.pdf")[0]); p = d[0]
+if sys.argv[2] == "add":
+    a = p.add_highlight_annot(p.search_for("the", quads=True)[:2]); a.set_colors(stroke=(0, 1, 0)); a.set_info(title="Reader", content="my highlight"); a.set_opacity(0.6); a.update()
+    a = p.add_text_annot((300, 100), "a sticky note", icon="Comment"); a.set_info(title="Reader"); a.update()
+    a = p.add_freetext_annot(fitz.Rect(300, 150, 420, 180), "typed text", fontsize=9, text_color=(1, 0, 0), fill_color=(1, 1, 0.8)); a.set_info(title="Reader"); a.update()
+    a = p.add_ink_annot([[(100, 300), (120, 310), (140, 300)]]); a.set_colors(stroke=(0, 0, 1)); a.set_border(width=2); a.set_info(title="Reader"); a.update()
+    a = p.add_rect_annot(fitz.Rect(200, 300, 260, 340)); a.set_colors(stroke=(1, 0, 0), fill=(1, 0.9, 0.9)); a.set_info(title="Reader"); a.update()
+    a = p.add_underline_annot(p.search_for("and", quads=True)[:1]); a.set_info(title="Reader"); a.update()
+    a = p.add_line_annot((100, 400), (200, 420)); a.set_info(title="Reader"); a.update()
+elif sys.argv[2] == "change":  # the sticky note goes, a new highlight comes
+    for a in list(p.annots()):
+        if a.type[1] == "Text": p.delete_annot(a)
+    a = p.add_highlight_annot(p.search_for("was", quads=True)[:1]); a.set_info(title="Reader", content="added on the second computer"); a.update()
+elif sys.argv[2] == "stamp": a = p.add_stamp_annot(fitz.Rect(400, 400, 480, 430), stamp=0); a.set_info(title="Reader"); a.update()
+d.saveIncr()
+PY
+python3 tools/mesh.py build > b1.txt 2>&1 || true
+python3 "$T/land.py" . > l1.txt; n=$(sed -n 's/^land \([0-9]*\) .*/\1/p' l1.txt)
+[ "$n" -ge 18 ] && grep -q "^land $n miss 0$" l1.txt && pass "every card's link opens its own highlight: the annotation number in the link is the one in the marked copy" || { cat l1.txt; fail "card links land"; }
+cp -r sources "$T/mk-src1"; cp index/marks.json "$T/mk-marks1.json"; rm -rf index/.scratch sources/*/P*_marked.pdf; python3 tools/mesh.py build > b2.txt 2>&1 || true
+[ -z "$(diff -rq "$T/mk-src1" sources | grep -v '_marked.pdf')" ] && cmp -s index/marks.json "$T/mk-marks1.json" && ! grep -q '"sig"' index/marks.json && python3 "$T/land.py" . | grep -q "^land $n miss 0$" && pass "a copy of the vault with no marked PDFs builds its own, and no card or index file changes" || { diff -rq "$T/mk-src1" sources; fail "marked copies rebuilt elsewhere"; }
+python3 tools/mesh.py build | grep -q "marked PDFs rewritten for: none" && pass "a marked copy that is current is left alone" || fail "marked copy rebuilt needlessly"
+python3 "$T/annot.py" . add; python3 "$T/land.py" . | grep "^user" > u0.txt; python3 tools/mesh.py build > b3.txt 2>&1 || true; python3 "$T/land.py" . > l3.txt
+[ "$(wc -l < u0.txt)" = 7 ] && [ -f $S1/P001_annotations.json ] && [ "$(grep -c '"id"' $S1/P001_annotations.json)" = 7 ] && grep "^user" l3.txt | cmp -s - u0.txt && grep -q "^land $n miss 0$" l3.txt && pass "annotations a reader adds to a marked copy are saved to P001_annotations.json and drawn again on the rebuilt copy: kind, place, colour, text and author" || { cat b3.txt l3.txt; fail "user annotations kept"; }
+cp $S1/P001_annotations.json side1.json; python3 tools/mesh.py build | grep -q "marked PDFs rewritten for: none" && cmp -s $S1/P001_annotations.json side1.json && pass "the next build changes neither the marked copy nor the side file" || fail "annotations stable"
+rm -rf "$T/mk2"; cp -r "$T/mk" "$T/mk2"; rm -rf "$T/mk2/index/.scratch" "$T"/mk2/sources/*/P*_marked.pdf; (cd "$T/mk2" && python3 tools/mesh.py build > b.txt 2>&1 || true)
+python3 "$T/land.py" "$T/mk2" | grep "^user" | cmp -s - u0.txt && cmp -s "$T"/mk2/$S1/P001_annotations.json side1.json && pass "a second computer draws the same annotations from the side file" || { python3 "$T/land.py" "$T/mk2"; fail "annotations on a second computer"; }
+python3 "$T/annot.py" "$T/mk2" change; (cd "$T/mk2" && python3 tools/mesh.py build > b.txt 2>&1 || true); cp "$T"/mk2/$S1/P001_annotations.json $S1/; python3 tools/mesh.py build > b4.txt 2>&1 || true
+python3 "$T/land.py" . | grep "^user" > u4.txt; python3 "$T/land.py" "$T/mk2" | grep "^user" | cmp -s - u4.txt && [ "$(wc -l < u4.txt)" = 7 ] && ! grep -q "sticky note" u4.txt && grep -q "added on the second computer" u4.txt && pass "an annotation removed on one computer goes from the other, and one added there arrives, through the side file" || { cat u4.txt; fail "annotation changes travel"; }
+python3 "$T/annot.py" . stamp; python3 tools/mesh.py build | grep -q "marked PDFs rewritten for: none" && python3 "$T/land.py" . | grep -q "^user.*'Stamp'" && pass "an annotation of a kind that cannot be redrawn stays in the marked copy while the copy is current" || fail "stamp kept in a current copy"
+python3 tools/mesh.py mark --force > b5.txt 2>&1 || true
+grep -q "^note: P001_marked.pdf holds 1 annotation(s) of a kind that cannot be drawn again on a rebuilt copy (Stamp x1); the copy with them is kept at index/.scratch/kept/P001_marked-" b5.txt && ls index/.scratch/kept/P001_marked-*.pdf > /dev/null && [ "$(python3 "$T/land.py" . | grep -c '^user')" = 7 ] && pass "when that copy is rebuilt, the one holding the annotation is kept and the build says where" || { cat b5.txt; fail "unsupported annotation"; }
+python3 - > own.txt 2>&1 <<'PY'
+import sys, fitz; sys.path.insert(0, "tools"); import mesh
+d = fitz.open(); p = d.new_page(); p.insert_text((72, 100), "A publisher's page with a note of its own.", fontsize=11)
+a = p.add_text_annot((300, 100), "the publisher's own note"); a.set_info(title="Publisher"); a.update(); d.save("own.pdf")
+d = fitz.open("own.pdf"); pg = d[0]; a = pg.add_highlight_annot(pg.search_for("publisher", quads=True)[:1]); a.set_info(title="Reader", content="mine"); a.update(); d.save("own_marked.pdf")
+notes, odd, stamp = mesh.merge_notes(fitz, "own.pdf", "own_marked.pdf", {}, None)
+print("own ok" if [r.get("content") for r in notes.values()] == ["mine"] else f"own BAD {notes}")
+PY
+grep -q "^own ok" own.txt && pass "an annotation the publisher's PDF already carries is not taken for the reader's" || { cat own.txt; fail "publisher annotation"; }
+BRAIN_MESH_NO_MARK=1 python3 tools/mesh.py build | grep -q "^marked PDFs not built (BRAIN_MESH_NO_MARK is set)" && pass "BRAIN_MESH_NO_MARK skips the marked copies, for a session that opens no PDF" || fail "no-mark"
+if command -v git > /dev/null; then
+  cp -r "$ROOT/demo-vault" "$T/mg"; cd "$T/mg"; cp "$MESH" tools/mesh.py; printf '__pycache__/\nindex/.scratch/\n' > .gitignore; S1=$(ls -d sources/P001*)
+  git init -q --bare "$T/mg.git"; git init -q -b main .; git config user.email t@t; git config user.name t; git remote add origin "$T/mg.git"
+  git add -A > /dev/null; git commit -qm "a vault that versions its marked PDFs"; git push -q -u origin main 2> /dev/null
+  git clone -q -b main "$T/mg.git" "$T/mg2"; git -C "$T/mg2" config user.email u@u; git -C "$T/mg2" config user.name u
+  [ -n "$(git ls-files 'sources/*/P*_marked.pdf')" ] && python3 tools/mesh.py sync "tooling 1.25" > "$T/mg-s.txt" 2>&1
+  [ -z "$(git ls-files 'sources/*/P*_marked.pdf')" ] && [ -z "$(git -C "$T/mg.git" ls-tree -r --name-only main | grep '_marked.pdf$')" ] && [ -f $S1/P001_marked.pdf ] && grep -q "^sources/\*/P\*_marked.pdf$" .gitignore && grep -q "^sync: 2 marked PDFs are no longer kept in git" "$T/mg-s.txt" && [ -z "$(git status --porcelain)" ] && pass "sync stops versioning the marked copies of an older vault and leaves them on disk" || { cat "$T/mg-s.txt"; git status --porcelain; fail "marked untracked"; }
+  python3 "$T/annot.py" . add; python3 tools/mesh.py sync "my highlights" > "$T/mg-s.txt" 2>&1; git ls-files | grep -q "P001_annotations.json" && [ -z "$(git ls-files 'sources/*/P*_marked.pdf')" ] && pass "sync commits the side file with the reader's annotations, not the marked copy" || { cat "$T/mg-s.txt"; fail "side file committed"; }
+  (cd "$T/mg2" && python3 tools/mesh.py sync > "$T/mg2-s.txt" 2>&1); python3 "$T/land.py" . | grep "^user" > "$T/mg-u1.txt"
+  [ -f "$T"/mg2/$S1/P001_marked.pdf ] && python3 "$T/land.py" "$T/mg2" | grep "^user" | cmp -s - "$T/mg-u1.txt" && [ "$(wc -l < "$T/mg-u1.txt")" = 7 ] && python3 "$T/land.py" "$T/mg2" | grep -q "^land [0-9]* miss 0$" && [ -z "$(git -C "$T/mg2" status --porcelain)" ] && pass "another copy pulls, builds its own marked copies with the reader's annotations, and has nothing to commit" || { cat "$T/mg2-s.txt"; git -C "$T/mg2" status --porcelain; fail "marked copies after a pull"; }
+fi
+else pass "(PyMuPDF is not installed here, so the marked-copy checks are skipped)"; fi
 echo "ALL TESTS PASSED"

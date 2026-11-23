@@ -47,7 +47,7 @@ Every session starts and ends with one command, `python3 tools/mesh.py sync` (`p
 - **One vault per research topic,** in its own private GitHub repository. Publisher PDFs stay out of anything shared.
 - **Write the scope first,** in the Overview of `MAP.md`: what is in, what is out, what the brain is for. A stated scope is what later lets a gap be called a gap.
 - **Put your standing rules in the vault's `CLAUDE.md`,** below the generated part: every agent reads it at the start of every session. Example: "generic statistics terms are low priority".
-- **Browse in Obsidian.** Start at `MAP`, follow a concept hub, and open a paper's marked PDF: every card is a highlight on the page, and unhighlighted text has no card.
+- **Browse in Obsidian.** Start at `MAP`, follow a concept hub, and open a paper's marked PDF: every card is a highlight on the page, and unhighlighted text has no card. Marked PDFs are built on your computer by `build` rather than kept in git; highlights and notes you add to one are saved beside it in a small text file that git does carry.
 
 ### 1. Add papers
 

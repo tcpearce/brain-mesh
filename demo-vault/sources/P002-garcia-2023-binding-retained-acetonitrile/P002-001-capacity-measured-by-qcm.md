@@ -7,7 +7,7 @@ updated: 2026-11-20
 
 [[binding-capacity|Binding capacity]] of the [[imprinted-polymer-film|imprinted polymer films]] was measured with a [[quartz-crystal-microbalance|quartz crystal microbalance]]. No operating frequency or flow conditions are given.
 
-**Source:** Garcia & Chen 2023, Abstract, p. 1 · [[P002_marked.pdf#page=1&annotation=47R|open page]]
+**Source:** Garcia & Chen 2023, Abstract, p. 1 · [[P002_marked.pdf#page=1&annotation=10R|open page]]
 
 ## Codes
 - id:: P002-001

@@ -8,7 +8,7 @@ updated: 2026-11-20
 The authors conclude that [[temperature]] by itself does not degrade the imprinted cavities of the [[imprinted-polymer-film|film]], because [[binding-capacity|capacity]] is retained on heating in [[acetonitrile]]. This disagrees with a purely thermal reading of the loss reported in water.
 
 **Basis:** the [[P002-004-no-change-on-heating-in-acetonitrile|null result on heating in acetonitrile]].
-**Source:** Garcia & Chen 2023, Discussion, p. 1 · [[P002_marked.pdf#page=1&annotation=68R|open page]]
+**Source:** Garcia & Chen 2023, Discussion, p. 1 · [[P002_marked.pdf#page=1&annotation=14R|open page]]
 
 ## Codes
 - id:: P002-005

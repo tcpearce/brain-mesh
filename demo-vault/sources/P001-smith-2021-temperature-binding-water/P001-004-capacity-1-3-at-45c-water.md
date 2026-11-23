@@ -8,7 +8,7 @@ updated: 2026-11-20
 At 45 °C in [[water]], the [[binding-capacity|binding capacity]] of the [[imprinted-polymer-film|imprinted polymer film]] for [[analyte-x|analyte X]] was 1.3 ± 0.2 across three replicate films, about a third of its value at 25 °C.
 
 **Basis:** [[P001-002-batch-rebinding-uv-254|batch rebinding with UV detection]].
-**Source:** Smith & Jones 2021, Results, p. 1 · [[P001_marked.pdf#page=1&annotation=85R|open page]]
+**Source:** Smith & Jones 2021, Results, p. 1 · [[P001_marked.pdf#page=1&annotation=15R|open page]]
 
 ## Codes
 - id:: P001-004

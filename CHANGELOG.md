@@ -2,6 +2,17 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.25.0 — 2026-11-23
+
+Marked PDFs leave git, and a card's **open page** link now lands on its highlight.
+
+- **A fault this found.** A marked copy was saved with a setting that renumbers the PDF's objects, so the annotation number written into each card's link (`#page=5&annotation=412R`) named nothing in the saved file: the link opened the right page but did not go to the highlight. In a twelve-source vault none of 1,103 links matched. Each highlight a card links to now sits at a fixed object number, the size of the original's object table plus the card's own number, and the file is saved without renumbering. The number is the same on every computer and after every rebuild, and changes only when a card moves to another page. The first `build` rewrites the one link line in each evidence card.
+- **Marked copies are built, not committed.** `build` makes `P012_marked.pdf` from the original, the cards and a side file, always starting from the original, so the result does not depend on what was built before. `.gitignore` lists `sources/*/P*_marked.pdf` (new vaults, and at `upgrade` or the next `build`), and the first `sync` stops versioning the copies an older vault committed; they stay on disk. In that vault the marked copies were 56 MB of the working tree and 156 MB of the history, a full copy stored each time a source's cards changed. History is not rewritten.
+- **Your own annotations travel in a side file.** Highlights, underlines, strike-outs, squiggles, notes, typed text, pen strokes, boxes, ovals, lines and polygons that you add to a marked copy are read at the next `build` into `P012_annotations.json`, a small text file that is committed, and drawn again on every rebuild and in every copy of the vault. One you delete is removed everywhere; one added elsewhere arrives. An annotation of another kind (a stamp, an attached file) stays in that computer's copy, and before a rebuild replaces it the copy is kept under `index/.scratch/kept/` and `build` says so. Annotations the publisher's PDF already carries are not taken for yours.
+- Whether a marked copy is current is recorded on the computer that built it (`index/.scratch/marked.json`, and inside the PDF), not in the versioned `index/marks.json`, which now holds only where each card is marked.
+- `"marked_in_git": true` in `MESH.json` keeps marked copies versioned, for a vault whose owner only pulls and runs no tooling. `BRAIN_MESH_NO_MARK=1` skips building them, for a session that opens no PDF.
+- After a pull on the computer where Obsidian runs, `build` (or `sync`) makes that computer's marked copies. A fresh copy of a twelve-source vault takes about a minute more on its first build.
+
 ## 1.24.1 — 2026-11-23
 
 Figure and equation crops are WebP. In a twelve-source vault 264 crops took 48.7 MB as PNG, a quarter of the working tree and about 4 MB for every paper added; as WebP at the same pixel size they take 10.3 MB.

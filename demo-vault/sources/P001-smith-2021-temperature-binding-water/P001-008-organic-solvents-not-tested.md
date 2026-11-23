@@ -7,7 +7,7 @@ updated: 2026-11-20
 
 The study used [[water]] only. The authors state that organic [[solvent|solvents]] were not tested, so the temperature effect is established for water alone.
 
-**Source:** Smith & Jones 2021, Discussion, p. 2 · [[P001_marked.pdf#page=2&annotation=105R|open page]]
+**Source:** Smith & Jones 2021, Discussion, p. 2 · [[P001_marked.pdf#page=2&annotation=19R|open page]]
 
 ## Codes
 - id:: P001-008

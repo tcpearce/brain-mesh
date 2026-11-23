@@ -7,7 +7,7 @@ updated: 2026-11-20
 
 [[binding-capacity|Binding capacity]] was determined with a [[batch-rebinding-assay|batch rebinding assay]] read by UV absorbance at 254 nm, on three replicate films per condition.
 
-**Source:** Smith & Jones 2021, Methods, p. 1 · [[P001_marked.pdf#page=1&annotation=75R|open page]]
+**Source:** Smith & Jones 2021, Methods, p. 1 · [[P001_marked.pdf#page=1&annotation=13R|open page]]
 
 ## Codes
 - id:: P001-002

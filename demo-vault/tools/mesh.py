@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.23.2"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.23.3"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -389,6 +389,35 @@ def ref_order(n):
 
 
 AY_YEAR = re.compile(r"\(?((?:19|20)\d{2})[a-z]?\)?\s*[.,]")
+PLOS_ENTRY = re.compile(r"^\s*(.{3,200}?)\s*\(((?:19|20)\d{2})[a-z]?\)\s+(?=\S)")
+
+def plos_authors(s):
+    """['Amoore, J. E.'] for an author list written 'Amoore JE, Dravnieks A, et al.', or None when it is not that
+    style, which is what tells a PLOS entry from a classic numbered one whose year sits at the end (issue #45)."""
+    out = []
+    for part in re.split(r",\s*|\s+and\s+|\s*&\s*", s):
+        part = part.strip().rstrip(".")
+        if not part: continue
+        if part.lower().startswith("et al"): out.append("others"); continue
+        p = re.fullmatch("(" + SURNAME + r")\s+([A-ZÀ-ÞŒ]{1,3})", part)
+        if not p: return None
+        out.append(f"{p.group(1)}, " + " ".join(c + "." for c in p.group(2)))
+    return out or None
+
+def parse_ref_plos(raw):
+    """The fields of a PLOS or BMC style entry, 'Amoore JE (1977) Title. Journal 2: 267-281.': the initials follow the
+    surname with no comma, the year follows the authors, and a colon separates the volume from the pages. The authors
+    are rewritten as 'Amoore, J. E.' and the colon as a comma, so that the author-year reader, which expects that
+    shape, reads the entry. Any other entry is left to the ordinary reader (issue #45)."""
+    mo = PLOS_ENTRY.match(raw)
+    who = plos_authors(mo.group(1)) if mo else None
+    if not who: return parse_ref(raw)
+    tail = re.sub(r"(\d{1,4})\s*(\(\d+\))?\s*:\s*(?=[A-Za-z]?\d)", lambda x: f"{x.group(1)}{x.group(2) or ''}, ", raw[mo.end():].strip(), count=1)
+    f = parse_ref_author_year("; ".join(a for a in who if a != "others") + f" ({mo.group(2)}). " + tail)
+    f["raw"] = raw
+    if "others" in who: f["authors"] = (f.get("authors") or "").rstrip("; ") + "; others"
+    if re.search(r"\bIn:\s", raw): f["kind"] = "incollection"
+    return f
 
 def parse_ref_author_year(raw):
     """The fields of an author-year entry, 'Snitz, K., Yablonka, A. (2013). Title. Journal 9, e1003184.' The year is
@@ -5284,7 +5313,7 @@ def cmd_refs(m, pid, force=False):
         refs += [(f"S{n}", strip_furniture(raw, own_doi)) for n, raw in srefs]
         lines.insert(4, f"Entries S1 onwards are the supplement's own reference list ({len(srefs)} entries), whose numbers its paragraphs cite; "
                         "fold an entry that repeats a main-text work into that entry's `cited_at` and delete it here.")
-    pr = parse_ref_author_year if style == "author-year" else parse_ref
+    pr = parse_ref_author_year if style == "author-year" else parse_ref_plos  # falls back to the ordinary reader for a classic numbered entry
     for n, raw in refs:
         f = pr(raw)
         lines += [f"## {n}", f"- raw:: {raw}"] + [f"- {k}:: {f.get(k, '')}" for k in REF_FIELDS if f.get(k)]
@@ -5299,7 +5328,8 @@ def cmd_refs(m, pid, force=False):
 def cite_places(m, pid, main, top, pos=None, part=""):
     """{reference number: paragraphs citing it}. From the PDF when there is one: superscript numbers (Nature, Cell) and
     italic numbers (Science) traced back to their paragraph, so that counts in brackets, '(13)', are not taken for
-    citations. Without the PDF: every bracketed number, '(3)', '(4, 5)', '(6–9)', which overcounts."""
+    citations. Without the PDF, or where the fonts give nothing: every bracketed number, '(3)', '[4, 5]', '(6–9)',
+    which overcounts."""
     at = defaultdict(set)
     pdf = J(SRC(m.root, pid), pid + part + ".pdf")  # part="_SI" traces the supplement against its own list (issue #28)
     try:
@@ -5334,9 +5364,11 @@ def cite_places(m, pid, main, top, pos=None, part=""):
                             before += "⟦" + t.strip() + "⟧" if ita else t
                         else: before += t
                     before += " "
-        if at: return {n: {b for b in bs} for n, bs in at.items()}
+        # Trust the fonts only if they found citations for a fair share of the list; a paper that cites in square
+        # brackets gives almost nothing here, and one stray superscript used to suppress the fallback (issue #44)
+        if len(at) >= max(3, top // 10): return {n: {b for b in bs} for n, bs in at.items()}
     for b, (_pg, t) in main.items():
-        for mo in re.finditer(r"\((\d{1,3}(?:\s*[,–-]\s*\d{1,3})*)\)", t):
+        for mo in re.finditer(r"[(\[](\d{1,3}(?:\s*[,–-]\s*\d{1,3})*)[)\]]", t):  # square brackets too: PLOS, Elsevier, IEEE (issue #44)
             nums = expand_nums(mo.group(1), top)
             for n in nums: at[n].add(b)
             if pos is not None and nums: pos[b].append((mo.start(), set(nums)))

@@ -2,6 +2,11 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.23.3 (2026-11-23)
+
+- **Square-bracket citations are traced** (issue #44). The fallback that reads citation numbers from the text matched round brackets only, and one stray superscript was enough to stop it running at all, so a paper citing `[1]`, `[2,3]` traced almost nothing: Snitz et al. 2013 gave 1 of 58 references a paragraph. Square brackets are read too, and the font-based pass is trusted only when it found citations for a fair share of the list. The same paper now traces 58 of 58.
+- **PLOS and BMC style entries are parsed** (issue #45). `Amoore JE (1977) Specific anosmia and the concept of primary odors. Chemical Senses and Flavor 2: 267-281.` has the initials against the surname, the year after the authors and a colon before the pages, and 14 of Snitz's 58 entries came out with no authors or no year. The authors are rewritten as `Amoore, J. E.` (with `; others` for et al.) and the colon as a comma, and the entry then goes through the author-year reader added for #5. An `In: … editors.` entry is an incollection. A classic numbered entry, whose year sits at the end, is untouched.
+
 ## 1.23.2 (2026-11-23)
 
 Three reference lists `refs` could not read.

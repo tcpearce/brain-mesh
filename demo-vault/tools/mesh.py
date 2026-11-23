@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, bisect, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.24.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.24.1"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -87,7 +87,7 @@ def ranked(counter, n=None):
     return sorted(counter.items(), key=lambda r: (-r[1], str(r[0])))[:n]
 
 
-GITATTR = "# Keep text files in LF on every system, so a build on Windows changes nothing; PDFs and images are binary.\n* text=auto eol=lf\n*.pdf binary\n*.png binary\n*.jpg binary\n*.xlsx binary\n"
+GITATTR = "# Keep text files in LF on every system, so a build on Windows changes nothing; PDFs and images are binary.\n* text=auto eol=lf\n*.pdf binary\n*.png binary\n*.webp binary\n*.jpg binary\n*.xlsx binary\n"
 def relp(p, root):
     """A path relative to the vault, always with forward slashes, so files the tooling writes are identical on Windows."""
     return os.path.relpath(p, root).replace(os.sep, "/")
@@ -1570,6 +1570,7 @@ def cmd_upgrade(vault, quiet=False):
         shutil.rmtree(J(vault, ".brain-mesh"), ignore_errors=True); shutil.copytree(docs, J(vault, ".brain-mesh", "skills"), dirs_exist_ok=True)
         wr(J(vault, ".brain-mesh", "VERSION"), VERSION + "\n")
     if not os.path.exists(J(vault, ".gitattributes")): wr(J(vault, ".gitattributes"), GITATTR)
+    elif "*.webp" not in rd(J(vault, ".gitattributes")): wr(J(vault, ".gitattributes"), rd(J(vault, ".gitattributes")).rstrip("\n") + "\n*.webp binary\n")
     for d in [p[0] for p in PAGES.values()] + ["references"]: os.makedirs(J(vault, d), exist_ok=True)
     write_claude_md(vault)
     gi = J(vault, ".gitignore")
@@ -1806,10 +1807,125 @@ def raster_bars(fitz, page, clip, ticks, native_dpi, dpi=300):
     return out, [f"y axis: linear, {len(ticks)} tick marks found in the picture, values given by hand ({ticks[0]:g} to {ticks[-1]:g}); fit residual {rms:.2g}; one pixel = {abs(b_):.2g} at {dpi} dpi" + (f" (picture resolution {native_dpi:.0f} dpi)" if native_dpi else "")]
 
 
+CROP_QUALITY = 80   # figure and equation crops are WebP at this quality (MESH.json "crop_quality": 1 to 100, or "lossless")
+CROP_FLOOR = 28     # dB over the inked pixels: a crop that would differ from the rendering by more than this is kept lossless
+CROP_EXT = (".webp", ".png")  # new crops are WebP; a vault made before 1.24.1 has PNG crops until `crops --convert`
+CROP_NAME = r"P\d{3}-(?:S?[TF]\d+[a-z]*|eq[0-9a-z]+)(?:-[a-z0-9]+)?"
+is_crop = lambda it: it.endswith(CROP_EXT)
+crop_stem = lambda it: it[:-len(os.path.splitext(it)[1])] if is_crop(it) else it
+
+
+def crop_file(d, stem):
+    """The image of a figure panel or an equation, in whichever format the vault holds it, or None."""
+    for e in CROP_EXT:
+        if os.path.exists(J(d, stem + e)): return J(d, stem + e)
+    return None
+
+
+def crop_quality(m):
+    q = m.cfg.get("crop_quality", CROP_QUALITY)
+    if str(q).lower() == "lossless": return "lossless"
+    try: return max(1, min(100, int(q)))
+    except (TypeError, ValueError): return CROP_QUALITY
+
+
+def webp_bytes(im, quality):
+    """A picture as WebP: (bytes, 'quality 80' or 'lossless'). Lossy WebP halves the colour resolution, which fades
+    thin coloured lines, so the result is compared with the picture over its inked pixels (those that are not white)
+    and a crop that comes out below CROP_FLOOR is written lossless instead: every pixel kept, at a larger size."""
+    import io
+    from PIL import Image, ImageChops, ImageStat
+    def enc(**kw):
+        b = io.BytesIO(); im.save(b, "WEBP", method=4, **kw); return b.getvalue()
+    if quality == "lossless" or im.mode not in ("RGB", "L"): return enc(lossless=True, quality=80), "lossless"
+    data = enc(quality=quality); back = Image.open(io.BytesIO(data)).convert("RGB"); rgb = im.convert("RGB")
+    ink = ImageChops.difference(rgb, Image.new("RGB", rgb.size, "white")).convert("L").point(lambda v: 255 if v > 12 else 0)
+    st = ImageStat.Stat(ImageChops.difference(rgb, back), mask=ink)
+    ms = sum(st.sum2) / (3 * st.count[0]) if st.count[0] else 0
+    if ms and 10 * math.log10(255 * 255 / ms) < CROP_FLOOR: return enc(lossless=True, quality=80), "lossless"
+    return data, f"quality {quality}"
+
+
+def save_crop(m, pix, base):
+    """Write a rendered clip of a page as <base>.webp and return its path. It stays PNG where Pillow is missing, and
+    where the vault already holds <base>.png: cards embed that name, and `crops --convert` changes file and embeds together."""
+    try: from PIL import Image
+    except ImportError: Image = None
+    if Image is None or (os.path.exists(base + ".png") and not os.path.exists(base + ".webp")):
+        pix.save(base + ".png"); return base + ".png"
+    im = Image.frombytes({1: "L", 3: "RGB", 4: "RGBA"}.get(pix.n, "RGB"), (pix.width, pix.height), pix.samples)
+    data, _how = webp_bytes(im, crop_quality(m))
+    with open(base + ".webp", "wb") as f: f.write(data)
+    return base + ".webp"
+
+
+def cmd_crops(m, args):
+    """crops: how much room the figure and equation crops take, and what WebP would save. Nothing is written.
+    crops --convert [P012 …] [--quality N | --lossless]: each PNG crop becomes WebP at the same pixel size, every
+    embed and mention of it in the vault's cards and notes is rewritten to the new name, and the PNG is removed (git
+    keeps it in history, and `figure` can cut any crop again from the PDF). Then run `build`."""
+    try: from PIL import Image
+    except ImportError: sys.exit("crops needs Pillow (pip install pillow)")
+    import io
+    opt = [x for x in args if x.startswith("--")]; only = {x for x in args if re.fullmatch(r"P\d{3}", x)}
+    quality = crop_quality(m)
+    if "--lossless" in opt: quality = "lossless"
+    for x in opt:
+        if x.startswith("--quality="): quality = max(1, min(100, int(x.split("=", 1)[1])))
+    if "--quality" in args and args.index("--quality") + 1 < len(args): quality = max(1, min(100, int(args[args.index("--quality") + 1])))
+    pngs, webps = [], []
+    for f in sorted(glob.glob(J(m.root, "sources", "P*", "P*-*.*"))):
+        st, ext = os.path.splitext(os.path.basename(f))
+        if not re.fullmatch(CROP_NAME, st) or (only and st[:4] not in only): continue
+        if ext == ".png": pngs.append(f)
+        elif ext == ".webp": webps.append(f)
+    mb = lambda n: f"{n / 1e6:.1f} MB"
+    print(f"crops: {len(pngs)} PNG ({mb(sum(os.path.getsize(f) for f in pngs))}), {len(webps)} WebP ({mb(sum(os.path.getsize(f) for f in webps))})" + (f" in {', '.join(sorted(only))}" if only else ""))
+    if not pngs: print("nothing to convert: new crops are written as WebP"); return
+    convert, was, now, kept, done, bad = "--convert" in opt, 0, 0, 0, [], []
+    for f in pngs:
+        base = f[:-4]
+        if os.path.exists(base + ".webp"): bad.append(f"{relp(f, m.root)}: {os.path.basename(base)}.webp exists too; remove the one the cards do not embed"); continue
+        try:
+            im = Image.open(f); im.load()
+            if im.mode not in ("RGB", "L", "RGBA"): im = im.convert("RGBA" if "transparency" in im.info or im.mode in ("LA", "PA") else "RGB")
+            data, how = webp_bytes(im, quality)
+            if Image.open(io.BytesIO(data)).size != im.size: raise ValueError("the WebP has another size")
+        except Exception as ex:
+            bad.append(f"{relp(f, m.root)}: left as PNG ({type(ex).__name__}: {str(ex)[:80]})"); continue
+        if len(data) >= os.path.getsize(f): bad.append(f"{relp(f, m.root)}: left as PNG, which is the smaller"); continue
+        was += os.path.getsize(f); now += len(data); kept += how == "lossless"; done.append(f)
+        if convert:
+            with open(base + ".webp", "wb") as o: o.write(data)
+    how = "lossless" if quality == "lossless" else f"quality {quality}" + (f"; {kept} kept lossless, where thin coloured lines would fade" if kept else "")
+    if not convert:
+        print(f"as WebP at the same pixel size: {mb(was)} -> {mb(now)} for {len(done)} crops ({how}), {round(100 * (1 - now / max(1, was)))} % smaller")
+        for b in bad: print("  " + b)
+        print("`python3 tools/mesh.py crops --convert` writes them, rewrites every embed and mention to the new name and removes the\n"
+              "PNG files; `--lossless` keeps every pixel, at about half the PNG size. Nothing was changed.")
+        return
+    names = {os.path.basename(f)[:-4] for f in done}; rx = re.compile(r"(?<![\w-])(" + CROP_NAME + r")\.png\b"); files = edits = 0
+    for dp, dn, fn in os.walk(m.root):
+        dn[:] = sorted(x for x in dn if not x.startswith(".") and not (dp == m.root and x in ("index", "tools", "ledger")))
+        for x in sorted(fn):
+            if not x.endswith(".md") or x.endswith("_text.md"): continue
+            t = rd(J(dp, x)); k = [0]
+            def swap(mo):
+                if mo.group(1) not in names: return mo.group(0)
+                k[0] += 1; return mo.group(1) + ".webp"
+            t2 = rx.sub(swap, t)
+            if k[0]: wr(J(dp, x), t2); files += 1; edits += k[0]
+    for f in done: os.remove(f)
+    print(f"converted {len(done)} crops: {mb(was)} of PNG -> {mb(now)} of WebP ({how}); {edits} embeds and mentions rewritten in {files} files")
+    for b in bad: print("  " + b)
+    print("Now run `python3 tools/mesh.py build`, look at a hub in Obsidian, and sync.")
+    cmd_log(m, f"crops: {len(done)} PNG crops converted to WebP ({mb(was)} -> {mb(now)}, {how}); {edits} embeds and mentions rewritten")
+
+
 def cmd_figure(m, args):
     """figure P012 <page> [--si]: the page with a coordinate grid and an inventory, to choose a panel's box.
     figure P012 <page> <x0,y0,x1,y1> <name> [--si] [--logx] [--logy] [--ycal v@pos,v@pos] [--xcal ...] [--force]:
-    read one panel. Writes P012-<name>.png (the panel at 300 dpi) and P012-<name>.csv: every bar, marker, error bar
+    read one panel. Writes P012-<name>.webp (the panel at 300 dpi) and P012-<name>.csv: every bar, marker, error bar
     and line vertex in the PDF's vector drawing, converted to data values through the axis tick labels, each row with
     its reading error and any failed plausibility check. A panel that is a picture gets the image only."""
     try:
@@ -1828,18 +1944,18 @@ def cmd_figure(m, args):
     if len(a) < 4: return figure_grid(m, fitz, page, pid + part, pno)
     clip, name = fitz.Rect(*[float(x) for x in a[2].split(",")]), a[3]
     if re.fullmatch(r"eq[0-9a-z]+", name):  # an equation (eq4 for a numbered one, eqf5b for one inside Fig. 5B): the image only, for transcribing into LaTeX
-        out = J(SRC(m.root, pid), f"{pid}-{name}.png"); pad = fitz.Rect(clip.x0 - 2, clip.y0 - 2, clip.x1 + 2, clip.y1 + 2)
-        page.get_pixmap(dpi=300, clip=pad).save(out)
+        pad = fitz.Rect(clip.x0 - 2, clip.y0 - 2, clip.x1 + 2, clip.y1 + 2)
+        out = save_crop(m, page.get_pixmap(dpi=300, clip=pad), J(SRC(m.root, pid), f"{pid}-{name}"))
         print(f"{relp(out, m.root)}: transcribe it into LaTeX by reading the image. Put the LaTeX in the card's prose as a $$ block,\n"
-              f"embed the image under it with ![[{pid}-{name}.png]], add '- equation:: <the same LaTeX> ({name.replace('eq', 'eq. ')})' and an anchor '{name}, p{pno}',\n"
+              f"embed the image under it with ![[{os.path.basename(out)}]], add '- equation:: <the same LaTeX> ({name.replace('eq', 'eq. ')})' and an anchor '{name}, p{pno}',\n"
               f"then check the transcription with: python3 tools/mesh.py latex <card id>")
         return
     if not re.fullmatch(r"S?[TF]\d+[a-z]*(-[a-z0-9]+)?", name): sys.exit("figure: name the panel F2, F5c, SF3 (supplementary figure 3) or F2-left, or an equation eq4")
-    d = SRC(m.root, pid); png, csv = J(d, f"{pid}-{name}.png"), J(d, f"{pid}-{name}.csv")
+    d = SRC(m.root, pid); csv = J(d, f"{pid}-{name}.csv")
     if os.path.exists(csv) and "--force" not in opt:  # never overwrite a data file that may have been checked by hand
         sc = J(m.root, "index", ".scratch"); os.makedirs(sc, exist_ok=True); csv = J(sc, os.path.basename(csv))
         print(f"note: {pid}-{name}.csv exists, so this reading goes to {relp(csv, m.root)} for comparison (--force replaces it)")
-    page.get_pixmap(dpi=300, clip=clip).save(png)
+    png = save_crop(m, page.get_pixmap(dpi=300, clip=clip), J(d, f"{pid}-{name}"))  # WebP unless the vault already holds this crop as PNG
     touches = lambda r: r[2] >= clip.x0 and r[0] <= clip.x1 and r[3] >= clip.y0 and r[1] <= clip.y1  # a line has a zero-width box, which Rect.intersects rejects
     pics = [fitz.Rect(im["bbox"]) & clip for im in page.get_image_info() if touches(im["bbox"])]
     drs = [dr for dr in page.get_drawings() if touches(dr["rect"])]
@@ -2084,7 +2200,10 @@ def cmd_latex(m, cid):
     try:
         import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt; import matplotlib.image as mpimg
     except ImportError: sys.exit("latex needs matplotlib (pip install matplotlib); otherwise check the equation in Obsidian against the cropped image")
-    crops = [f for a in m.anchors(c) if re.fullmatch(r"eq[0-9a-z]+", a) for f in glob.glob(J(SRC(m.root, c.id[:4]), f"{c.id[:4]}-{a}.png"))]
+    crops = [f for f in (crop_file(SRC(m.root, c.id[:4]), f"{c.id[:4]}-{a}") for a in m.anchors(c) if re.fullmatch(r"eq[0-9a-z]+", a)) if f]
+    if any(f.endswith(".webp") for f in crops):
+        try: import PIL  # matplotlib reads WebP through Pillow
+        except ImportError: print("latex: the cropped originals are WebP, which needs Pillow to show here (pip install pillow); the transcription is rendered alone"); crops = []
     d = J(m.root, "index", ".scratch"); os.makedirs(d, exist_ok=True)
     for k, e in enumerate(eqs, 1):
         fig = plt.figure(figsize=(8, 3.2 if crops else 1.6))
@@ -3713,17 +3832,20 @@ def hub_key_section(c):
 def scan_eqfig(m, pid):
     """A source's equations and figure panels, for the hubs of the concepts their cards name in concepts:: (issue #12):
     [(concept id, item, card, image path or None, done)]. An item is the image of a printed equation or a figure panel
-    (P012-eq4.png, P012-F2c.png, P012-SF3.png) or, for an equation with no crop, the card's id. It is done when the
-    hub embeds the image, or links the card under '## Key equations and figures', or P012_scan.md has a not_key::
-    line for it. Low-priority and retired concepts are left out."""
-    d, nk, out, seen = SRC(m.root, pid), scan_notkey(m, pid), [], set()
+    (P012-eq4.webp, P012-F2c.webp, P012-SF3.webp; .png in a vault whose crops are PNG) or, for an equation with no
+    crop, the card's id. It is done when the hub embeds the image, or links the card under '## Key equations and
+    figures', or P012_scan.md has a not_key:: line for it, in either format's name. Low-priority and retired concepts
+    are left out."""
+    d, nk, out, seen = SRC(m.root, pid), {(k[0], crop_stem(k[1])) for k in scan_notkey(m, pid)}, [], set()
+    ext = ".png" if glob.glob(J(d, pid + "-*.png")) and not glob.glob(J(d, pid + "-*.webp")) else ".webp"  # the name a crop not yet cut will get
+    named = lambda stem: os.path.basename(crop_file(d, stem) or stem + ext)
     for c in sorted(m.evidence(pid), key=lambda c: c.id):
         if c.get("retired"): continue
         items = []
         for a in m.anchors(c):
             e, f = re.fullmatch(r"eq[0-9a-z]+", a), re.fullmatch(r"(SI-)?(F\d+[a-z]*)", a)
-            if e and os.path.exists(J(d, f"{pid}-{a}.png")): items.append(f"{pid}-{a}.png")
-            elif f: items.append(f"{pid}-{'S' if f.group(1) else ''}{f.group(2)}.png")
+            if e and crop_file(d, f"{pid}-{a}"): items.append(named(f"{pid}-{a}"))
+            elif f: items.append(named(f"{pid}-{'S' if f.group(1) else ''}{f.group(2)}"))
         if c.all("equation") and not any(i.startswith(f"{pid}-eq") for i in items): items.append(c.id)
         cons = sorted({t for v in c.all("concepts") for t in m.ids(v)[0] if m.cards[t].fam == "concept" and m.cards[t].priority != "low" and not m.cards[t].get("retired")})
         for cid in cons:
@@ -3731,8 +3853,8 @@ def scan_eqfig(m, pid):
             for it in dict.fromkeys(items):
                 if (cid, it) in seen: continue
                 seen.add((cid, it))
-                img = J(d, it) if it.endswith(".png") and os.path.exists(J(d, it)) else None
-                done = (it.endswith(".png") and it in hub) or (not it.endswith(".png") and (c.name in key or f"[[{c.id}" in key)) or (cid, it) in nk
+                img = J(d, it) if is_crop(it) and os.path.exists(J(d, it)) else None
+                done = (is_crop(it) and any(crop_stem(it) + e in hub for e in CROP_EXT)) or (not is_crop(it) and (c.name in key or f"[[{c.id}" in key)) or (cid, crop_stem(it)) in nk
                 out.append((cid, it, c, img, done))
     return out
 
@@ -3876,7 +3998,7 @@ def scan_report(m, pid, write=True, only=None):
         print(f"\nEquations and figures of {pid} not yet on the hubs of the concepts their cards name ({len(left)}): embed each key one under '## Key equations and figures' in the hub, with its card and the works it cites; or write '- not_key:: [[concept]] <item> — why' in {pid}_scan.md")
         for cid, it, c, img, _d in left:
             ws = works_cited(m, c)
-            print(f"  [[{cid}]] {it}" + (" (no image yet: crop the panel with `mesh.py figure`)" if it.endswith(".png") and not img else "") + f" — {c.id} {one(c.title, 60)}" + (" · cites " + "; ".join(short_cite(w) for w in ws) if ws else ""))
+            print(f"  [[{cid}]] {it}" + (" (no image yet: crop the panel with `mesh.py figure`)" if is_crop(it) and not img else "") + f" — {c.id} {one(c.title, 60)}" + (" · cites " + "; ".join(short_cite(w) for w in ws) if ws else ""))
     if not write: return
     L = [f"# {pid} concept scan", "", f"Written by `mesh.py scan {pid}` on {TODAY}: every concept in the brain looked for in this source's text. A passage is covered when a card of {pid} anchored there links the concept. For each concept under **To do**, card the new facts the passages state about it (link the concept, anchor the passage, and add `cites::` for the works the paper cites for them), or write on its `decided::` line why there is nothing new. Then run `scan {pid}` again: carded passages move to covered, and decisions are kept.", ""]
     rows = sorted(state.items())
@@ -3903,7 +4025,7 @@ def scan_report(m, pid, write=True, only=None):
     if ef:
         left = [x for x in ef if not x[4]]
         L += ["", f"## Equations and figures for the hubs ({len(left)} to add)", "", "Each equation and figure panel of this source, for each concept its card names. Embed the key ones in the concept's hub under `## Key equations and figures`: the LaTeX or the image (`![[P012-F2c.png|400]]`), a line saying what it shows, the evidence card, and the works the card cites, as `[[R…|Author et al. (year)]]` with a `cites::` line. For one that is not key to that concept, write `- not_key:: [[concept]] <item> — why` here; it is kept when the scan runs again.", ""]
-        L += [f"- [[{cid}]] · {it}" + ("" if (not it.endswith(".png") or img) else " (no image yet: crop it with `mesh.py figure`)") + f" · [[{c.name}|{c.id}]]" + (" · cites " + ", ".join(f"[[{w.name}|{short_cite(w)}]]" for w in works_cited(m, c)) if works_cited(m, c) else "") for cid, it, c, img, _d in left]
+        L += [f"- [[{cid}]] · {it}" + ("" if (not is_crop(it) or img) else " (no image yet: crop it with `mesh.py figure`)") + f" · [[{c.name}|{c.id}]]" + (" · cites " + ", ".join(f"[[{w.name}|{short_cite(w)}]]" for w in works_cited(m, c)) if works_cited(m, c) else "") for cid, it, c, img, _d in left]
         L += [f"- not_key:: [[{cid}]] {it} — {why}" for (cid, it), why in sorted(nk.items())]
     wr(J(SRC(m.root, pid), pid + "_scan.md"), "\n".join(L).rstrip("\n") + "\n")
     print(f"\nwritten: {relp(J(SRC(m.root, pid), pid + '_scan.md'), m.root)} ({len(td)} to do, {len(dd)} decided, {len(cv)} covered)")
@@ -8509,6 +8631,7 @@ anchor <P###> --correction <pdf> register a published correction: appended to P#
 anchor <P###> --si <files...> register supplementary material: PDFs anchored as P###_SI_text.md (s####), data files sealed as P###_SI-<name>.*
 figure <P###> <page> [--si]   page image with a coordinate grid, to choose a panel's box
 figure <P###> <page> <x0,y0,x1,y1> <name> [--logy] [--ycal v@pos,...] [--force]   read a panel's values from the PDF's vector drawing
+crops [--convert [P###…] [--quality N | --lossless]]  room taken by figure and equation crops; --convert turns PNG crops into WebP and rewrites their embeds
 id <P|K|X|G|H|E|D|C|R|L|P###> next free id                   concept <name>                  existing concepts like a name
 split <batch.md> [--update]   write many cards from one file (`=== <file name>` starts each card)
 build                         expand links to full names, check, rebuild index/, source lists and MAP.md
@@ -8594,6 +8717,7 @@ def main():
     m = Mesh(root)
     if c == "anchor": cmd_anchor(m, a[0], [x for x in a[1:] if not x.startswith("--")], "--force" in a, "--si" in a, "--correction" in a)
     elif c == "figure": cmd_figure(m, a)
+    elif c == "crops": cmd_crops(m, a)
     elif c == "progress": cmd_progress(m, a[0])
     elif c == "place": cmd_place(m, a[0], by_card="--by-card" in a)
     elif c == "refs": cmd_refs(m, a[0], "--force" in a)

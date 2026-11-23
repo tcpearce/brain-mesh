@@ -345,7 +345,7 @@ d.save("eq.pdf")
 PY
 python3 tools/mesh.py anchor P001 eq.pdf > /dev/null
 python3 tools/mesh.py equations P001 > eqs.txt; grep -q "numbered (1)" eqs.txt && pass "equations finds a numbered equation" || fail "equations"
-python3 tools/mesh.py figure P001 1 110,74,360,98 eq1 > /dev/null; [ -f sources/P001/P001-eq1.png ] && pass "an equation is cropped as an image" || fail "equation crop"
+python3 tools/mesh.py figure P001 1 110,74,360,98 eq1 > /dev/null; { [ -f sources/P001/P001-eq1.webp ] || [ -f sources/P001/P001-eq1.png ]; } && pass "an equation is cropped as an image" || fail "equation crop"
 cat > batch.md <<'CARDS'
 === odorant-distance
 ---
@@ -979,7 +979,9 @@ sed -i 's/^## Where it appears$/## Key equations and figures\n- **Swelling law**
 printf -- '- not_key:: [[binding-capacity]] P001-eq1.png — about swelling, not capacity\n- not_key:: [[temperature]] P001-eq1.png — temperature only enters as a variable\n- not_key:: [[imprinted-polymer-film]] P001-eq1.png — not about the film as such\n- not_key:: [[cavity-collapse]] P001-eq1.png — the law is for swelling, not collapse\n' >> $S1/P001_scan.md
 python3 tools/mesh.py scan P001 > scan.txt
 ! grep -q "P001-eq1.png — P001-007" scan.txt && grep -q "^## Equations and figures for the hubs (0 to add)" $S1/P001_scan.md && grep -q "^- not_key:: \[\[temperature\]\] P001-eq1.png — temperature only" $S1/P001_scan.md && pass "an equation on the hub, or decided not key, leaves the list, and the decisions are kept" || { cat scan.txt; cat $S1/P001_scan.md; fail "scan equations done"; }
-cp "$T/c7.bak" "$c7"; rm $S1/P001-eq1.png
+mv $S1/P001-eq1.png $S1/P001-eq1.webp; python3 tools/mesh.py scan P001 > scan.txt
+grep -q "^## Equations and figures for the hubs (0 to add)" $S1/P001_scan.md && pass "a crop converted to WebP still counts as embedded and decided where the hub and the scan file name its PNG" || { cat scan.txt; fail "crop matched by name without its extension"; }
+cp "$T/c7.bak" "$c7"; rm $S1/P001-eq1.webp
 # 15. every link can be followed both ways (1.12.0)
 cp -r "$ROOT/demo-vault" "$T/bl"; cd "$T/bl"; cp "$MESH" tools/mesh.py
 S1=$(ls -d sources/P001*)
@@ -1902,4 +1904,54 @@ grep -q "^This is the overview: the head of every miner" d1.txt && ! grep -q "st
 python3 tools/mesh.py discover moderators | grep -q "This is the overview" && fail "a named miner printed the overview" || pass "a named miner prints its details as before"
 rm $S1/P001-1[0-9][0-9]-capacity-at-*.md; python3 tools/mesh.py build > b3.txt 2>&1 || true
 [ ! -f $PG ] && ! grep -q "binding-capacity--all" $HUB && pass "when the list fits the hub again, the page is removed and the hub lists its cards itself" || { ls index/hubs; fail "hub page removed"; }
+# 39. figure and equation crops are WebP, and a vault's PNG crops convert together with their embeds (1.24.1)
+cp -r "$ROOT/demo-vault" "$T/cr"; cd "$T/cr"; cp "$MESH" tools/mesh.py; S1=$(ls -d sources/P001*)
+mkdir -p nopil/PIL; echo 'raise ImportError("no Pillow here")' > nopil/PIL/__init__.py
+PYTHONPATH=nopil python3 tools/mesh.py figure P001 1 60,60,300,160 eq5 > f0.txt 2>&1
+[ -f $S1/P001-eq5.png ] && [ ! -f $S1/P001-eq5.webp ] && grep -q '!\[\[P001-eq5.png\]\]' f0.txt && pass "without Pillow a crop is a PNG, as before" || { cat f0.txt; fail "png fallback"; }
+(PYTHONPATH=nopil python3 tools/mesh.py crops 2>&1 || true) | grep -q "crops needs Pillow" && pass "crops says what it needs when Pillow is missing" || fail "crops without Pillow"
+rm -f $S1/P001-eq5.png
+if python3 -c "import PIL" 2>/dev/null; then
+python3 tools/mesh.py figure P001 1 60,60,300,160 eq3 > f1.txt 2>&1
+[ -f $S1/P001-eq3.webp ] && [ ! -f $S1/P001-eq3.png ] && grep -q '!\[\[P001-eq3.webp\]\]' f1.txt && pass "a new crop is written as WebP, and figure names that file for the embed" || { cat f1.txt; fail "webp crop"; }
+python3 - <<'PY'
+import glob
+from PIL import Image, ImageDraw
+try: import pymupdf as fitz
+except ImportError: import fitz
+d = glob.glob("sources/P001*")[0]
+for n in ("F2a", "F3"): fitz.open(d + "/P001.pdf")[0].get_pixmap(dpi=300, clip=fitz.Rect(60, 60, 400, 300)).save(d + f"/P001-{n}.png")
+im = Image.new("RGB", (600, 400), "white"); dr = ImageDraw.Draw(im)  # thin saturated lines, which lossy WebP fades
+for k, col in enumerate([(255, 255, 0), (0, 255, 0), (255, 0, 0), (0, 0, 255), (0, 255, 255), (255, 0, 255)] * 8): dr.line([(10, 8 + 8 * k), (590, 12 + 8 * k)], fill=col, width=1)
+im.save(d + "/P001-F2b-lines.png")
+PY
+python3 tools/mesh.py figure P001 1 60,60,300,160 F3 --force > f3.txt 2>&1 || true
+[ -f $S1/P001-F3.png ] && [ ! -f $S1/P001-F3.webp ] && pass "a panel the vault holds as PNG is cut again as PNG, so its embeds stay right" || { cat f3.txt; fail "re-crop keeps the format"; }
+rm $S1/P001-F3.png $S1/P001-F3.csv 2>/dev/null; cp $S1/P001-F2a.png ka.png; cp $S1/P001-F2b-lines.png kb.png; cp $S1/P001_text.md text.bak
+sed -i 's/^## Where it appears$/## Key equations and figures\n- Panel A: ![[P001-F2a.png|400]] and [[P001-F2b-lines.png]]\n\n## Where it appears/' concepts/swelling.md
+mkdir -p notes; printf 'My note embeds ![[P001-F2a.png|300]], and names P009-F1.png and xP001-F2a.png, which are not crops here.\n' > notes/mine.md
+printf -- '- not_key:: [[temperature]] P001-F2a.png — a schematic\n' >> $S1/P001_scan.md
+python3 tools/mesh.py crops > c0.txt 2>&1
+grep -q "^crops: 2 PNG" c0.txt && grep -q "Nothing was changed" c0.txt && [ -f $S1/P001-F2a.png ] && [ ! -f $S1/P001-F2a.webp ] && grep -q "P001-F2a.png|400" concepts/swelling.md && pass "crops alone reports what converting would save and changes nothing" || { cat c0.txt; fail "crops dry run"; }
+python3 tools/mesh.py crops --convert > c1.txt 2>&1
+[ ! -f $S1/P001-F2a.png ] && [ ! -f $S1/P001-F2b-lines.png ] && [ -f $S1/P001-F2a.webp ] && [ -f $S1/P001-F2b-lines.webp ] && grep -q "^converted 2 crops" c1.txt && pass "crops --convert replaces each PNG crop with a WebP" || { cat c1.txt; fail "crops convert"; }
+grep -q '!\[\[P001-F2a.webp|400\]\] and \[\[P001-F2b-lines.webp\]\]' concepts/swelling.md && grep -q '!\[\[P001-F2a.webp|300\]\], and names P009-F1.png and xP001-F2a.png' notes/mine.md && grep -q "^- not_key:: \[\[temperature\]\] P001-F2a.webp — a schematic" $S1/P001_scan.md && cmp -s $S1/P001_text.md text.bak && pass "every embed and mention of a converted crop is rewritten, in hubs, notes and the scan file, and nothing else is touched" || { cat concepts/swelling.md notes/mine.md; fail "embeds rewritten"; }
+python3 - > cv.txt 2>&1 <<'PY'
+import glob, os
+from PIL import Image
+d = glob.glob("sources/P001*")[0]
+a, b = open(d + "/P001-F2a.webp", "rb").read(), open(d + "/P001-F2b-lines.webp", "rb").read()
+ok = a[12:16] == b"VP8 " and Image.open(d + "/P001-F2a.webp").size == Image.open("ka.png").size and len(a) < os.path.getsize("ka.png")
+same = b[12:16] == b"VP8L" and Image.open(d + "/P001-F2b-lines.webp").convert("RGB").tobytes() == Image.open("kb.png").convert("RGB").tobytes()
+print("lossy ok" if ok else "lossy BAD", a[12:16], len(a), os.path.getsize("ka.png")); print("lossless ok" if same else "lossless BAD", b[12:16])
+PY
+grep -q "^lossy ok" cv.txt && grep -q "^lossless ok" cv.txt && grep -q "1 kept lossless" c1.txt && pass "a crop keeps its pixel size, and one whose thin coloured lines would fade is kept lossless, pixel for pixel" || { cat cv.txt c1.txt; fail "crop fidelity"; }
+tail -1 ledger/CHANGELOG.md | grep -q "crops: 2 PNG crops converted to WebP" && (python3 tools/mesh.py build > b1.txt 2>&1 || true) && ! grep -q "broken link \[\[P001-F2" b1.txt && python3 tools/mesh.py crops --convert | grep -q "nothing to convert" && pass "the conversion is logged, the build finds every embed, and a second run has nothing to do" || { tail -5 b1.txt; fail "after converting"; }
+python3 - <<'PY'
+import json
+c = json.load(open("MESH.json")); c["crop_quality"] = "lossless"; json.dump(c, open("MESH.json", "w"), indent=1)
+PY
+python3 tools/mesh.py figure P001 1 60,60,300,160 eq4 > /dev/null 2>&1; [ "$(head -c 16 $S1/P001-eq4.webp | tail -c 4)" = "VP8L" ] && pass 'MESH.json "crop_quality": "lossless" writes every new crop lossless' || fail "crop_quality lossless"
+grep -q "^\*.webp binary" .gitattributes && pass "WebP files are binary to git" || fail "gitattributes webp"
+else pass "(Pillow is not installed here, so the WebP checks are skipped)"; fi
 echo "ALL TESTS PASSED"

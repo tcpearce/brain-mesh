@@ -2,6 +2,15 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.24.1 — 2026-11-23
+
+Figure and equation crops are WebP. In a twelve-source vault 264 crops took 48.7 MB as PNG, a quarter of the working tree and about 4 MB for every paper added; as WebP at the same pixel size they take 10.3 MB.
+
+- **`figure` writes WebP** (`P012-F2c.webp`, `P012-eq4.webp`) at 300 dpi as before, at quality 80 (MESH.json `"crop_quality"`: 1 to 100, or `"lossless"`). It needs Pillow; without it the crop is a PNG as before. A panel the vault already holds as PNG is cut again as PNG, so the cards that embed it stay right.
+- **Thin coloured lines are protected.** Lossy WebP halves the colour resolution, which fades one-pixel coloured lines. Each crop is compared with its rendering over the inked pixels, and one that would differ by more than a set amount (28 dB) is written lossless, every pixel kept. In the vault above that is 22 crops of 264.
+- **`crops`** reports the room the crops take and what converting would save, and changes nothing. **`crops --convert`** (optionally for named sources, with `--quality N` or `--lossless`) writes each PNG crop as WebP, rewrites every embed and mention of it in cards, hubs, scan files and the user's notes, removes the PNG and logs the change. Then `build`. Git keeps the PNG in history, and `figure` can cut any crop again from the PDF.
+- `scan` matches a figure or equation to its hub embed and its `not_key::` line by name without the extension, so decisions recorded under the PNG name still stand. `latex` reads a crop in either format. `*.webp binary` joins `.gitattributes`, in new vaults and at `upgrade`.
+
 ## 1.24.0 (2026-11-23)
 
 Lists that grow with the vault are capped, and nothing is lost. An LLM reading the vault no longer pays for them at every build.

@@ -70,6 +70,7 @@ Tools:
 | What needs attention | `health`, `gaps` (the head of each section; `gaps --all` for every row) |
 | What `check` found | `build` and `check` print every error, and every warning while they are forty or fewer; beyond that they count warnings by kind with an example of each. Every line is in `index/check.txt` after a build, under `check --all`, or for one source with `check P012` |
 | Every card that names a concept | The hub lists the first of each kind by title. When more than a few remain, they are on the concept's generated page `index/hubs/<concept>--all.md`, linked from the hub. Use `table`, `facts` or `zoom` rather than opening that page |
+| A figure panel or a printed equation as an image | `sources/P012-…/P012-F2c.webp`, `P012-eq4.webp` (`.png` in a vault whose crops were made before 1.24.1): read the file, or cut it with `figure`. `crops` reports the room the crops take |
 | Bulk work | `index/cards.tsv`, `index/edges.tsv`, `index/coverage.tsv`: plain tables to filter with grep or a short script |
 | A bibliography | `references/library.bib` (everything), `sources/P012-…/P012_refs.bib` (one paper) |
 

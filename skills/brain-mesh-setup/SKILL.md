@@ -34,7 +34,7 @@ The tooling is one file, `tools/mesh.py`, kept in the `tcpearce/brain-mesh` repo
 
 Never retype or reconstruct the tooling from memory: a checker that differs silently from the tested one is worse than none. If neither the repository nor a vault copy can be reached, say so and stop; cards can still be drafted by hand to the formats in `brain-mesh` and checked later.
 
-Requirements: Python 3.8 or later, and PyMuPDF (`pip install pymupdf`). PyMuPDF gives the cleanest paragraphs and is the only route to the marked PDFs that show each card on the page. Without it the tooling falls back to poppler's `pdftotext`, `pdfplumber` or `pypdf` for text and skips marking. Scanned PDFs need OCR first (`ocrmypdf`, or `tesseract` on page images).
+Requirements: Python 3.8 or later, and PyMuPDF (`pip install pymupdf`). PyMuPDF gives the cleanest paragraphs and is the only route to the marked PDFs that show each card on the page. Without it the tooling falls back to poppler's `pdftotext`, `pdfplumber` or `pypdf` for text and skips marking. Scanned PDFs need OCR first (`ocrmypdf`, or `tesseract` on page images). Pillow (`pip install pillow`; it comes with matplotlib and Anaconda) lets `figure` write its crops as WebP, about a fifth of the size of PNG; without it they are PNG.
 
 ## 3. Test the tooling
 
@@ -85,6 +85,7 @@ Cards are written in Claude's and the user's own words and can be shared. Publis
 
 - New tooling or instructions: pull the repository, then `python3 <repository>/tools/mesh.py upgrade <vault folder>` and `build` in the vault. `python3 tools/mesh.py version` shows what a vault is running.
 - Changing the tooling or these instructions: edit them in the repository, run `bash tests/run.sh`, raise `VERSION` in `tools/mesh.py` and the `VERSION` file together, add a line to `CHANGELOG.md`, commit and push. Every session picks the change up at its next pull.
+- A vault whose figure and equation crops are PNG (made before 1.24.1): `python3 tools/mesh.py crops` shows the room they take and what WebP would save; `crops --convert` writes each as WebP at the same pixel size, rewrites every embed and mention to the new name and removes the PNG, then `build` and sync. A crop whose thin coloured lines would fade is kept lossless. Needs Pillow.
 - A vault made before source checksums existed: run `python3 tools/mesh.py seal` once to record them, then `build` to create the marked PDFs.
 - `MESH.json` records the schema number the vault was built with, and `python3 tools/mesh.py schema` prints what the tooling enforces.
 - If the card format changes, write a one-off migration script, run it on a copy of the vault, `build`, and compare card counts and error counts before replacing the original. Log the migration.

@@ -159,7 +159,7 @@ Compare each topic once, when you first mine it. Claude records every verdict (`
 
 Then run `beyond terms` again: a shared term appears only once two papers use it.
 
-**It stays readable as it grows.** `zoom`, `routes`, `ask`, `find` and `facts` print to a budget. A concept hub lists its first cards by title and links a generated page (`index/hubs/`) for the rest; `build` and `check` count warnings by kind once there are more than forty and keep every line in `index/check.txt`; `gaps` and a bare `discover` print the head of each section. `--all` or `--full` prints everything. Figure and equation crops are WebP, about a fifth of the size of PNG; `crops --convert` converts the PNG crops of an older vault and rewrites their embeds.
+**It stays readable as it grows.** `zoom`, `routes`, `ask`, `find` and `facts` print to a budget. A concept hub lists its first cards by title and links a generated page (`index/hubs/`) for the rest; `build` and `check` count warnings by kind once there are more than forty and keep every line in `index/check.txt`; `gaps` and a bare `discover` print the head of each section. `--all` or `--full` prints everything. Figure and equation crops are WebP, about a fifth of the size of PNG; `crops --convert` converts the PNG crops of an older vault and rewrites their embeds. `build` and `check` keep what they work out from files that have not changed (a workbook's cells, a data file's numbers, where each concept is named in each source) in `index/.scratch/cache/` on your computer, so adding a paper costs the work for that paper; a twelve-source vault builds in about four seconds.
 
 **What makes it work**
 

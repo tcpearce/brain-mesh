@@ -2029,4 +2029,39 @@ if command -v git > /dev/null; then
   [ -f "$T"/mg2/$S1/P001_marked.pdf ] && python3 "$T/land.py" "$T/mg2" | grep "^user" | cmp -s - "$T/mg-u1.txt" && [ "$(wc -l < "$T/mg-u1.txt")" = 7 ] && python3 "$T/land.py" "$T/mg2" | grep -q "^land [0-9]* miss 0$" && [ -z "$(git -C "$T/mg2" status --porcelain)" ] && pass "another copy pulls, builds its own marked copies with the reader's annotations, and has nothing to commit" || { cat "$T/mg2-s.txt"; git -C "$T/mg2" status --porcelain; fail "marked copies after a pull"; }
 fi
 else pass "(PyMuPDF is not installed here, so the marked-copy checks are skipped)"; fi
+# 41. build and check do each piece of work once, keep what they work out from unchanged files, and give the same results (1.26.0)
+cp -r "$ROOT/demo-vault" "$T/inc"; cd "$T/inc"; cp "$MESH" tools/mesh.py; rm -rf index/.scratch
+python3 - > k.txt 2>&1 <<'PY'
+import sys, os, json; sys.path.insert(0, "tools"); import mesh
+m = mesh.Mesh("."); calls = []
+open("data.csv", "w").write("a,b\n1.5,2.25\n3,1000\n")
+make = lambda: (calls.append(1), sorted(mesh.csv_numbers("data.csv")))[1]
+a = list(mesh.kept("data.csv", "t-numbers", make, floats=True)); mesh._KEPT["mem"].clear()
+b = list(mesh.kept("data.csv", "t-numbers", make, floats=True)); mesh._KEPT["mem"].clear()
+print("kept ok" if a == b == [1.5, 2.25, 3.0, 1000.0] and len(calls) == 1 else f"kept BAD {a} {b} {calls}")
+open("data.csv", "w").write("a,b\n1.5,2.25\n3,1000\n7,8\n"); mesh._KEPT["mem"].clear(); mesh._CSVNUMS.clear()
+c = list(mesh.kept("data.csv", "t-numbers", make, floats=True)); mesh._KEPT["mem"].clear()
+print("changed ok" if c == [1.5, 2.25, 3.0, 7.0, 8.0, 1000.0] and len(calls) == 2 else f"changed BAD {c} {calls}")
+mesh.VERSION = "0.0.0-other"; d = list(mesh.kept("data.csv", "t-numbers", make, floats=True))
+print("version ok" if len(calls) == 3 and d == c else f"version BAD {calls}")
+t = mesh.kept("data.csv", "t-text", lambda: ["x", [1, 2]]); mesh._KEPT["mem"].clear(); print("json ok" if mesh.kept("data.csv", "t-text", lambda: 1 / 0) == ["x", [1, 2]] else "json BAD")
+PY
+grep -q "^kept ok" k.txt && grep -q "^changed ok" k.txt && grep -q "^version ok" k.txt && grep -q "^json ok" k.txt && pass "what is worked out from a file is kept between runs, and worked out again when the file or the tooling version changes" || { cat k.txt; fail "kept values"; }
+python3 - > h.txt 2>&1 <<'PY'
+import sys, re; sys.path.insert(0, "tools"); import mesh
+def hits(cache=True):
+    m = mesh.Mesh(".")
+    if not cache: mesh._KEPT["dir"] = None
+    return {p: mesh.concept_hits(m, p) for p in ("P001", "P002")}
+plain = hits(False); cold = hits(); warm = hits()
+same = lambda a, b: a == b and all(list(a[p]) == list(b[p]) and all(type(x) is tuple for h in b[p].values() for v in h.values() for x in v) for p in a)
+print("hits ok" if same(plain, cold) and same(plain, warm) and plain["P001"] else "hits BAD")
+f = "concepts/water.md"; t = open(f, encoding="utf-8").read(); t2 = re.sub(r"^aliases: \[(.*)\]$", lambda mo: f'aliases: [{mo.group(1)}, "solvent"]', t, count=1, flags=re.M); assert t2 != t; open(f, "w", encoding="utf-8").write(t2)
+after, afterplain = hits(), hits(False)
+print("alias ok" if same(after, afterplain) and after != warm else f"alias BAD {after == warm}")
+PY
+grep -q "^hits ok" h.txt && grep -q "^alias ok" h.txt && pass "where concepts are named in a source is kept between runs, matches a search from scratch, and is searched again for a concept whose names change" || { cat h.txt; fail "concept hits kept"; }
+cp "$ROOT/demo-vault/concepts/water.md" concepts/water.md; rm -rf index/.scratch; (python3 tools/mesh.py check --all > c1.txt 2>&1 || true); (python3 tools/mesh.py check --all > c2.txt 2>&1 || true); ls index/.scratch/cache/hits-P001.json.gz > /dev/null && cmp -s c1.txt c2.txt && pass "check prints the same from kept values as from scratch" || { diff c1.txt c2.txt; fail "check with kept values"; }
+for seed in 1 2 3 4; do PYTHONHASHSEED=$seed python3 tools/mesh.py zoom binding-capacity > z$seed.txt 2>&1; done
+cmp -s z1.txt z2.txt && cmp -s z1.txt z3.txt && cmp -s z1.txt z4.txt && pass "zoom prints the same on every run: ties between concepts are settled by name, not by chance" || { diff z1.txt z2.txt; fail "zoom repeatable"; }
 echo "ALL TESTS PASSED"

@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, bisect, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.25.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.26.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -96,6 +96,42 @@ def wr(p, t):  # always LF line endings: a build on Windows must produce the sam
     with open(p, "w", encoding="utf-8", newline="\n") as f: f.write(t)
 def squeeze(s): return re.sub(r"[^a-z0-9]+", "", unicodedata.normalize("NFKC", str(s)).lower())
 _BOOKS, _SHEETS, _TABLES, _CSVNUMS = {}, {}, {}, {}
+_KEPT = {"dir": None, "mem": {}}  # "dir" is set to <vault>/index/.scratch/cache when a vault is opened
+def kept(path, kind, make, floats=False):
+    """A value worked out from one file (`kind` says which), remembered for this run and, inside a vault, on this
+    computer between runs: index/.scratch/cache/, which git ignores. It is reused only while the file's size and
+    modification time and the tooling version are unchanged, so a stale answer cannot outlive a change to either.
+    Source files are sealed and never change, so a workbook is parsed once per computer and release, not once per run.
+    The value must survive JSON (text, numbers, lists); with floats=True it is a list of numbers, kept as packed and
+    compressed 64-bit floats and returned as an array, which a sorted list of a million numbers needs to load fast."""
+    import array, zlib, gzip
+    st = os.stat(path); stat = [st.st_size, st.st_mtime_ns]; key = (path, kind, st.st_size, st.st_mtime_ns)
+    if key in _KEPT["mem"]: return _KEPT["mem"][key]
+    f = J(_KEPT["dir"], hashlib.sha1((os.path.abspath(path) + "|" + kind).encode()).hexdigest()[:24] + (".f64z" if floats else ".json.gz")) if _KEPT["dir"] else None
+    val, hit = None, False
+    if f and os.path.exists(f):
+        try:
+            if floats:
+                with open(f, "rb") as h:
+                    head = json.loads(h.readline().decode())
+                    if head.get("v") == VERSION and head.get("stat") == stat: val = array.array("d"); val.frombytes(zlib.decompress(h.read())); hit = True
+            else:
+                with gzip.open(f, "rt", encoding="utf-8") as h: d = json.load(h)
+                if d.get("v") == VERSION and d.get("stat") == stat: val, hit = d["data"], True
+        except Exception: val, hit = None, False
+    if not hit:
+        val = array.array("d", make()) if floats else make()
+        if f:
+            try:
+                os.makedirs(_KEPT["dir"], exist_ok=True)
+                if floats:
+                    with open(f + ".tmp", "wb") as h: h.write((json.dumps({"v": VERSION, "stat": stat}) + "\n").encode()); h.write(zlib.compress(val.tobytes(), 1))
+                else:
+                    with gzip.open(f + ".tmp", "wt", encoding="utf-8", compresslevel=1) as h: json.dump({"v": VERSION, "stat": stat, "data": val}, h)
+                os.replace(f + ".tmp", f)
+            except Exception: pass
+    _KEPT["mem"][key] = val
+    return val
 def book_rows(path):
     """Every sheet of a .xlsx or .xlsm as [(title, [[cell …]])], through openpyxl (an optional dependency, like
     PyMuPDF); [] without it or for a file it cannot open. Opened once per file and version: a workbook is slow to
@@ -122,6 +158,12 @@ def sheet_cells(path):
                     else: text.append(str(v))
         _SHEETS[key] = (" ".join(text), nums)
     return _SHEETS[key]
+def sheet_text(path):
+    """A spreadsheet's text cells joined, kept between runs."""
+    return kept(path, "celltext", lambda: sheet_cells(path)[0])
+def file_numbers(path):
+    """The numbers of a data file, sorted and kept between runs: a workbook's numeric cells, or every number in a .csv or .tsv."""
+    return kept(path, "numbers", lambda: sorted(sheet_cells(path)[1] if path.lower().endswith((".xlsx", ".xlsm")) else csv_numbers(path)), floats=True)
 def csv_numbers(path):
     """The numbers of a deposited .csv or .tsv at full precision, read once per file and version (issue #30)."""
     key = (path, os.path.getmtime(path))
@@ -211,6 +253,11 @@ def one(s, n=150):
 def plain(s): return WIKI.sub(lambda m: (m.group(3) or "|" + m.group(1))[1:], s)
 def toks(s): return {w for w in re.findall(r"[a-z0-9.]+", unicodedata.normalize("NFKC", plain(str(s))).lower()) if w not in STOP}
 def jac(a, b): return len(a & b) / len(a | b) if a and b else 0.0
+def alike(x, y, at=0.9):
+    """difflib's ratio(x, y) >= at, asked the cheap way first: the two quick ratios are upper bounds on it, so a pair
+    they rule out need not be compared in full."""
+    sm = difflib.SequenceMatcher(None, x, y)
+    return sm.real_quick_ratio() >= at and sm.quick_ratio() >= at and sm.ratio() >= at
 def reason(v): return v.split(" — ", 1)[1].strip() if " — " in v else ""
 def sha(path):
     h = hashlib.sha256()
@@ -782,6 +829,7 @@ class Mesh:
         s.root, s.err, s.warn, s._blocks, s._terms, s.absent = root, [], [], {}, {}, []
         s._hits, s._crx, s._clinks, s._citedat, s._proposed = {}, {}, {}, None, None
         s.cfg = json.loads(rd(J(root, "MESH.json")))
+        _KEPT["dir"] = J(root, "index", ".scratch", "cache"); s._parts, s._xsorted, s._sifiles = {}, {}, {}
         s.cards, s.byname, s.alias = {}, {}, {}
         def add(f, fam, cid):
             if cid in s.cards: s.err.append(f"{cid}: two files claim this id ({s.cards[cid].name}, {os.path.basename(f)})"); return
@@ -865,6 +913,27 @@ class Mesh:
     def terms(s, c):
         if c.id not in s._terms: s._terms[c.id] = {i for k, v in c.codes if k in ("concepts", "value", "when", "maps") for i in s.ids(v)[0] if s.cards[i].fam == "concept"}
         return s._terms[c.id]
+    def part(s, key):
+        """What check needs of one piece of a card's anchored material, worked out once per run: [it has text, its
+        text squeezed, its numbers sorted]. A piece is a paragraph of the anchored text ("b", source, id), a table or
+        data file ("f", path) or the text cells of a workbook ("x", path). Many cards anchor the same piece, and a
+        deposited data file is large: squeezing it and reading its numbers for each card was most of check's time.
+        For a large file both are also kept between runs."""
+        if key not in s._parts:
+            text = lambda: s.blocks(key[1])[key[2]][1] if key[0] == "b" else sheet_text(key[1]) if key[0] == "x" else rd(key[1])
+            sq = lambda t: [bool(t.strip()), squeeze(t)]
+            nm = lambda t: sorted(float(x) for x in re.findall(r"\d+(?:\.\d+)?", re.sub(r"(?<=\d),(?=\d{3}\b)", "", t)))
+            if key[0] == "b" or os.path.getsize(key[1]) < 200000: t = text(); s._parts[key] = sq(t) + [nm(t)]
+            else: s._parts[key] = list(kept(key[1], "squeezed-" + key[0], lambda: sq(text()))) + [kept(key[1], "textnumbers-" + key[0], lambda: nm(text()), floats=True)]
+        return s._parts[key]
+    def data_numbers(s, dfiles):
+        """The numbers of the data files a card anchors, sorted; worked out once for each set of files."""
+        if dfiles not in s._xsorted: s._xsorted[dfiles] = file_numbers(dfiles[0]) if len(dfiles) == 1 else sorted(itertools.chain.from_iterable(file_numbers(f) for f in dfiles))
+        return s._xsorted[dfiles]
+    def si_files(s, pid, a):
+        """The supplementary files an anchor such as SI-data-s3 names, looked up once per run."""
+        if (pid, a) not in s._sifiles: s._sifiles[(pid, a)] = glob.glob(J(SRC(s.root, pid), f"{pid}_{a}.*"))
+        return s._sifiles[(pid, a)]
     def anchors(s, c):
         out = []
         for tok in [t.strip() for v in c.all("anchor") for t in re.split(r"[,;]\s*", v)]:
@@ -991,25 +1060,23 @@ class Mesh:
                     if ws: W.append(f"{i}: its passage cites {', '.join(f'{r.id} {short_cite(r)}' for r in ws[:5])}{' …' if len(ws) > 5 else ''}; add '- cites:: [[R…]] — what it supports' for each work the statement rests on, or '- cites:: none — <why>' (`mesh.py scan {pid}` shows the works cited in its own sentence)")
                 for k, _v in c.codes:
                     if k in LINK_KEYS and k not in EVIDENCE_RELS + UNIVERSAL and not (k == "also_cited_by" and c.type == "cited"): E.append(f"{i}: '{k}::' is not an evidence relation {EVIDENCE_RELS}")
-                bl, src, has_block, an, xnums, dfiles = s.blocks(pid), "", False, s.anchors(c), [], []
+                bl, parts, has_block, an, dfiles = s.blocks(pid), [], False, s.anchors(c), []  # parts: the pieces of anchored material, in anchor order
                 if not an: E.append(f"{i}: no '- anchor::' code")
                 for a in an:
                     if re.fullmatch(r"[bsc]\d{4}", a):
                         has_block = True
-                        if a in bl: src += " " + bl[a][1]
+                        if a in bl: parts.append(("b", pid, a))
                         else: E.append(f"{i}: anchor {a} not in {pid}{part_of(a)}_text.md")
                     elif re.fullmatch(r"(SI-)?T\d+", a):
                         p = J(SRC(s.root, pid), f"{pid}-{'S' if a.startswith('SI') else ''}{a.split('-')[-1]}.csv")
-                        if os.path.exists(p): src += " " + rd(p)
+                        if os.path.exists(p): parts.append(("f", p))
                         else: W.append(f"{i}: table {a} has no sources/{pid}/{os.path.basename(p)}")
-                    elif re.fullmatch(r"SI-[\w.-]+", a) and glob.glob(J(SRC(s.root, pid), f"{pid}_{a}.*")):
-                        for f in glob.glob(J(SRC(s.root, pid), f"{pid}_{a}.*")):
+                    elif re.fullmatch(r"SI-[\w.-]+", a) and s.si_files(pid, a):
+                        for f in s.si_files(pid, a):
                             if f.lower().endswith((".csv", ".tsv", ".txt", ".md")):
-                                src += " " + rd(f)
-                                if f.lower().endswith((".csv", ".tsv")):  # a deposited data file holds full precision, like a workbook (issue #30)
-                                    dfiles.append(f); xnums += csv_numbers(f)
-                            elif f.lower().endswith((".xlsx", ".xlsm")):  # a source-data workbook (issue #37)
-                                st, sn = sheet_cells(f); src += " " + st; xnums += sn; dfiles.append(f)
+                                parts.append(("f", f))
+                                if f.lower().endswith((".csv", ".tsv")): dfiles.append(f)  # a deposited data file holds full precision, like a workbook (issue #30)
+                            elif f.lower().endswith((".xlsx", ".xlsm")): parts.append(("x", f)); dfiles.append(f)  # a source-data workbook (issue #37)
                     elif not re.fullmatch(r"(F\d+[a-z]*|p\d+|eq[0-9a-z]+|SI\S*|CR-p\d+)", a): E.append(f"{i}: bad anchor '{a}'")
                 vals = [s.pair(v) for v in c.all("value")]
                 firstlink = lambda v: (WIKI.search(v).group(1).strip() if WIKI.search(v) else "")
@@ -1020,16 +1087,16 @@ class Mesh:
                     if not wv and any(firstlink(v_) in s.proposed() for v_ in c.all("when")): continue
                     if not wv or s.cards[wv].fam != "concept": E.append(f"{i}: 'when::' must start with a [[variable]] concept link then ' = '")
                     elif s.cards[wv].get("unit") == "categorical" and not is_term: E.append(f"{i}: when {wv} is categorical, so its value must be a concept link (got '{val}')")
-                if (src.strip() or xnums) and via in ("text", "table", "si"):
+                dig = [s.part(k) for k in parts] if via in ("text", "table", "si") else []
+                xs = s.data_numbers(tuple(dfiles)) if via in ("text", "table", "si") else []
+                if (any(d[0] for d in dig) or xs) and via in ("text", "table", "si"):
                     loc = c.get("loc").strip("\"'“”")
                     if loc:
-                        if squeeze(loc) not in squeeze(src): W.append(f"{i}: loc phrase not found in the anchored source")
+                        ql = squeeze(loc)  # in one piece, or across the join of two: the pieces squeezed and joined are the whole squeezed
+                        if not (any(ql in d[1] for d in dig) or ql in "".join(d[1] for d in dig)): W.append(f"{i}: loc phrase not found in the anchored source")
                     elif via == "text" and has_block: W.append(f"{i}: no '- loc::' phrase")
-                    nums = [float(x) for x in re.findall(r"\d+(?:\.\d+)?", re.sub(r"(?<=\d),(?=\d{3}\b)", "", src))]
-                    if not hasattr(s, "_xsorted"): s._xsorted = {}
-                    if tuple(dfiles) not in s._xsorted: s._xsorted[tuple(dfiles)] = sorted(xnums)  # a data file many cards anchor is sorted once
-                    snums, xs = sorted(nums), s._xsorted[tuple(dfiles)]
-                    near = lambda x: close_in((snums, xs), x)
+                    numlists = tuple(d[2] for d in dig) + (xs,)
+                    near = lambda x: close_in(numlists, x)
                     # a spreadsheet cell holds full precision, so a value the card rounds from it is found too: within half a unit in its last decimal place (issue #37)
                     rounded = lambda x, d: d > 0 and within_in((xs,), x, 0.5 * 10 ** -d + 1e-12)
                     tabs = None
@@ -1435,9 +1502,10 @@ class Mesh:
     def dupes(s, E, W):
         """Duplicate rules. Same source + same statement is a duplicate; other source + same statement must be linked, never merged."""
         ev, by_sig, by_src = s.evidence(), defaultdict(list), defaultdict(list)
+        sg, tk = {c.id: s.sig(c) for c in ev}, {c.id: toks(c.title) for c in ev}  # once for each card, not once for each pair it is in
         for c in ev:
             by_src[c.id[:4]].append(c)
-            if s.sig(c): by_sig[s.sig(c)].append(c)
+            if sg[c.id]: by_sig[sg[c.id]].append(c)
         settled = {frozenset(k.split(":", 1)[1].split("~")) for k in dismissed_contradictions(s.root) if k.startswith("values:")}  # judged not to be one quantity (issue #39)
         for g in by_sig.values():
             for x in range(len(g)):
@@ -1450,7 +1518,7 @@ class Mesh:
             for x in range(len(cs)):
                 for y in range(x + 1, len(cs)):
                     a, b = cs[x], cs[y]
-                    if a.type == b.type and not (s.sig(a) and s.sig(b)) and jac(toks(a.title), toks(b.title)) >= 0.8: W.append(f"{b.id}: title nearly identical to {a.id} in the same source; merge unless they state different things")
+                    if a.type == b.type and not (sg[a.id] and sg[b.id]) and jac(tk[a.id], tk[b.id]) >= 0.8: W.append(f"{b.id}: title nearly identical to {a.id} in the same source; merge unless they state different things")
         cited = defaultdict(list)
         for c in ev:
             if c.type == "cited" and c.get("ref"): cited[" ".join(c.get("ref").lower().split())].append(c)
@@ -1470,7 +1538,7 @@ class Mesh:
                     if a < b and (a, b) not in seen:
                         seen.add((a, b))
                         if b in deflinks[a] and a in deflinks[b]: continue  # each definition names the other: told apart
-                        if any(difflib.SequenceMatcher(None, x.rstrip("s"), y.rstrip("s")).ratio() >= 0.9 for x in names[a] for y in names[b]): W.append(f"concepts {a} and {b} have near-identical names; merge them, or say in each definition how they differ, linking the other ([[{b}]] in {a}'s, [[{a}]] in {b}'s)")
+                        if any(alike(x.rstrip("s"), y.rstrip("s")) for x in names[a] for y in names[b]): W.append(f"concepts {a} and {b} have near-identical names; merge them, or say in each definition how they differ, linking the other ([[{b}]] in {a}'s, [[{a}]] in {b}'s)")
         pg = s.pages("KXGHS")
         for x in range(len(pg)):
             for y in range(x + 1, len(pg)):
@@ -2833,7 +2901,10 @@ def cmd_build(root):
         f = r.fields(); sur = re.sub(r"[^a-z]", "", ascii_fold(first_surname(f.get("authors"))).lower()) or "anon"
         word = next((w for w in re.findall(r"[a-z]+", ascii_fold(f.get("title") or f.get("journal") or "").lower()) if w not in STOP and len(w) > 2), "")
         base = f"{sur}{f.get('year') or ''}{word}"; used[base] += 1; keys[r.id] = base + ("" if used[base] == 1 else "abcdefghijklmnopqrstuvwxyz"[used[base] - 2])
-    bysrc = defaultdict(list)
+    bysrc, citing = defaultdict(list), defaultdict(list)
+    for c in m.cards.values():  # the cards whose own text links each card: one pass, where each reference used to scan them all
+        if c.fam not in ("reference", "source") and not c.get("retired"):
+            for t in {m.resolve(t) for t, _a, _d in WIKI.findall(card_parts(c)[0])}: citing[t].append(c)
     for r in refs:
         f = r.fields(); L = []
         names = [n.strip() for n in (f.get("authors") or "").split(";") if n.strip() and n.strip() != "others"]
@@ -2854,7 +2925,7 @@ def cmd_build(root):
             cards = sorted({c.id: c for b in bs for c in at.get((pid, b), [])}.values(), key=lambda c: c.id)
             L.append(f"- {lk(src) if src else pid} as ref {rn}" + (f", cited at {where}" if where else ""))
             L += [f"  - where {lk(c, one(c.title, 90))} says this" for c in cards[:6]]
-        inb_ = sorted((c for c in m.cards.values() if c.fam not in ("reference", "source") and not c.get("retired") and r.id in {m.resolve(t) for t, _a, _d in WIKI.findall(card_parts(c)[0])}), key=lambda c: c.id)
+        inb_ = sorted(citing.get(r.id, []), key=lambda c: c.id)
         if inb_: L += ["", "**Cited in the brain's cards**"] + [f"- {lk(c, one(c.title, 90))}" + next((f" — {reason(v)}" for v in c.all("cites") if r.id in m.ids(v)[0] and reason(v)), "") for c in inb_]
         L += ["", "**BibTeX**", "```bibtex", bibtex(f, keys[r.id]), "```"]
         new = r.raw[:r.raw.find("\n", r.raw.find("<!--AUTO:START")) + 1] + "\n".join(L) + "\n" + r.raw[r.raw.find("<!--AUTO:END-->"):] if "<!--AUTO:START" in r.raw else r.raw
@@ -3442,7 +3513,7 @@ def zoom_topic(m, slug, budget):
             for t in m.terms(c):
                 if t in of and of[t] != slug:
                     for t0 in mine_: via[of[t]][(t0, t)] += 1
-    jl = [f"topic:{o}: {n} cards" + (", most through " + ", ".join(f"{a}–{b} ({k})" for (a, b), k in via[o].most_common(2)) if via[o] else "") for o, n in other.most_common(6)]
+    jl = [f"topic:{o}: {n} cards" + (", most through " + ", ".join(f"{a}–{b} ({k})" for (a, b), k in ranked(via[o], 2)) if via[o] else "") for o, n in ranked(other, 6)]
     sg = sorted({r[1]: r for t in ts for r in sig[t] if sum(1 for x in r[4] if x in cs) * 2 >= len(r[4])}.values(), key=lambda r: -r[0])
     foot = [f"Go down: `zoom <concept>`. What could be done here: `routes topic:{slug}`. The raw signals: `discover --focus topic:{slug}`. Afterwards: `zoom topic:{slug} --explored \"<what was done or found>\"`."]
     emit(head, [("Concepts, most need to know first", [zoom_line(m, t) for t in ts], 0.35),
@@ -3459,7 +3530,7 @@ def zoom_concept(m, cid, budget):
     down = sorted(c.id for c in m.cards.values() if c.fam == "concept" and any(cid in m.ids(v)[0] for k_ in ("broader", "part_of") for v in c.all(k_)))
     co = Counter(t for c in m.cards.values() if c.fam in ("evidence", "page") and not c.get("retired") and cid in m.terms(c) for t in m.terms(c) if t != cid and t in of)
     head = [f"Concept: {con.title or cid} [{cid}] · topic:{of.get(cid, '-')} · {m.cards[cid].get('kind') or 'concept'} · priority {m.level(cid)} · heat {H.get(cid, 0):.1f}"]
-    head += ["  " + " · ".join(up + ([f"narrower: {', '.join(down[:8])}"] if down else []) + ["appears with: " + ", ".join(f"{t} ({n})" for t, n in co.most_common(6))])]
+    head += ["  " + " · ".join(up + ([f"narrower: {', '.join(down[:8])}"] if down else []) + ["appears with: " + ", ".join(f"{t} ({n})" for t, n in ranked(co, 6))])]
     rel = []
     for (x, y), e in sorted(effects(m).items()):
         if cid in (x, y): rel.append(f"{x} → {y}: {({'+': 'raises', '-': 'lowers', '±': 'raises and lowers'}).get(e['sign'], 'direction not recorded')}, basis {e.get('rel') or 'data'} ({' '.join(e['basis'][:4])})")
@@ -3522,7 +3593,7 @@ def zoom_source(m, c, budget):
     prof = [f"question: {one(plain(st.get('question') or c.get('question') or 'not recorded'), 250)}"] + [f"design: {d} — {one(plain(n_), 160)}" for d, n_ in st["designs"]] + [f"sample: {one(plain(st['sample'] or 'not recorded'), 200)}"]
     claims = [f"{k_}: {one(plain(v), 250)}" for k_, v in cl.codes if k_ in ("main_claim", "sub_claim")] if cl is not None else ["no claims card yet"]
     foot = [f"Go down: `zoom topic:<slug>` for the topics its cards fall in, or `zoom <card id>`. Where its evidence goes: `place {c.id}`."]
-    emit(head, [("Study", prof, 0.25), ("What it claims", claims, 0.35), ("Topics its evidence falls in", [f"topic:{s_}: {n} cards" for s_, n in tc.most_common(8)], 0.2),
+    emit(head, [("Study", prof, 0.25), ("What it claims", claims, 0.35), ("Topics its evidence falls in", [f"topic:{s_}: {n} cards" for s_, n in ranked(tc, 8)], 0.2),
                 ("Not read in full", [u for u in unread_units(c)], 0.2)], foot, budget)
 
 
@@ -3971,18 +4042,53 @@ def concept_hits(m, pid, only=None):
     skip = {b for part in "bsc" for b in ref_paras({k: v for k, v in blocks.items() if k[0] == part})}
     low = {b: t.lower() for b, (_pg, t) in blocks.items() if b not in skip}
     deep_src = pid in m.cards and m.cards[pid].priority == "high"
-    out = {}
+    out, order, starts, at = {}, list(low), [], 0
+    for b in order: starts.append(at); at += len(low[b]) + 1
+    whole = "\n".join(low[b] for b in order)
+    # Where each concept is named in this source is kept on this computer between runs (index/.scratch/cache/), and
+    # reused while the source's text and the concept's own names are unchanged: adding a paper or a concept then
+    # searches only what is new. The key is the text files' size and time, the tooling version, and for each concept
+    # its slug, title, aliases and depth.
+    rows, used, fresh, cf, stat = {}, {}, False, None, None
+    if _KEPT["dir"]:
+        stat = [[os.path.getsize(f_), os.stat(f_).st_mtime_ns] if os.path.exists(f_) else None for f_ in (J(SRC(m.root, pid), pid + part + "_text.md") for part in PARTS)]
+        cf = J(_KEPT["dir"], f"hits-{pid}.json.gz")
+        if os.path.exists(cf):
+            try:
+                import gzip
+                with gzip.open(cf, "rt", encoding="utf-8") as h_: d_ = json.load(h_)
+                if d_.get("v") == VERSION and d_.get("stat") == stat: rows = d_["rows"]
+            except Exception: rows = {}
+    def holding(keys):
+        """The paragraphs that hold any of these strings, in order, found by searching the whole text once for each
+        string rather than each paragraph for each string: the same paragraphs, at a fraction of the work."""
+        got = set()
+        for k in keys:
+            i = whole.find(k) if order else -1
+            while i != -1:
+                j = bisect.bisect_right(starts, i) - 1; got.add(j)
+                i = whole.find(k, starts[j + 1]) if j + 1 < len(order) else -1  # one hit settles a paragraph: go on from the next
+        return [order[j] for j in sorted(got)]
     for con in [c for c in m.cards.values() if c.fam == "concept" and not c.get("retired") and (only is None or c.id == only)]:
         key = (con.id, deep_src or con.priority == "high")
-        if key not in m._crx: m._crx[key] = concept_rx(con, key[1])
-        rx, keys = m._crx[key]
-        if rx is None: continue
-        h = {}
-        for b, tl in low.items():
-            if keys and not any(k in tl for k in keys): continue
-            sp = [mo.span() for mo in rx.finditer(blocks[b][1])]
-            if sp: h[b] = sp
+        sig = hashlib.sha1(json.dumps([con.id, con.title, [str(a) for a in (con.fm.get("aliases") or [])], key[1]], ensure_ascii=False).encode()).hexdigest()[:16]  # all that decides the concept's pattern
+        if sig in rows: h = {b: [tuple(x) for x in sp] for b, sp in rows[sig].items()}
+        else:
+            if key not in m._crx: m._crx[key] = concept_rx(con, key[1])
+            rx, keys = m._crx[key]; h, fresh = {}, True
+            for b in ((holding(keys) if keys and not any("\n" in k for k in keys) else order) if rx is not None else []):
+                if keys and not any(k in low[b] for k in keys): continue
+                sp = [mo.span() for mo in rx.finditer(blocks[b][1])]
+                if sp: h[b] = sp
+        used[sig] = h
         if h: out[con.id] = h
+    if cf and (fresh or len(used) != len(rows)):
+        try:
+            import gzip
+            os.makedirs(_KEPT["dir"], exist_ok=True)
+            with gzip.open(cf + ".tmp", "wt", encoding="utf-8", compresslevel=1) as h_: json.dump({"v": VERSION, "stat": stat, "rows": used}, h_)
+            os.replace(cf + ".tmp", cf)
+        except Exception: pass
     # a name inside a longer name of another concept is not a mention of it: "olfactory receptor" in "olfactory receptor neuron" (issue #17)
     para = defaultdict(list)
     for cid, h in out.items():
@@ -5632,7 +5738,7 @@ def report_novelty(m, args):
         if part(S & m.terms(c)):
             for w_ in works_cited(m, c):
                 if w_.fam == "reference" and w_.status != "held": near[w_.id] += 1
-    L += ["## Rung 2: works the brain knows of and has not read", ""] + ([f"- {rl(m.cards[r])} {one(plain(m.cards[r].title), 120)} [{m.cards[r].status}] · cited by {n} card{'s' * (n != 1)} that hold{'s' * (n == 1)} two or more of these concepts" for r, n in near.most_common(12)] or ["No unread work is cited by a card that holds two or more of these concepts."]) + [""]
+    L += ["## Rung 2: works the brain knows of and has not read", ""] + ([f"- {rl(m.cards[r])} {one(plain(m.cards[r].title), 120)} [{m.cards[r].status}] · cited by {n} card{'s' * (n != 1)} that hold{'s' * (n == 1)} two or more of these concepts" for r, n in ranked(near, 12)] or ["No unread work is cited by a card that holds two or more of these concepts."]) + [""]
     names = [[str(m.cards[c].title or c)] + [str(a) for a in (m.cards[c].fm.get("aliases") or []) if str(a).lower() != str(m.cards[c].title).lower()][:2] for c in cs]
     q = " AND ".join("(" + " OR ".join(f'"{n}"' for n in dict.fromkeys(ns)) + ")" for ns in names)
     gsr = [f"{g.id} searched {g.get('searched')}" for g in m.pages("G") if g.get("searched") and S & m.terms(g)]
@@ -5662,7 +5768,7 @@ def report_changes(m, since=None):
     if not new: new = {c.id for c in m.cards.values() if str(c.fm.get("updated", ""))[:10] >= since}
     newc = [m.cards[i] for i in sorted(new)]
     fam = Counter(("evidence" if c.fam == "evidence" else c.type or c.fam) for c in newc)
-    L += ["## New cards", "", f"{len(newc)} ({how}): " + (", ".join(f"{n} {k_}" for k_, n in fam.most_common()) or "none") + ".", ""]
+    L += ["## New cards", "", f"{len(newc)} ({how}): " + (", ".join(f"{n} {k_}" for k_, n in ranked(fam)) or "none") + ".", ""]
     ns = [c for c in newc if c.fam == "source"]
     if ns: L += ["**Sources**"] + [f"- {rl(c)} {plain(c.title)} [{c.status}] · {sum(1 for e in newc if e.fam == 'evidence' and e.id.startswith(c.id))} new evidence cards" for c in ns] + [""]
     evs = Counter(c.id[:4] for c in newc if c.fam == "evidence" and c.id[:4] not in {s_.id for s_ in ns})
@@ -7546,7 +7652,7 @@ def ingredient(m, L, o, name):
         ts = Counter(t for c in cards for t in L.tech[c.id])
         if not ts:
             ts = Counter(t for v in Q for t in L.measured.get(v, {}))
-            return ("yes", "the brain holds a technique for it: " + ", ".join(t for t, _n in ts.most_common(3))) if ts else ("unknown", "how it was, or could be, measured is not recorded")
+            return ("yes", "the brain holds a technique for it: " + ", ".join(t for t, _n in ranked(ts, 3))) if ts else ("unknown", "how it was, or could be, measured is not recorded")
         return "yes", "obtained by " + ", ".join(t for t, _n in sorted(ts.items(), key=lambda r: (-r[1], r[0]))[:3])  # ties by name, so two runs print the same line
     if name == "data":
         ds = sorted({d for c in cards for d in L.data[c.id] if d[0] == "D"} | (set(named_data(m, page)) if page is not None else set()) | {i for i in o["ids"] if i[0] == "D"})

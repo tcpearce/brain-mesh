@@ -2,6 +2,17 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.26.0 — 2026-11-23
+
+`build` and `check` do each piece of work once and keep what they work out from unchanged files. On a twelve-source vault `build` falls from 34 s to 4 s and `check` from 13 s to 1.6 s (5.6 s the first time); at 36 sources, 91 s to 10 s and 47 s to 5 s. Every file `build` writes and every line `check`, `gaps`, `discover`, `scan`, `health`, `routes`, `facts`, `contradictions` and `independence` print is the same as before, compared on both vaults.
+
+- **A quadratic pass in `build`.** To list the cards that cite each reference, every card's text was read again for every reference card: 495 references by 2,000 cards was two thirds of the build. They are now found in one pass.
+- **Anchored material is read once per run, not once per card.** `check` squeezed the text and read the numbers of everything a card anchors, for each card; a deposited data file of two million numbers was read again for every card that cites it. Each paragraph, table and data file is now digested once, and a card's loc phrase and values are looked up in the pieces.
+- **Kept between runs** in `index/.scratch/cache/` (not versioned, safe to delete, about 3 MB for twelve sources): a workbook's text cells, a data file's numbers (sorted, packed and compressed), the digest of a large file, and where each concept is named in each source. Each is reused only while the file's size and modification time and the tooling version are unchanged; a concept's hits are searched again when its slug, title or aliases change. So adding a paper or a concept costs the work for that paper or concept.
+- **Duplicate checks** work out each card's signature and title words once rather than for every pair, and compare concept names in full only where difflib's quick upper bounds allow a match.
+- **Ties are ordered by name** in `zoom`, `gaps`, `report` and `routes`. `zoom`'s "appears with" line could change from one run to the next, because ties were settled by the order of a set. Seven such rankings now use the same rule as the rest of the tooling.
+- What still grows with the vault: loading the cards and the checks that compare cards with each other, about a quarter of a second per source for `build`.
+
 ## 1.25.0 — 2026-11-23
 
 Marked PDFs leave git, and a card's **open page** link now lands on its highlight.

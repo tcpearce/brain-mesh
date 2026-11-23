@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.22.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.22.1"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -95,6 +95,26 @@ def wr(p, t):  # always LF line endings: a build on Windows must produce the sam
     os.makedirs(os.path.dirname(p), exist_ok=True)
     with open(p, "w", encoding="utf-8", newline="\n") as f: f.write(t)
 def squeeze(s): return re.sub(r"[^a-z0-9]+", "", unicodedata.normalize("NFKC", str(s)).lower())
+_SHEETS = {}
+def sheet_cells(path):
+    """A spreadsheet's text cells joined, and its numeric cells as numbers (issue #37). Needs openpyxl, an optional
+    dependency like PyMuPDF; without it, or for a file it cannot open, ("", []). Cached per file and version."""
+    key = (path, os.path.getmtime(path))
+    if key not in _SHEETS:
+        text, nums = [], []
+        try:
+            import openpyxl
+            wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+            for ws in wb.worksheets:
+                for row in ws.iter_rows(values_only=True):
+                    for v in row:
+                        if isinstance(v, bool) or v is None: continue
+                        if isinstance(v, (int, float)): nums.append(abs(float(v)))
+                        else: text.append(str(v))
+            wb.close()
+        except Exception: text, nums = [], []
+        _SHEETS[key] = (" ".join(text), nums)
+    return _SHEETS[key]
 def one(s, n=150):
     s = " ".join(str(s).split())
     return s if len(s) <= n else s[:n - 1] + "…"
@@ -732,7 +752,7 @@ class Mesh:
                     if ws: W.append(f"{i}: its passage cites {', '.join(f'{r.id} {short_cite(r)}' for r in ws[:5])}{' …' if len(ws) > 5 else ''}; add '- cites:: [[R…]] — what it supports' for each work the statement rests on, or '- cites:: none — <why>' (`mesh.py scan {pid}` shows the works cited in its own sentence)")
                 for k, _v in c.codes:
                     if k in LINK_KEYS and k not in EVIDENCE_RELS + UNIVERSAL and not (k == "also_cited_by" and c.type == "cited"): E.append(f"{i}: '{k}::' is not an evidence relation {EVIDENCE_RELS}")
-                bl, src, has_block, an = s.blocks(pid), "", False, s.anchors(c)
+                bl, src, has_block, an, xnums = s.blocks(pid), "", False, s.anchors(c), []
                 if not an: E.append(f"{i}: no '- anchor::' code")
                 for a in an:
                     if re.fullmatch(r"[bsc]\d{4}", a):
@@ -746,6 +766,8 @@ class Mesh:
                     elif re.fullmatch(r"SI-[\w.-]+", a) and glob.glob(J(SRC(s.root, pid), f"{pid}_{a}.*")):
                         for f in glob.glob(J(SRC(s.root, pid), f"{pid}_{a}.*")):
                             if f.lower().endswith((".csv", ".tsv", ".txt", ".md")): src += " " + rd(f)
+                            elif f.lower().endswith((".xlsx", ".xlsm")):  # a source-data workbook (issue #37)
+                                st, sn = sheet_cells(f); src += " " + st; xnums += sn
                     elif not re.fullmatch(r"(F\d+[a-z]*|p\d+|eq[0-9a-z]+|SI\S*|CR-p\d+)", a): E.append(f"{i}: bad anchor '{a}'")
                 vals = [s.pair(v) for v in c.all("value")]
                 firstlink = lambda v: (WIKI.search(v).group(1).strip() if WIKI.search(v) else "")
@@ -756,19 +778,22 @@ class Mesh:
                     if not wv and any(firstlink(v_) in s.proposed() for v_ in c.all("when")): continue
                     if not wv or s.cards[wv].fam != "concept": E.append(f"{i}: 'when::' must start with a [[variable]] concept link then ' = '")
                     elif s.cards[wv].get("unit") == "categorical" and not is_term: E.append(f"{i}: when {wv} is categorical, so its value must be a concept link (got '{val}')")
-                if src and via in ("text", "table", "si"):
+                if (src.strip() or xnums) and via in ("text", "table", "si"):
                     loc = c.get("loc").strip("\"'“”")
                     if loc:
                         if squeeze(loc) not in squeeze(src): W.append(f"{i}: loc phrase not found in the anchored source")
                     elif via == "text" and has_block: W.append(f"{i}: no '- loc::' phrase")
                     nums = [float(x) for x in re.findall(r"\d+(?:\.\d+)?", re.sub(r"(?<=\d),(?=\d{3}\b)", "", src))]
-                    near = lambda x: any(math.isclose(n, x, rel_tol=1e-6) for n in nums)
+                    near = lambda x: any(math.isclose(n, x, rel_tol=1e-6) for n in nums + xnums)
+                    # a spreadsheet cell holds full precision, so a value the card rounds from it is found too: within half a unit in its last decimal place (issue #37)
+                    rounded = lambda x, d: d > 0 and any(abs(n - x) <= 0.5 * 10 ** -d + 1e-12 for n in xnums)
                     for _var, rest in vals:
                         num = re.search(r"[-+−]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?", plain(rest))
                         v = float(num.group(0).replace("−", "-")) if num else 0
                         if v and origin == "authors":
                             ex = math.floor(math.log10(abs(v)))
-                            if not (any(near(abs(v) * 10 ** (3 * k)) for k in range(-4, 5)) or (near(abs(v) / 10 ** ex) and near(10) and near(abs(ex)))):
+                            dec = len(num.group(0).split(".")[1]) if "." in num.group(0) and "e" not in num.group(0).lower() else 0
+                            if not (any(near(abs(v) * 10 ** (3 * k)) for k in range(-4, 5)) or rounded(abs(v), dec) or (near(abs(v) / 10 ** ex) and near(10) and near(abs(ex)))):
                                 W.append(f"{i}: value {num.group(0)} not found in the anchored source")
                 if via == "figure" and vals: s.figure_values(c, pid, an, vals, W)
                 if c.type == "observation" and not vals and not c.get("stat") and result_numbers(c.prose()):

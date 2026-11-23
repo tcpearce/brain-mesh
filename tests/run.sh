@@ -1621,4 +1621,41 @@ python3 tools/mesh.py build > b.txt 2>&1; grep -q "check: 0 errors" b.txt && ! g
 sed -i 's/^- value:: \[\[binding-capacity\]\] = 0.82 /- value:: [[binding-capacity]] = 0.83 /' $S1/P001-012-*.md; python3 tools/mesh.py build > b.txt 2>&1
 grep -q "P001-012: value 0.83 not found in the anchored source" b.txt && pass "a value the workbook does not hold still warns" || { grep "P001-012" b.txt; fail "workbook value missing"; }
 else echo "skip workbook tests: openpyxl not installed"; fi
+
+# 30. four false alarms and a title (1.22.1): issues #31, #36, #39, #40
+cp -r "$ROOT/demo-vault" "$T/fx"; cd "$T/fx"; cp "$MESH" tools/mesh.py; S1=$(ls -d sources/P001*); S2=$(ls -d sources/P002*)
+obs() { printf -- '---\ntype: observation\nstatus: measured\nupdated: 2026-11-23\n---\n# %s\n\nThe [[binding-capacity]] was as stated, %s. **Source:** p. 1, [[%s.pdf#page=1|open page]].\n\n## Codes\n- id:: %s\n- value:: [[binding-capacity]] = %s\n- when:: [[temperature]] = %s degC\n- anchor:: [[%s_text#^%s]]\n- loc:: "%s"\n- concepts:: [[binding-capacity]]\n- missing:: method — a test card with no method card\n' "$3" "$4" "${2:0:4}" "$2" "$4" "$5" "${2:0:4}" "$6" "$7" > "$1/$2-a-test-card-for-an-issue.md"; }
+obs $S1 P001-030 "A number first, digits in the note" "4.2 (pEC50 of analyte X at OR1A1, GCaMP6f, TM5, C6–C25)" 31 b0004 "binding capacity was 4.2"
+obs $S1 P001-031 "A word first, digits in the note" "unchanged (pEC50 of analyte X at OR1A1)" 32 b0004 "binding capacity was 4.2"
+obs $S1 P001-032 "A label first, then the number" "pEC50 4.2" 33 b0004 "binding capacity was 4.2"
+obs $S1 P001-033 "A number the source does not hold" "6.29 (pEC50 of analyte X at OR1A1)" 34 b0004 "binding capacity was 4.2"
+(python3 tools/mesh.py check || true) > c31.txt 2>&1
+! grep -q "P001-03[012]: value" c31.txt && ! grep -q "P001-03[012]: the value" c31.txt && pass "check reads a value's number before its note: digits in pEC50, OR1A1, GCaMP6f are not values (issue #31)" || { grep "P001-03" c31.txt; fail "value note digits"; }
+grep -q "P001-033: value 6.29 not found in the anchored source" c31.txt && ! grep -q "P001-033: value 50" c31.txt && pass "a wrong value still warns, by its own number" || { grep "P001-033" c31.txt; fail "wrong value"; }
+python3 tools/mesh.py propose gnrh-neuron "A neuron that releases gonadotropin-releasing hormone, invented for this test." --alias "GnRH neuron" > /dev/null
+python3 tools/mesh.py propose class-i-film "A film of the first class, invented for this test of titles." --alias "class I films" > /dev/null
+python3 tools/mesh.py propose camp-reporter-assay "An assay that reads cyclic AMP, invented for this test of titles." --alias "cAMP reporter assay; the Hill readout" > /dev/null
+python3 tools/mesh.py propose swollen-film "A film that has taken up solvent, invented for this test of titles." --alias "Swollen films" > /dev/null
+grep -q "^# GnRH neuron$" ledger/concept-proposals.md && grep -q "^# Class I film$" ledger/concept-proposals.md && grep -q "^# cAMP reporter assay$" ledger/concept-proposals.md && grep -q "^# Swollen film$" ledger/concept-proposals.md && pass "propose keeps the capitals an alias spells, and lowers nothing (issue #36)" || { grep "^# " ledger/concept-proposals.md; fail "propose title"; }
+python3 tools/mesh.py propose test-title "A concept whose title is given outright, invented for this test." --title "Test TITLE given" > /dev/null; grep -q "^# Test TITLE given$" ledger/concept-proposals.md && pass "propose --title still decides the title" || fail "propose --title"
+rm $S1/P001-03[123]-*.md
+obs $S2 P002-030 "The other paper at 31 degrees" "1.1" 31 b0003 "binding capacity was 3.9"
+(python3 tools/mesh.py check || true) | grep -q "P002-030 and P001-030: parallel results from different sources" && pass "parallel results in two sources are asked to be linked" || fail "parallel warning"
+K=$(python3 tools/mesh.py contradictions | grep -o "values:P00[12]-030~P00[12]-030" | head -1)
+[ "$K" = "values:P001-030~P002-030" ] && python3 tools/mesh.py contradictions dismiss "$K" "different assays on different films, not one quantity" | grep -q "also settles .check.'s parallel-results warning" && ! (python3 tools/mesh.py check || true) | grep -q "parallel results" && pass "a pair dismissed on the register no longer warns as unlinked parallel results (issue #39)" || { (python3 tools/mesh.py check || true) | grep "parallel"; fail "dismissed pair still warns"; }
+obs $S1 P001-034 "Capacity at 36 degrees here" "4.2" 36 b0004 "binding capacity was 4.2"; obs $S2 P002-034 "Capacity at 36 degrees there" "4.2" 36 b0003 "binding capacity was 3.9"
+(python3 tools/mesh.py check || true) | grep -q "P002-034 and P001-034: parallel results" && ! python3 tools/mesh.py contradictions | grep -q "values:P001-034~P002-034" && python3 tools/mesh.py contradictions dismiss values:P002-034~P001-034 "not one quantity: two films of different make" | grep -q "^dismissed values:P001-034~P002-034" && ! (python3 tools/mesh.py check || true) | grep -q "parallel results" && pass "a parallel pair whose values agree can be dismissed too, in either order" || fail "dismiss agreeing pair"
+python3 tools/mesh.py contradictions dismiss values:P001-034~P002-002 "not a pair of anything at all" > d39.txt 2>&1 && fail "dismiss took a pair that is not parallel" || { grep -q "not a pair of parallel results" d39.txt && pass "dismiss refuses a pair that is neither a candidate nor parallel"; }
+mkdir -p data-sets
+card data-sets/D001-a-chemical-lookup-database.md dataset open "A public database of chemical structures" "**What it is.** A database both studies looked structures up in." "- id:: D001
+- name:: ChemLookup
+- url:: https://example.org/chemlookup
+- used_by:: [[P001-smith-2021-temperature-binding-water]] — looked up the structure of analyte X
+- used_by:: [[P002-garcia-2023-binding-retained-acetonitrile]] — looked up the structure of analyte X"
+python3 tools/mesh.py independence P001 P002 | grep -q "^P001 + P002  (P001 and P002 both use the data set D001 (ChemLookup))$" && pass "two sources that share a data-set card count once" || { python3 tools/mesh.py independence P001 P002; fail "shared data set groups"; }
+sed -i 's/^- name:: ChemLookup$/- name:: ChemLookup\n- role:: lookup/' data-sets/D001-*.md
+python3 tools/mesh.py independence P001 P002 > i40.txt; grep -q "^P001$" i40.txt && grep -q "^P002$" i40.txt && grep -q "^not counted, lookup resources: D001 (ChemLookup; used by P001, P002)$" i40.txt && pass "a data set marked as a lookup resource groups nobody, and independence names it (issue #40)" || { cat i40.txt; fail "lookup role"; }
+printf -- '- used_by:: [[P003-own-2026-heat-cool-cycle-results]] — looked up the structure of analyte X\n' >> data-sets/D001-*.md
+python3 tools/mesh.py independence K001 > k40.txt; grep -q "2 sources, 2 independent groups: P001 | P003" k40.txt && grep -q "^   not counted, lookup resources: D001 (ChemLookup; used by P001, P003)$" k40.txt && pass "a finding's groups name the lookup resources left out, and stay apart" || { cat k40.txt; fail "lookup role on findings"; }
+sed -i 's/^- role:: lookup$/- role:: reference/' data-sets/D001-*.md; (python3 tools/mesh.py check || true) | grep -q "D001: role 'reference' is not data or lookup" && pass "check questions a role it does not know" || fail "role value"
 echo "ALL TESTS PASSED"

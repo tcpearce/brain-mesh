@@ -2,6 +2,16 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.22.2 (2026-11-23)
+
+Three false alarms cleared and a title that keeps its capitals (issues #31, #36, #39, #40).
+
+- **`check` reads a value's number before its note** (issue #31). The value of a `value::` line is now the first number that stands on its own before the note in brackets. A digit inside a label or name (`pEC50`, `OR1A1`, `GCaMP6f`, `TM5`, `C6–C25`) is not a value, so `= unchanged (pEC50 of R-carvone at OR1A1)` and `= pEC50 −6.29` no longer warn "value 50 not found in the anchored source". The same reading is used when the value is compared with the card's prose. A unit may still follow the number (`5 nM`, `5nM`, `25%`).
+- **`propose` keeps the capitals an alias spells** (issue #36). Without `--title`, the title is made from the slug with each word cased as an alias spells it: `propose gnrh-neuron … --alias "GnRH neuron"` gives "GnRH neuron", `class-i-film` with "class I films" gives "Class I film", and "cAMP reporter assay" keeps its small first letter. Nothing is lowered. A concept note made by hand in `concepts/` is titled the same way.
+- **A dismissed pair no longer warns as unlinked parallel results** (issue #39). A `values:<card>~<card>` key dismissed on the contradictions register, in either order, settles `check`'s parallel-results warning for the pair, and the dismissal says so. `contradictions dismiss values:<card>~<card> "<why>"` now also takes two results with the same variable and conditions in different sources whose values do not clash, which could not be dismissed before and could only be cleared by a link.
+- **A lookup resource does not group its users** (issue #40). A data-set card with `- role:: lookup` (a chemical database, a supplier's catalogue, a compendium) is left out of the independence grouping, directly and as the parent of a derived data set. `independence` names the lookup resources two or more of the sources use as not counted, and `check` questions a role other than `data` or `lookup`.
+- Open: #5, #15, #23 and #28 are untouched. Of #30, CSV, TSV and workbook files are now read (1.22.1); a `computed::` line for a mean or other summary taken from a data file is not done.
+
 ## 1.22.1 (2026-11-23)
 
 `check` reads the source-data workbooks a card is anchored to (pull request #38).

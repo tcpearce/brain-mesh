@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.22.1"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.22.2"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -115,6 +115,12 @@ def sheet_cells(path):
         except Exception: text, nums = [], []
         _SHEETS[key] = (" ".join(text), nums)
     return _SHEETS[key]
+OWN_NUMBER = re.compile(r"(?<![A-Za-z0-9.])[-+−]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?(?![A-Za-z]*\d)")
+def value_number(rest):
+    """The number a `value::` line states (issue #31): the first that stands on its own, before the note in brackets.
+    A digit inside a name or label (pEC50, OR1A1, GCaMP6f, TM5, C6–C25, 6x55) is not a value, and nothing in the note
+    is; a unit may follow the number (5 nM, 5nM, 25%). None when the value is given in words."""
+    return OWN_NUMBER.search(re.split(r"[(\[]", plain(rest), maxsplit=1)[0])
 def one(s, n=150):
     s = " ".join(str(s).split())
     return s if len(s) <= n else s[:n - 1] + "…"
@@ -788,7 +794,7 @@ class Mesh:
                     # a spreadsheet cell holds full precision, so a value the card rounds from it is found too: within half a unit in its last decimal place (issue #37)
                     rounded = lambda x, d: d > 0 and any(abs(n - x) <= 0.5 * 10 ** -d + 1e-12 for n in xnums)
                     for _var, rest in vals:
-                        num = re.search(r"[-+−]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?", plain(rest))
+                        num = value_number(rest)
                         v = float(num.group(0).replace("−", "-")) if num else 0
                         if v and origin == "authors":
                             ex = math.floor(math.log10(abs(v)))
@@ -802,7 +808,7 @@ class Mesh:
                     if k in EVIDENCE_RELS and any(t[:4] != pid and s.cards[t].fam == "evidence" for t in s.ids(v)[0]) and len(reason(v).split()) < 3: E.append(f"{i}: '{k}::' links another source, so it needs ' — ' and a reason of a few words")
                 digits = re.sub(r"\s|(?<=\d),(?=\d{3}\b)", "", plain(c.prose()))
                 for _var, rest in vals:
-                    mo = re.search(r"[-+−]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?", plain(rest))
+                    mo = value_number(rest)
                     if mo and mo.group(0) not in digits: W.append(f"{i}: the value {mo.group(0)} in Codes does not appear in the prose above it; make the two agree")
                 if os.path.exists(J(SRC(s.root, pid), pid + ".pdf")):
                     if not re.search(r"\[\[" + pid + r"(_SI|_correction)?(_marked)?\.pdf", c.human): W.append(f"{i}: the prose has no link to the PDF; add '[[{pid}.pdf#page=N|open page]]' to its Source line")
@@ -983,6 +989,7 @@ class Mesh:
                     users = [t for v in c.all("used_by") for t in s.ids(v)[0]]
                     if not users: W.append(f"{i}: used by no study: add '- used_by:: [[P###]] — how the study uses it'")
                     if any(s.cards[t].fam != "source" for t in users): E.append(f"{i}: 'used_by::' links studies, that is source cards")
+                    if i[0] == "D" and c.get("role") and c.get("role").strip().lower() not in ("data", "lookup"): W.append(f"{i}: role '{c.get('role')}' is not data or lookup (a lookup resource, such as a chemical database or a supplier's catalogue, does not make the studies that use it dependent)")
                     if not any(c.get(k) for k in ("url", "doi", "accession", "repo")) and c.status not in ("unavailable", "unknown"): W.append(f"{i}: no location: give '- url::', '- doi::'" + (", '- accession::'" if i[0] == "D" else ", '- repo::'") + ", or status unavailable")
                     if i[0] == "C" and len(re.findall(r"[A-Za-z]{2,}", c.prose())) < 50: W.append(f"{i}: the summary is too thin: say what the code does, its inputs and outputs, and how the studies use it, as a README would")
                 if i[0] == "G":
@@ -1183,13 +1190,14 @@ class Mesh:
         for c in ev:
             by_src[c.id[:4]].append(c)
             if s.sig(c): by_sig[s.sig(c)].append(c)
+        settled = {frozenset(k.split(":", 1)[1].split("~")) for k in dismissed_contradictions(s.root) if k.startswith("values:")}  # judged not to be one quantity (issue #39)
         for g in by_sig.values():
             for x in range(len(g)):
                 for y in range(x + 1, len(g)):
                     a, b = g[x], g[y]
                     if a.id[:4] == b.id[:4]:
                         if s.same_value(a, b) and not s.recomputes(a, b): E.append(f"{b.id}: duplicates {a.id} (same source, variable, value and conditions); keep one card and add the second anchor to it")
-                    elif not s.linked(a, b): W.append(f"{b.id} and {a.id}: parallel results from different sources (same variable and conditions) are not linked; add replicates/contradicts/extends with a reason, or cite both in one finding")
+                    elif not s.linked(a, b) and frozenset((a.id, b.id)) not in settled: W.append(f"{b.id} and {a.id}: parallel results from different sources (same variable and conditions) are not linked; add replicates/contradicts/extends with a reason, or cite both in one finding")
         for cs in by_src.values():
             for x in range(len(cs)):
                 for y in range(x + 1, len(cs)):
@@ -3609,6 +3617,19 @@ def rejected_concepts(root):
     return {mo.group(1): mo.group(2).strip() for mo in re.finditer(r"^- (\S+) — (.*)$", rd(p), re.M)} if os.path.exists(p) else {}
 
 
+def title_from(name, aliases):
+    """A concept's title from its slug (issue #36): each word cased as an alias spells it, where the alias has a capital
+    after the word's first letter (GnRH, cAMP, RNA, OR) or capitalises a word that is not its first (class I, the Hill
+    equation); then the first letter raised unless an alias spelt that word, and nothing lowered."""
+    cased = {}
+    for al in aliases:
+        for k, w in enumerate(re.findall(r"[A-Za-z0-9]+", str(al))):
+            if w[1:] != w[1:].lower() or (k and w[:1].isupper()): cased.setdefault(w.lower(), w)
+    ws = name.replace("-", " ").split()
+    t = " ".join(cased.get(w, w) for w in ws)
+    return t if ws and ws[0] in cased else t[:1].upper() + t[1:]  # cAMP and mRNA keep their small first letter
+
+
 def cmd_propose(m, args):
     """Propose a concept card for the user to adopt: `propose <name> "<definition>" [--from P012] [--kind k]
     [--unit u] [--title "T"] [--alias "a; b"] [--low "<why>"]`. Written to the source's P###_concepts.md, or to
@@ -3620,7 +3641,7 @@ def cmd_propose(m, args):
         elif rest[k] == "--alias" and k + 1 < len(rest): aliases += [a.strip() for a in rest[k + 1].split(";") if a.strip()]; k += 2
         else: sys.exit(f"propose: unknown option '{rest[k]}'")
     if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", name) or re.fullmatch(r"[pkxghelcdrtasv]\d{3}.*", name): sys.exit(f"propose: '{name}' is not a concept slug (lower case, hyphens, not like an id)")
-    title = o.get("title") or name.replace("-", " ").capitalize()
+    title = o.get("title") or title_from(name, aliases)
     for nm in [name, name.replace("-", " "), title] + aliases:
         hit = m.alias.get(" ".join(nm.lower().split()))
         if hit: sys.exit(f"propose: '{nm}' is already the concept [[{hit}]]: link it instead")
@@ -3719,7 +3740,7 @@ def fixconcepts(root):
             if re.match(r"(type|updated):", line): continue
             keep.append(line)
         tm = re.search(r"^# (.+)$", body, re.M)
-        title = tm.group(1).strip() if tm else (b if re.search(r"[A-Z ]", b) else b.replace("-", " ").capitalize())
+        title = tm.group(1).strip() if tm else (b if re.search(r"[A-Z ]", b) else title_from(b, aliases))
         if not tm: body = f"# {title}\n\n" + body.lstrip("\n")
         if "**Definition.**" not in body:
             parts = body.split("\n\n")
@@ -3879,11 +3900,16 @@ def cmd_contradictions(m, args):
     if args and args[0] == "dismiss":
         if len(args) < 3: sys.exit('contradictions dismiss: give <key> "<why it is not a contradiction>"')
         key, why = args[1], " ".join(args[2:])
-        if key not in {r[0] for r in contradiction_candidates(m)}: sys.exit(f"contradictions dismiss: no possible contradiction '{key}' (see `mesh.py contradictions`)")
+        if key not in {r[0] for r in contradiction_candidates(m)}:
+            mo = re.fullmatch(r"values:([^~]+)~([^~]+)", key)
+            a, b = [m.cards.get(m.resolve(x) or "") for x in mo.groups()] if mo else (None, None)
+            if not (a and b and a.fam == b.fam == "evidence" and a.id[:4] != b.id[:4] and m.sig(a) and m.sig(a) == m.sig(b)):
+                sys.exit(f"contradictions dismiss: no possible contradiction '{key}' (see `mesh.py contradictions`), and not a pair of parallel results (same variable and conditions in two sources)")
+            key = "values:" + "~".join(sorted((a.id, b.id)))
         p = J(m.root, "ledger", "contradictions.md"); t = rd(p) if os.path.exists(p) else REGISTER_HEAD
         line = f"- {key} — {TODAY}: {why}\n"
         t = t.replace("\n## The register", "\n" + line + "\n## The register", 1) if "\n## The register" in t else t.rstrip("\n") + "\n" + line
-        wr(p, re.sub(r"\n{3,}", "\n\n", t)); print(f"dismissed {key}: {why}"); return
+        wr(p, re.sub(r"\n{3,}", "\n\n", t)); print(f"dismissed {key}: {why}" + (" (this also settles `check`'s parallel-results warning for the pair)" if key.startswith("values:") else "")); return
     scope = args[0] if args else None
     cid = None
     if scope and not re.fullmatch(r"P\d{3}", scope):
@@ -4080,12 +4106,13 @@ def dependence(m):
     if getattr(m, "_dep", None) is not None: return m._dep
     out, users, parents = defaultdict(list), defaultdict(set), defaultdict(set)
     for d in m.pages("D"):
-        if d.get("retired"): continue
+        if d.get("retired") or d.get("role").strip().lower() == "lookup": continue  # a lookup resource (PubChem, a catalogue) groups nobody (issue #40)
         for v in d.all("used_by"): users[d.id] |= {t[:4] for t in m.ids(v)[0] if re.match(r"P\d{3}", t)}
         for v in d.all("derived_from"): parents[d.id] |= {t for t in m.ids(v)[0] if t[0] == "D"}
     for _round in range(2):  # the users of a derived data set also use what it was derived from
         for d, ps in parents.items():
-            for p in ps: users[p] |= users[d]
+            for p in ps:
+                if p in m.cards and m.cards[p].get("role").strip().lower() != "lookup": users[p] |= users[d]
     for d in sorted(users):
         nm = m.cards[d].get("name") or one(m.cards[d].title, 50)
         for a, b in itertools.combinations(sorted(users[d]), 2):
@@ -4130,11 +4157,22 @@ def support_sources(m, k):
     return sorted({t[:4] for v in k.all("support") for t in m.ids(v)[0] if m.cards[t].fam == "evidence"})
 
 
+def lookup_note(m, pids=None):
+    """The lookup resources (`- role:: lookup` on a data-set card) that two or more of these sources use: named, and not counted."""
+    out = []
+    for d in sorted(m.pages("D"), key=lambda c: c.id):
+        if d.get("retired") or d.get("role").strip().lower() != "lookup": continue
+        us = sorted({t[:4] for v in d.all("used_by") for t in m.ids(v)[0] if re.match(r"P\d{3}", t)} & (set(pids) if pids is not None else set(m.cards)))
+        if len(us) >= 2: out.append(f"{d.id} ({d.get('name') or one(d.title, 40)}; used by {', '.join(us)})")
+    return ("not counted, lookup resources: " + "; ".join(out)) if out else ""
+
+
 def cmd_independence(m, args):
     """How many independent groups of sources stand behind each finding (`independence`, or `independence K001`), or
     how a set of sources groups (`independence P001 P003 ...`)."""
     if args and all(re.fullmatch(r"P\d{3}", a) for a in args):
         for g, why in independent_groups(m, args): print(" + ".join(g) + (f"  ({'; '.join(why)})" if why else ""))
+        if lookup_note(m, args): print(lookup_note(m, args))
         return
     ks = [need(m, a) for a in args] if args else sorted(m.pages("K"), key=lambda c: c.id)
     for k in ks:
@@ -4144,6 +4182,7 @@ def cmd_independence(m, args):
         for _g, why in gs:
             for w_ in why: print(f"   not independent: {w_}")
         for v in k.all("independent"): print(f"   declared independent: {plain(v)}")
+        if lookup_note(m, srcs): print("   " + lookup_note(m, srcs))
     if not args: print("\nGrade a finding on its independent groups, not on its number of papers. If two grouped sources are independent for a finding (different data, different laboratories' work), say so on the finding: '- independent:: [[P001]], [[P003]] — <why>'.")
 
 

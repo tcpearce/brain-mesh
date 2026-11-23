@@ -1658,4 +1658,49 @@ python3 tools/mesh.py independence P001 P002 > i40.txt; grep -q "^P001$" i40.txt
 printf -- '- used_by:: [[P003-own-2026-heat-cool-cycle-results]] — looked up the structure of analyte X\n' >> data-sets/D001-*.md
 python3 tools/mesh.py independence K001 > k40.txt; grep -q "2 sources, 2 independent groups: P001 | P003" k40.txt && grep -q "^   not counted, lookup resources: D001 (ChemLookup; used by P001, P003)$" k40.txt && pass "a finding's groups name the lookup resources left out, and stay apart" || { cat k40.txt; fail "lookup role on findings"; }
 sed -i 's/^- role:: lookup$/- role:: reference/' data-sets/D001-*.md; (python3 tools/mesh.py check || true) | grep -q "D001: role 'reference' is not data or lookup" && pass "check questions a role it does not know" || fail "role value"
+# 34. the citation index: a cited work indexed from its abstract reaches the hubs and the literature view
+cp -r "$ROOT/demo-vault" "$T/ci"; cd "$T/ci"; cp "$MESH" tools/mesh.py; mkdir -p references
+cat > references/R0900-doe-2020-rebinding-in-acetonitrile.md <<'REF'
+---
+type: reference
+status: not-held
+updated: 2026-11-23
+---
+# Doe & Roe (2020) Rebinding of analyte X in acetonitrile
+
+## Abstract
+
+Imprinted polymer films were rebound in acetonitrile over a range of temperatures. Capacity fell by a third between 25 and 45 degrees, and the films swelled by 12 per cent.
+
+## What it claims
+- Binding capacity falls with temperature in acetonitrile as it does in water ([[binding-capacity]], [[acetonitrile]], [[temperature]])
+- The films swell by 12 per cent over the same range ([[swelling]])
+
+## Notes
+
+## Codes
+- id:: R0900
+- authors:: Doe, J.; Roe, R.
+- year:: 2020
+- title:: Rebinding of analyte X in acetonitrile
+- journal:: J. Test
+- kind:: article
+- concepts:: [[binding-capacity]], [[acetonitrile]], [[swelling]]
+- indexed:: 2026-11-23 — abstract from the publisher's page
+- cited_by:: [[P001]] ref 1 — b0004
+REF
+python3 tools/mesh.py build > b.txt 2>&1; grep -q "check: 0 errors" b.txt && pass "a vault with an indexed citation builds clean" || { grep -E "^ERROR|^warn  R0900" b.txt | head -4; fail "indexed build"; }
+grep -q "Cited works about this, read only as abstracts (1)" concepts/acetonitrile.md && grep -q "R0900-doe-2020-rebinding-in-acetonitrile" concepts/acetonitrile.md && grep -q "Binding capacity falls with temperature in acetonitrile" concepts/acetonitrile.md && pass "the concept hub lists the indexed work, with what it claims" || { grep -A4 "Cited works" concepts/acetonitrile.md; fail "hub indexed works"; }
+! grep -q "Cited works about this" concepts/film-thickness.md && pass "a concept the work does not name gets no indexed-works section" || { grep -A3 "Cited works about this" concepts/film-thickness.md; fail "hub indexed overreach"; }
+python3 tools/mesh.py literature > lit.txt 2>&1
+grep -q "Citation index: 1 of 1 cited works indexed from their abstracts" lit.txt && grep -qE "^acetonitrile +[0-9]+ +1 " lit.txt && pass "literature counts sources read against cited works indexed" || { cat lit.txt; fail "literature view"; }
+python3 tools/mesh.py literature binding-capacity | grep -qE "^binding-capacity " && pass "literature can be asked about one concept" || { python3 tools/mesh.py literature binding-capacity; fail "literature one concept"; }
+sed -i 's/^- concepts:: \[\[binding-capacity\]\].*$//' references/R0900-*.md; python3 tools/mesh.py build > b.txt 2>&1
+grep -q "R0900: indexed but names no concept" b.txt && pass "an indexed card with no concepts is flagged" || { grep "R0900" b.txt; fail "indexed no concepts"; }
+sed -i 's/^- indexed:: .*$//' references/R0900-*.md; python3 tools/mesh.py build > b.txt 2>&1
+grep -q "R0900: has an abstract but no '- indexed::" b.txt && pass "an abstract with no provenance line is flagged" || { grep "R0900" b.txt; fail "abstract no provenance"; }
+sed -i 's/^- id:: R0900$/- id:: R0900\n- indexed:: 2026-11-23 — from the publisher/' references/R0900-*.md
+sed -i 's/^- The films swell by 12 per cent over the same range (\[\[swelling\]\])$/- The films swell by 12 per cent over the same range/' references/R0900-*.md
+python3 tools/mesh.py build > b.txt 2>&1
+grep -q "R0900: a claim from the abstract names no concept" b.txt && pass "a claim that names no concept is flagged" || { grep "R0900" b.txt; fail "claim no concept"; }
 echo "ALL TESTS PASSED"

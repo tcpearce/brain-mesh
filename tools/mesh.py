@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.22.2"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.24.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -95,6 +95,10 @@ def wr(p, t):  # always LF line endings: a build on Windows must produce the sam
     os.makedirs(os.path.dirname(p), exist_ok=True)
     with open(p, "w", encoding="utf-8", newline="\n") as f: f.write(t)
 def squeeze(s): return re.sub(r"[^a-z0-9]+", "", unicodedata.normalize("NFKC", str(s)).lower())
+def section_bullets(raw, head):
+    """The '- ' lines of a card's '## <head>' section, [] when there is none."""
+    mo = re.search(r"(?m)^## " + re.escape(head) + r"\s*$(.*?)(?=^## |\Z)", raw, re.S)
+    return [l.rstrip() for l in (mo.group(1).split("\n") if mo else []) if l.startswith("- ")]
 _SHEETS = {}
 def sheet_cells(path):
     """A spreadsheet's text cells joined, and its numeric cells as numbers (issue #37). Needs openpyxl, an optional
@@ -906,6 +910,18 @@ class Mesh:
                 if c.get("doi") and not re.fullmatch(r"10\.\d{4,9}/\S+", c.get("doi")): W.append(f"{i}: doi '{c.get('doi')}' does not look like a DOI")
                 if not c.all("cited_by") and c.status != "held": W.append(f"{i}: cited by no source; retire it or add its cited_by:: line")
                 if c.status == "held" and not c.get("held"): W.append(f"{i}: status held needs '- held:: [[P###]]', the source in the brain")
+                # The citation index: the abstract read and meshed, so the work can be cross-referenced before it is read in full
+                cons = [t for v in c.all("concepts") for t in s.ids(v)[0]]
+                bad = [t for t in cons if s.cards[t].fam != "concept"]
+                if bad: E.append(f"{i}: 'concepts::' must link concept cards (got {', '.join(bad)})")
+                has_abs = bool(re.search(r"(?m)^## Abstract\s*$", c.raw))
+                claims = section_bullets(c.raw, "What it claims")
+                if c.get("indexed"):
+                    if not has_abs: W.append(f"{i}: indexed but has no '## Abstract' section; paste the abstract, or say under it why there is none")
+                    if not cons: W.append(f"{i}: indexed but names no concept; add '- concepts:: [[a]], [[b]]' for what the work is about, so it reaches the hubs")
+                    for l in claims:
+                        if not WIKI.search(l): W.append(f"{i}: a claim from the abstract names no concept: {one(l, 70)}")
+                elif has_abs: W.append(f"{i}: has an abstract but no '- indexed:: <date> <where the abstract came from>' line")
             elif c.fam == "concept":
                 if c.type != "concept": E.append(f"{i}: type must be 'concept'")
                 if c.priority == "high" and not c.get("retired") and not c.all("cites"): W.append(f"{i}: a high-priority hub cites no work in its text: cite the closely relevant key references (and add cites:: lines)")
@@ -2147,6 +2163,10 @@ def cmd_build(root):
             for t in m.terms(c): use[t].append(c)
     rank = ["observation", "claim", "model", "method", "limitation", "assumption", "question", "oddity", "definition", "cited"]
     more = lambda rest: [f"- … and {len(rest)} more: " + " · ".join(f"[[{c.name}|{c.id}]]" for c in rest)] if rest else []  # every card is linked, the rest by id only
+    refcon = defaultdict(list)  # a cited work whose own abstract was indexed against this concept (the citation index)
+    for r in m.cards.values():
+        if r.fam == "reference" and not r.get("retired") and r.status != "held":
+            for t in {x for v in r.all("concepts") for x in m.ids(v)[0]}: refcon[t].append(r)
     cooc = {con.id: Counter(t for c in use.get(con.id, []) for t in m.terms(c) if t != con.id) for con in m.cards.values() if con.fam == "concept"}
     top15 = {k: [t for t, _n in ranked(v, 15)] for k, v in cooc.items()}
     for con in [c for c in m.cards.values() if c.fam == "concept"]:  # each concept card lists what uses it
@@ -2175,6 +2195,15 @@ def cmd_build(root):
         if keyrefs:
             L += ["**Key references** (works cited where this concept's cards are anchored; cite the closely relevant ones in the text above, linking the reference card with the author and year as its label, and add a cites:: line)"]
             L += [f"- {lk(r, one(r.title, 100))}" + (f" · [doi](https://doi.org/{r.get('doi')})" if r.get("doi") else "") + f" — cited beside {', '.join(sorted(cs)[:4])}" + (" · **cited in this card**" if r.id in {t for v in con.all('cites') for t in m.ids(v)[0]} else "") for r, cs in keyrefs] + [""]
+        idx = sorted(refcon.get(con.id, []), key=lambda r: (-len(r.all("cited_by")), r.id))
+        if idx:
+            L += [f"**Cited works about this, read only as abstracts ({len(idx)})** — indexed, not read: what the surrounding literature says, and what to read next to fill this concept"]
+            for r in idx[:20]:
+                who = sorted({p for p, _n, _b in ref_cites(r)})
+                claim = next((re.sub(r"\s*\(\[\[.*$", "", l[2:]) for l in section_bullets(r.raw, "What it claims")), "")
+                L.append(f"- {lk(r, one(r.title, 95))} · {r.status}" + (f" · cited by {', '.join(who[:4])}" if who else " · cited by none")
+                         + (f" — {one(claim, 110)}" if claim else ""))
+            L += more(idx[20:]) + [""]
         fill(con, L)
     refs = sorted((c for c in m.cards.values() if c.fam == "reference" and not c.get("retired")), key=lambda c: c.id)
     srckeys = {k: c for c in m.cards.values() if c.fam == "source" for k in ref_keys(source_fields(c))}
@@ -4165,6 +4194,48 @@ def lookup_note(m, pids=None):
         us = sorted({t[:4] for v in d.all("used_by") for t in m.ids(v)[0] if re.match(r"P\d{3}", t)} & (set(pids) if pids is not None else set(m.cards)))
         if len(us) >= 2: out.append(f"{d.id} ({d.get('name') or one(d.title, 40)}; used by {', '.join(us)})")
     return ("not counted, lookup resources: " + "; ".join(out)) if out else ""
+
+
+def cmd_literature(m, args):
+    """Where the brain's own evidence is thin against the literature it already cites. For each concept: the sources
+    read, the cited works indexed from their abstracts, and those still unindexed. A concept carried by many cited
+    works and few read sources is where reading would pay most (the citation index)."""
+    only = [a for a in args if not a.startswith("--")]
+    cons = [c for c in m.cards.values() if c.fam == "concept" and not c.get("retired")]
+    if only:
+        want = {m.resolve(a) or a for a in only}
+        cons = [c for c in cons if c.id in want]
+        if not cons: sys.exit(f"literature: no concept matching {', '.join(only)}")
+    held, idx, unidx = defaultdict(set), defaultdict(list), defaultdict(list)
+    for c in m.cards.values():
+        if c.fam == "evidence" and not c.get("retired"):
+            for t in m.terms(c): held[t].add(c.id[:4])
+    for r in m.cards.values():
+        if r.fam != "reference" or r.get("retired") or r.status == "held": continue
+        ts = {x for v in r.all("concepts") for x in m.ids(v)[0]}
+        for t in ts: idx[t].append(r)
+        if not ts:
+            for p, _n, _b in ref_cites(r): unidx[p].append(r)
+    rows = []
+    for con in cons:
+        nh, ni = len(held.get(con.id, ())), len(idx.get(con.id, []))
+        queued = sum(1 for r in idx.get(con.id, []) if r.status == "queued")
+        rows.append((ni - 2 * nh + (3 if con.priority == "high" else 0), con, nh, ni, queued))
+    rows.sort(key=lambda r: (-r[0], r[1].id))
+    nidx = sum(1 for r in m.cards.values() if r.fam == "reference" and r.get("indexed"))
+    nref = sum(1 for r in m.cards.values() if r.fam == "reference" and not r.get("retired") and r.status != "held")
+    print(f"Citation index: {nidx} of {nref} cited works indexed from their abstracts"
+          + (f"; {nref - nidx} still unindexed (`mesh.py literature --unindexed` lists them by source)" if nref > nidx else "") + "\n")
+    print(f"{'concept':34} {'read':>5} {'cited':>6} {'queued':>7}  thinnest first")
+    for _s, con, nh, ni, q in rows[:30]:
+        if not ni and not nh: continue
+        print(f"{con.id[:34]:34} {nh:5d} {ni:6d} {q:7d}" + ("  ← high priority" if con.priority == "high" else ""))
+    if "--unindexed" in args:
+        print("\nCited works with no concepts yet, by the source that cites them:")
+        for p in sorted(unidx, key=lambda p: -len(unidx[p]))[:8]:
+            print(f"  {p}: {len(unidx[p])} — " + ", ".join(r.id for r in sorted(unidx[p], key=lambda r: r.id)[:10]) + (" …" if len(unidx[p]) > 10 else ""))
+    print("\n'read' counts the sources in the brain whose evidence names the concept; 'cited' the works indexed from their abstracts that are about it.\n"
+          "A concept with many cited works and few read sources is where the brain rests on literature it has not read: read those next.")
 
 
 def cmd_independence(m, args):
@@ -8203,6 +8274,7 @@ matrix <var> [<var>] [--all]  cross-tab observations by condition (also: type, s
 table <concept ...|K###|X###|V###|G###> [evidence|relations|definitions] [--type t] [--source P###] [--all] [--limit n] [--out file]
                               evidence table (one row per card: study, design, sample, result, conditions, limits, page); the relations a concept has, with basis; how each source defines and measures it
 independence [K###|P### P### ...]  the independent groups of sources behind each finding (shared data sets or authors count once)
+literature [<concept> ...] [--unindexed]   where the brain is thin against the literature it cites: sources read against cited works indexed from their abstracts
 draft <file> [--out file]     worklist for auditing a draft against the brain: per sentence, the works cited, concepts, numbers, likeliest cards and what to check
 sample <P###> [n]             random cards beside their source text, for spot checks
 unread <P###> [min chars]     paragraphs of a source that no card is anchored to, for finding missed cards
@@ -8276,6 +8348,7 @@ def main():
     elif c == "facts": cmd_facts(m, a)
     elif c == "table": cmd_table(m, a)
     elif c == "report": cmd_report(m, a)
+    elif c == "literature": cmd_literature(m, a)
     elif c == "independence": cmd_independence(m, a)
     elif c == "draft": cmd_draft(m, a)
     elif c == "reject": cmd_reject(m, a)

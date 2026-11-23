@@ -1,0 +1,74 @@
+---
+name: "brain-mesh-citation-index"
+description: "Index the works a brain mesh cites but has not read: fetch each abstract, record what it claims, link the concepts it bears on, and rank where the brain rests on unread literature. Use when the user asks to index citations, capture abstracts, survey the field around the vault, or decide which papers to read next."
+---
+
+# Brain mesh: the citation index
+
+Read `brain-mesh` first, its `FORMATS.md` before writing a card, and `brain-mesh-access` for syncing.
+
+A brain mesh holds a few papers in full and cites hundreds it has never read. Those citations are not noise: they are the field around the vault, already filtered by the papers the user chose. Indexing them, one abstract each, turns that list into a map. It shows what the surrounding literature says about each concept, where the brain's own reading is thin, and which paper to read next.
+
+**An indexed claim is never evidence.** It comes from an abstract, which is the authors' summary of themselves, not from text the brain has read and anchored. Nothing may rest on it: no finding, no `support::` or `against::` line, no card citing it as evidence. It is for cross-reference and for choosing what to read. Keeping that line sharp is what makes the index safe to grow quickly.
+
+## 1. Choose what to index
+
+`python3 tools/mesh.py literature --unindexed` lists the cited works with no concepts yet, grouped by the source that cites them. Work through:
+
+1. **Works cited by several sources** first: they are load-bearing. `python3 tools/mesh.py health` lists them, and `index/frontier.tsv` ranks by citation count.
+2. **Works cited where a gap, tension or high-priority finding rests** (the ★ and ◆ lists in `ledger/reading-queue.md`).
+3. **Works on a high-priority concept**, from `literature` with the concept named.
+4. The rest, oldest ids first, so the index stays even.
+
+## 2. Find the abstract
+
+In this order, stopping at the first that works:
+
+1. **The vault already has it**: a work whose status is `held` is a source; it needs no index.
+2. **A DOI** on the card: resolve it. Crossref (`https://api.crossref.org/works/<doi>`) returns an abstract for many works; publisher pages for others. A PubMed id: use a PubMed tool or `https://pubmed.ncbi.nlm.nih.gov/<pmid>/`. An arXiv id: the abstract page.
+3. **A search** by exact title, when there is no identifier.
+4. **No abstract exists** (a book, a 1936 trade journal, a software note): write one line under `## Abstract` saying so and where you looked, and index what the card's own fields and the citing passages say instead. Set `- indexed::` anyway, so the work is not searched for again.
+
+Paste the abstract **verbatim**. Do not paraphrase it, do not translate it, and do not shorten it. If it is structured (Background/Methods/Results), keep the structure. Record where it came from on the `- indexed::` line.
+
+**Never invent an abstract.** If you cannot find one, say so. A fabricated abstract would poison every hub it reaches.
+
+## 3. Write what it claims
+
+Under `## What it claims`, two to eight lines, each one statement the abstract makes, each naming the concepts it bears on as links:
+
+```
+- Odour pleasantness is the first principal component of perceptual space, and is predictable from molecular structure ([[hedonic]], [[perceptual-space-dimensionality]], [[chemoinformatic-descriptors]])
+- The prediction holds across cultures ([[individual-differences]])
+```
+
+- **The authors' claim, in your words, not theirs.** Compress; do not copy sentences out of the abstract.
+- **Only what the abstract actually says.** No inference, no filling in from what the brain already believes, no "this probably means".
+- **A number is worth more than an adjective.** "r = 0.8 across 150 molecules" beats "strongly predicts".
+- **Link only concepts that exist.** `python3 tools/mesh.py concept <name>` checks. If a work needs a concept the vault lacks, propose it (`propose <slug> "<definition>" --from <the citing source>`) and link the proposed name; the user decides. Propose rarely: the index is for cross-reference, not for growing the vocabulary.
+- **Respect the vault's rules.** A rule that bars a kind of concept (generic machine-learning or statistics terms, say) applies here too.
+
+## 4. Codes
+
+```
+- concepts:: [[hedonic]], [[perceptual-space-dimensionality]], [[chemoinformatic-descriptors]]
+- indexed:: 2026-11-23 — abstract from Crossref (doi:10.1523/JNEUROSCI.1158-07.2007)
+```
+
+`concepts::` is what the work is **about**, three to six concepts, not every term the abstract mentions. These put the card on those hubs, so be strict: a work that merely mentions mixtures in passing is not about mixtures.
+
+Set `status: queued` if the work now looks worth reading in full, and say why in `## Notes`.
+
+## 5. What the index is for
+
+After a run, `python3 tools/mesh.py build` then:
+
+- `python3 tools/mesh.py literature` ranks concepts by cited works against sources read. A concept carried by many cited works and few read sources is where the brain rests on literature it has not read.
+- Each concept hub now lists the indexed works about it, with what each claims.
+- `ledger/reading-queue.md` and the gap cards can then be argued from evidence: a gap that a dozen indexed works bear on is a reading list, not a research gap (`brain-mesh-gaps`, rung 2).
+
+Report to the user: how many works indexed, the concepts that gained most, the concepts where reading is thinnest, any work that turned out to be already held, and the handful you would read next, with the reason.
+
+## 6. Working in agents
+
+With more than about fifty works to index, split them between agents as `brain-mesh-batch` does. Each agent takes a block of reference ids, writes **only** in `references/`, touches no other folder, and never runs `build`, `sync` or `cite`. Give each agent its list explicitly, so two never take the same card. The launching session builds, checks and syncs when they are done.

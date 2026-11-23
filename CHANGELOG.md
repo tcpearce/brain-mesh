@@ -2,6 +2,19 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.24.0 (2026-11-23)
+
+**The citation index: the works a vault cites but has not read, indexed from their abstracts.**
+
+A brain mesh holds a few papers in full and cites hundreds it has never read. Those citations are the field around the vault, already filtered by the papers the user chose. A reference card may now be indexed from its abstract, which turns that list into a map of the surrounding literature.
+
+- **Reference cards** may carry `## Abstract` (verbatim, or a line saying why there is none), `## What it claims` (two to eight statements, each naming the concepts it bears on as links), and Codes `- concepts:: [[a]], [[b]]` and `- indexed:: <date> — <where the abstract came from>`.
+- **An indexed claim is never evidence.** It comes from an abstract, not from text the brain has read and anchored: nothing may rest on it, and no finding may cite it. `FORMATS.md` states the rule.
+- **Every concept hub now lists the cited works about it**, with what each claims and who cites it, beside the evidence the brain has read. A work reaches a hub through its own `concepts::` line, so the hub shows the literature on that concept, not only the papers read.
+- **`mesh.py literature`** ranks concepts by the cited works that bear on them against the sources actually read, so the thinnest coverage comes first; `literature <concept>` asks about one, and `literature --unindexed` lists the works still to index, by the source that cites them.
+- **`check`** validates the index: concepts must be concept cards, an indexed card must name concepts and carry an abstract, each claim must name a concept, and an abstract with no provenance line is flagged.
+- **A new skill, `brain-mesh-citation-index`**, says how to index: where to find an abstract, never to invent one, how to write claims from it, and how to split the work between agents.
+
 ## 1.22.2 (2026-11-23)
 
 Three false alarms cleared and a title that keeps its capitals (issues #31, #36, #39, #40).

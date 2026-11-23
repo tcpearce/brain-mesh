@@ -2,6 +2,11 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.23.5 (2026-11-23)
+
+- **A trailing `DOI: https://…` no longer swallows the journal.** eLife ends each entry with a `DOI:` label before the link; the reader stripped the link but left the label, so the volume and pages stayed inside the title and 68 of one paper's 75 entries came out wrong. The label is stripped with the link, and the match is case-insensitive.
+- **An entry whose year is followed by no punctuation is found.** `Abraham NM, Spors H … (2004) Maintaining accuracy …` (the Journal of Neuroscience style) has no stop after the closing parenthesis, so an unnumbered list in that style split into nothing. One paper went from no list found to 45 entries, 41 traced.
+
 ## 1.23.4 (2026-11-23)
 
 - **eLife-style lists** (issue #45, same code path). `Alvarez-Melis D, Fusi N. 2020. Title. Journal 7:20.` has the initials against the surname like PLOS but a bare year with no parentheses, and the heading runs straight on into the first entry. All three now read: the run-on heading is recognised for an author-year list as well as a numbered one, and the entry parser takes the year in parentheses or bare.

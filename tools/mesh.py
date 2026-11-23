@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.23.4"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.23.5"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -372,7 +372,7 @@ def split_refs(text, limit=600):
 SURNAME = r"(?:[A-ZÀ-ÞŒ][\w'’\-]+|(?:de|van|von|da|di|del|der|du|le|la|den|ten|ter|dos|das|Mc|Mac)\s?[A-ZÀ-ÞŒ][\w'’\-]+)"
 AY_HEAD = ("(?:" + SURNAME + r",\s+(?:[A-ZÀ-ÞŒ]\.|[A-ZÀ-ÞŒ][\w'’\-]+)"      # Snitz, K.  /  Snitz, Kobi
            "|" + SURNAME + r"\s+[A-ZÀ-ÞŒ]{1,3}[,.])")                            # Snitz K,  /  Qian WW.  (PLOS, BMC, eLife)
-AY_START = re.compile(r"(?:(?<=\s)|^)(" + AY_HEAD + r"[\s\S]{0,220}?\(?(?:19|20)\d{2}[a-z]?\)?[.,])\s")
+AY_START = re.compile(r"(?:(?<=\s)|^)(" + AY_HEAD + r"[\s\S]{0,220}?\(?(?:19|20)\d{2}[a-z]?\)?[.,]?)\s")
 
 def split_refs_author_year(text):
     """Split an author-year reference list into [(n, text)], numbered in the order printed (issue #5). An entry starts
@@ -434,7 +434,7 @@ def parse_ref_author_year(raw):
     if not mo: return parse_ref(raw)
     who = re.sub(r",?\s*(?:and|&)\s*$", "", re.sub(r"[,;]\s*$", "", raw[:mo.start()].strip())).strip()
     tail = raw[mo.end():].strip().lstrip(").,; ")
-    link = re.search(r"\s*((?:https?://|doi:\s*|www\.)\S+)\s*\.?\s*$", tail)  # a link at the end would come between the pages and the year
+    link = re.search(r"\s*(?:doi:\s*)?((?:https?://|doi:\s*|www\.)\S+)\s*\.?\s*$", tail, re.I)  # a trailing link, with or without a 'DOI:' label, would come between the pages and the year
     core = tail[:link.start()] if link else tail
     f = parse_ref(f"Anon, {core} ({mo.group(1)}). {link.group(1) if link else ''}".strip())  # everything before the year is the authors, so the parser is left only the tail
     people = re.findall(SURNAME + r",\s*(?:[A-ZÀ-ÞŒ]\.?(?:\s?-?[A-ZÀ-ÞŒ]\.?)*|[A-ZÀ-ÞŒ][\w'’\-]+(?:\s+[A-ZÀ-ÞŒ]\.?)*)", who)

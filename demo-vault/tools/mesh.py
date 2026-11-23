@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, bisect, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.23.7"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.24.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -801,6 +801,8 @@ class Mesh:
             r = s.resolve(t); (good if r else bad).append(r or t.strip())
         return good, bad
     def aux(s, t):  # link targets that are files or notes, not cards
+        hub = re.fullmatch(r"(.+)--all", t.strip())  # the generated page holding a concept's full list (index/hubs/)
+        if hub and hub.group(1) in s.cards and s.cards[hub.group(1)].fam == "concept": return True
         mo = re.fullmatch(r"(P\d{3})(\.pdf|_marked\.pdf|_text|_original(\.\w+)?|_SI\.pdf|_SI_marked\.pdf|_SI_text|_SI-[\w.-]+\.\w+|_correction\.pdf|_correction_marked\.pdf|_correction_text|-(?:S?[TF]\d+[a-z]*|eq[0-9a-z]+)(?:-[a-z0-9]+)?\.\w+)", t.strip())
         return bool(mo and mo.group(1) in s.cards) or t.strip() in NOTES
     def blocks(s, pid):
@@ -1457,11 +1459,40 @@ class Mesh:
             for y in range(x + 1, len(src)):
                 if jac(toks(src[x].title), toks(src[y].title)) >= 0.85 and src[x].get("doi") != src[y].get("doi"): W.append(f"{src[y].id} and {src[x].id} have near-identical titles (preprint and published version?); keep one")
 
-def report(m, notes):
+GAPS_SHOW = 8     # rows of each section `gaps` prints without --all
+HUB_INLINE = 20   # a hub links this many further cards by id on its own page; more go to its page of every card
+CHECK_SHOW = 40   # check prints every warning up to this many, and a summary by kind beyond it
+
+
+def warn_kind(w):
+    """The kind of a warning: its words without the cards, numbers and quoted text it names."""
+    t = re.sub(r"^[^:]{1,60}: ", "", w, count=1) if re.match(r"(?:[A-Z]\d{3,4}|[a-z0-9-]+\b)", w) else w
+    t = re.sub(r"\[\[[^\]]*\]\]|'[^']*'|\"[^\"]*\"|`[^`]*`", "…", t)
+    t = re.sub(r"\b[A-Z]{1,2}\d{3,4}(?:-\d{3}|-claims)?\b|[-+−]?\d[\d.,]*", "…", t)
+    return one(re.split(r"[;:(]", t, maxsplit=1)[0], 80).strip(" .…") or one(t, 60)
+
+
+def report(m, notes, save=False):
+    """Print what check found. Every error is printed. Warnings are printed one by one while they are few; beyond
+    CHECK_SHOW they are counted by kind with an example each, because a list that grows with the vault would fill a
+    reader's context at every build. `--all` prints every line, and `build` keeps the full list in index/check.txt."""
     m.err, m.warn = list(dict.fromkeys(m.err)), list(dict.fromkeys(m.warn))
+    if save:
+        cp = J(m.root, "index", "check.txt"); text = "".join(f"ERROR {e}\n" for e in m.err) + "".join(f"warn  {w}\n" for w in m.warn)
+        if not os.path.exists(cp) or rd(cp) != text: os.makedirs(os.path.dirname(cp), exist_ok=True); wr(cp, text)
     for e in m.err: print("ERROR", e)
-    for w in m.warn: print("warn ", w)
-    for a in dict.fromkeys(m.absent): print("note ", a)  # true of this copy of the vault only, so not counted in MAP.md
+    if "--all" in sys.argv or len(m.warn) <= int(m.cfg.get("check_show", CHECK_SHOW)):
+        for w in m.warn: print("warn ", w)
+    else:
+        kinds, first = Counter(), {}
+        for w in m.warn: k = warn_kind(w); kinds[k] += 1; first.setdefault(k, w)
+        print(f"warn  {len(m.warn)} warnings of {len(kinds)} kinds, counted here with an example of each. Every line: " + ("index/check.txt, or " if save or os.path.exists(J(m.root, "index", "check.txt")) else "") + "`mesh.py check --all`; one source: `mesh.py check P012`.")
+        for k, n in ranked(kinds): print(f"warn  {n:4d} x {k}" + (f" · e.g. {one(first[k], 150)}" if n > 1 else f" · {one(first[k], 170)}"))
+    absent = list(dict.fromkeys(m.absent))
+    for a in absent[:8]: print("note ", a)  # true of this copy of the vault only, so not counted in MAP.md
+    if len(absent) > 8 and "--all" not in sys.argv: print(f"note  … and {len(absent) - 8} more notes of the same kind (`--all` prints them)")
+    else:
+        for a in absent[8:]: print("note ", a)
     print(f"check: {len(m.err)} errors, {len(m.warn)} warnings" + "".join(f"; {v} {k}" for k, v in notes.items()))
 
 # ---------- commands ----------
@@ -2318,6 +2349,8 @@ def write_backlinks(m):
     for c in m.cards.values():
         hand, gen = card_parts(c)
         own = set(m.ids(hand + "\n" + gen)[0])
+        hp = J(m.root, "index", "hubs", c.id + "--all.md")
+        if c.fam == "concept" and os.path.exists(hp): own |= set(m.ids(rd(hp))[0])  # its page of every card is part of what the hub links
         rows = [(lab, src, why) for lab, src, why, typed in bl.get(c.id, [])
                 if (typed and c.fam in ("evidence", "page")) or src.id not in own]
         base = c.raw.split("\n## Linked from")[0].rstrip("\n") + "\n"
@@ -2381,25 +2414,47 @@ def cmd_build(root):
         if c.fam in ("evidence", "page") and not c.get("retired"):
             for t in m.terms(c): use[t].append(c)
     rank = ["observation", "claim", "model", "method", "limitation", "assumption", "question", "oddity", "definition", "cited"]
-    more = lambda rest: [f"- … and {len(rest)} more: " + " · ".join(f"[[{c.name}|{c.id}]]" for c in rest)] if rest else []  # every card is linked, the rest by id only
+    hub_inline, hub_pages = int(m.cfg.get("hub_inline", HUB_INLINE)), {}  # concept -> the text of its page of every card
+    def more(rest, con, label, everything, spill):
+        """The cards a hub does not list by title. A few are linked on the hub by id; many go to the concept's own
+        generated page (index/hubs/<concept>--all.md), which lists every card of that kind, and the hub links it with
+        a count for each source. Either way every card stays one link from the hub."""
+        if not rest: return []
+        if len(rest) <= hub_inline: return [f"- … and {len(rest)} more: " + " · ".join(f"[[{c.name}|{c.id}]]" for c in rest)]
+        spill.append((label, everything))
+        by = ranked(Counter(c.id[:4] for c in rest if c.fam == "evidence"))
+        return [f"- … and {len(rest)} more" + (" (" + ", ".join(f"{k} {v}" for k, v in sorted(by)) + ")" if by else "") + f": [[{con.id}--all|every card that names {con.title}]]"]
+    def hub_page(con, spill):
+        L = [f"# {con.title}: every card that names it", "", f"Generated by `mesh.py build` for [[{con.id}]], whose own page lists the first of each kind by title. It is rewritten on every build: do not edit it.", ""]
+        for label, cards in spill:
+            L += [f"## {label} ({len(cards)})", ""]
+            if cards and cards[0].fam == "evidence":
+                for pid in sorted({c.id[:4] for c in cards}):
+                    mine_ = [c for c in cards if c.id[:4] == pid]
+                    L.append(f"**{pid}** {short_cite(m.cards[pid]) if pid in m.cards else ''} ({len(mine_)})".replace("  ", " "))
+                    for t in [t for t in rank if any(c.type == t for c in mine_)] + sorted({c.type for c in mine_} - set(rank)):
+                        L.append(f"- {t}: " + " · ".join(f"[[{c.name}|{c.id}]]" for c in mine_ if c.type == t))
+                    L.append("")
+            else: L += [f"- {lk(c, c.get('name') or one(c.title, 100))} · {c.status}" for c in cards] + [""]
+        return "\n".join(L).rstrip("\n") + "\n"
     cooc = {con.id: Counter(t for c in use.get(con.id, []) for t in m.terms(c) if t != con.id) for con in m.cards.values() if con.fam == "concept"}
     top15 = {k: [t for t, _n in ranked(v, 15)] for k, v in cooc.items()}
     for con in [c for c in m.cards.values() if c.fam == "concept"]:  # each concept card lists what uses it
-        users, L = use.get(con.id, []), []
+        users, L, spill = use.get(con.id, []), [], []
         pg, ev = sorted((c for c in users if c.fam == "page"), key=lambda c: c.id), [c for c in users if c.fam == "evidence"]
         dc = [c for c in pg if c.id[0] in "DC"]
         disc = [c for c in pg if c.id[0] in "TAS"]
         pg = [c for c in pg if c.id[0] not in "DCTAS"]
-        if pg: L += [f"**Findings, tensions, gaps, hypotheses and experiments ({len(pg)})**"] + [f"- {lk(c)} · {c.status}" for c in pg[:40]] + more(pg[40:]) + [""]
-        if disc: L += [f"**Theories, analogies and seeds ({len(disc)})**"] + [f"- {lk(c)} · {c.status}" for c in disc[:40]] + more(disc[40:]) + [""]
-        if dc: L += [f"**Data sets and code ({len(dc)})**"] + [f"- {lk(c, c.get('name') or one(c.title, 100))} · {c.status}" for c in dc[:40]] + more(dc[40:]) + [""]
+        if pg: L += [f"**Findings, tensions, gaps, hypotheses and experiments ({len(pg)})**"] + [f"- {lk(c)} · {c.status}" for c in pg[:40]] + more(pg[40:], con, "Findings, tensions, gaps, hypotheses and experiments", pg, spill) + [""]
+        if disc: L += [f"**Theories, analogies and seeds ({len(disc)})**"] + [f"- {lk(c)} · {c.status}" for c in disc[:40]] + more(disc[40:], con, "Theories, analogies and seeds", disc, spill) + [""]
+        if dc: L += [f"**Data sets and code ({len(dc)})**"] + [f"- {lk(c, c.get('name') or one(c.title, 100))} · {c.status}" for c in dc[:40]] + more(dc[40:], con, "Data sets and code", dc, spill) + [""]
         if ev:
             L.append(f"**Evidence: {len(ev)} cards from {len({c.id[:4] for c in ev})} sources** ({', '.join(f'{k} {v}' for k, v in ranked(Counter(c.type for c in ev)))})")
             ev.sort(key=lambda c: (rank.index(c.type) if c.type in rank else 99, c.id))
             rx = m.retracted()
             ctail = lambda c: (" · cites " + ", ".join(f"[[{w.name}|{short_cite(w)}]]" for w in works_cited(m, c)[:3]) + (" …" if len(works_cited(m, c)) > 3 else "")) if works_cited(m, c) else ""
             L += [f"- {lk(c, one(c.title, 110))} · {c.type}" + ctail(c) + (" · **retracted**" if c.id in rx else "") for c in ev[:30]]
-            L += more(ev[30:])
+            L += more(ev[30:], con, "Evidence", ev, spill)
             L.append("")
         fromcon = [r for r in inbound.get(con.id, []) if r[1].fam == "concept"]
         if fromcon: L += ["**Linked from other concepts**"] + mirror(fromcon) + [""]
@@ -2411,6 +2466,14 @@ def cmd_build(root):
             L += ["**Key references** (works cited where this concept's cards are anchored; cite the closely relevant ones in the text above, linking the reference card with the author and year as its label, and add a cites:: line)"]
             L += [f"- {lk(r, one(r.title, 100))}" + (f" · [doi](https://doi.org/{r.get('doi')})" if r.get("doi") else "") + f" — cited beside {', '.join(sorted(cs)[:4])}" + (" · **cited in this card**" if r.id in {t for v in con.all('cites') for t in m.ids(v)[0]} else "") for r, cs in keyrefs] + [""]
         fill(con, L)
+        if spill: hub_pages[con.id] = hub_page(con, spill)
+    hubdir = J(root, "index", "hubs")  # one page for each concept whose list outgrew its hub; a page nothing needs any more is removed
+    if hub_pages: os.makedirs(hubdir, exist_ok=True)
+    for cid, text in sorted(hub_pages.items()):
+        hp = J(hubdir, cid + "--all.md")
+        if not os.path.exists(hp) or rd(hp) != text: wr(hp, text)
+    for hp in glob.glob(J(hubdir, "*--all.md")):
+        if os.path.basename(hp)[:-len("--all.md")] not in hub_pages: os.remove(hp)
     refs = sorted((c for c in m.cards.values() if c.fam == "reference" and not c.get("retired")), key=lambda c: c.id)
     srckeys = {k: c for c in m.cards.values() if c.fam == "source" for k in ref_keys(source_fields(c))}
     for k_, r in enumerate(refs):  # a cited work that has since become a source in the brain is marked held
@@ -2520,19 +2583,20 @@ def cmd_build(root):
     if "<!--AUTO:START" not in t or "<!--AUTO:END-->" not in t: t = t.rstrip() + "\n\n<!--AUTO:START (rebuilt by `mesh.py build`; do not edit by hand)-->\n<!--AUTO:END-->\n"
     a, b = t.find("<!--AUTO:START"), t.find("<!--AUTO:END-->")
     wr(mp, t[:t.find("\n", a) + 1] + "\n".join(L) + "\n" + t[b:])
-    report(m, notes); print(f"{n} links expanded to full card names; index/, source-card lists and MAP.md rebuilt")
+    report(m, notes, save=True); print(f"{n} links expanded to full card names; index/, source-card lists and MAP.md rebuilt")
     print("PDF marking skipped: PyMuPDF is not installed (pip install pymupdf)" if marked is None else f"marked PDFs rewritten for: {' '.join(marked) or 'none (all up to date)'}")
 
 PRANK = {"high": 0, "elevated": 1, "normal": 2, "low": 3}
 
 
-def cmd_gaps(m):
-    """Mechanical scan: signals to judge, not a list of gaps."""
+def cmd_gaps(m, every=False):
+    """Mechanical scan: signals to judge, not a list of gaps. Each section shows its first rows; `--all` shows every row."""
     used = {t for c in m.pages("KXGHETA") for t in m.ids(c.raw)[0]}
     def sec(title, rows, cap=25):
+        cap = len(rows) if every else min(cap, GAPS_SHOW)
         print(f"\n## {title} ({len(rows)})")
         for r in rows[:cap]: print("  " + r)
-        if len(rows) > cap: print(f"  … {len(rows) - cap} more")
+        if len(rows) > cap: print(f"  … {len(rows) - cap} more (`mesh.py gaps --all`)")
     row = lambda c: f"{c.id} {one(c.title, 115)}"
     ngroups = lambda c: len(independent_groups(m, support_sources(m, c), waived_pairs(m, c)))
     sec("Findings resting on one source, or on sources that are not independent of each other", [f"{row(c)} [{c.status}; {' + '.join(support_sources(m, c)) or 'no source'}]" for c in m.pages("K") if ngroups(c) <= 1])
@@ -8310,15 +8374,16 @@ def stamp_line(r): return f"- mined:: {r[1]} | {TODAY} | {r[0]:g} | {' '.join(r[
 def cmd_discover(m, args):
     """Mine the ontology for candidate cards (signals to judge with the user), or recheck stamped cards and rejected
     signals against the brain as it now stands."""
-    opt, want, it = {"--top": "8", "--focus": None}, [], iter(args)
-    flags = {a for a in args if a in ("--all", "--recheck")}
+    opt, want, it = {"--top": None, "--focus": None}, [], iter(args)
+    flags = {a for a in args if a in ("--all", "--recheck", "--full")}
     for a in it:
         if a in flags: continue
         if a in opt: opt[a] = next(it, None)
         elif a in MINERS: want.append(a)
-        else: sys.exit(f"discover: unknown miner or option '{a}'; miners are {', '.join(MINERS)}; options --top N, --focus <concept or topic:slug>, --all, --recheck")
+        else: sys.exit(f"discover: unknown miner or option '{a}'; miners are {', '.join(MINERS)}; options --top N, --focus <concept or topic:slug>, --all, --full, --recheck")
     if "--recheck" in flags: return recheck(m)
-    want, top = want or MINERS, int(opt["--top"] or 8)
+    brief = not want and "--full" not in flags  # no miner named: an overview of them all, which must stay small however large the brain
+    want, top = want or MINERS, int(opt["--top"] or (3 if brief else 8))
     tf = opt["--focus"] or ""
     if tf.startswith("topic:"):  # a topic from `zoom`: signals involving any of its concepts
         T_ = topics(m)[0]
@@ -8352,14 +8417,16 @@ def cmd_discover(m, args):
         for n_, (_c, _s, _k, r, rj) in enumerate(shown[:top], 1):
             sc, key, text, lines, cs, src = r
             cc = [c for c in cs if c in m.cards and m.cards[c].fam == "concept"]
+            if brief: print(f"  {n_}. [{sc:g}] {one(plain(text), 220)} · key {key}" + (" · REOPENED" if rj else "")); continue
             print(f"  {n_}. [{sc:g}] {plain(text)}")
             for l in lines: print(f"       {plain(l)}")
             tags = [f"key {key}"] + (["housekeeping"] if any(key.startswith(h) for h in HOUSEKEEPING) else []) + ([f"respect: mesh.py facts {' '.join(cc[:3])}"] if cc and not key.startswith("contradictions:log") else []) + ([f"touched by {', '.join(touched(cs))}"] if touched(cs) else []) + ([f"already carded as {', '.join(carded[key])}"] if carded.get(key) else [])
             if rj: tags.append(f"REOPENED: judged before{' on ' + rj[0] if rj[0] else ''} ({one(rj[3], 60)}); new sources since: {' '.join(sorted(set(src) - rj[2])) or 'none'}")
             print("       " + " · ".join(tags))
             if not carded.get(key): print(f"       stamp: {stamp_line(r)}")
-        if len(shown) > top: print(f"  … {len(shown) - top} more (--top N)")
+        if len(shown) > top: print(f"  … {len(shown) - top} more (" + (f"`mesh.py discover {miner}`" if brief else "--top N") + ")")
         total += len(shown)
+    if brief: print("\nThis is the overview: the head of every miner, without its detail lines. Name a miner for its cards, tags and stamp lines (`mesh.py discover moderators`), or `--full` for all of them at once; `mesh.py routes` is the agenda that draws on them all.")
     print(f"\n{total} signals" + (f"; {hidden} hidden because they were rejected and nothing new bears on them (--all shows them)" if hidden else "") +
           ". These are prompts, not findings. Judge each against its cards and the PDF, and against every fact and piece of evidence on its concepts (`mesh.py facts`): a proposal may go against evidence only where a logged contradiction frees it. Then propose the worthwhile ones to the user as cards (brain-mesh-discover). Paste the stamp into each accepted card; record each rejection with `mesh.py dismiss <key> <reason>`.")
 
@@ -8445,7 +8512,7 @@ figure <P###> <page> <x0,y0,x1,y1> <name> [--logy] [--ycal v@pos,...] [--force] 
 id <P|K|X|G|H|E|D|C|R|L|P###> next free id                   concept <name>                  existing concepts like a name
 split <batch.md> [--update]   write many cards from one file (`=== <file name>` starts each card)
 build                         expand links to full names, check, rebuild index/, source lists and MAP.md
-check [P###]                  validate everything (or one source)
+check [P###] [--all]          validate everything (or one source); past forty warnings they are counted by kind, --all prints each
 zoom [topic:<slug>|<concept>|<id>] [--budget n] [--explored "<note>"]   the brain as a hierarchy, most need to know first: topics, then a
                               topic's concepts, a concept, a finding, contradiction or gap, an evidence card; about n tokens (1000) a level
 routes [topic:<slug>|<concept>|<id>] [--route <name>] [--reach in|partner|unclear|out|all] [--top n] [--budget n]
@@ -8501,9 +8568,9 @@ merge <keep> <drop>           redirect links from one card to another and retire
 mark [P###] [--force]         rewrite the marked PDF copies (build does this when cards change)
 seal [P###]                   record checksums for source files that have none
 linked [<file> [--from <where>] | --all | --restore | --verify]  source files over the size limit (MESH.json large_file_mb, 10) kept out of git: list, link, restore from history, check
-gaps                          scan for candidate gaps (signals to judge)
+gaps [--all]                  scan for candidate gaps (signals to judge): the head of each section, or every row
 gapsdoc                       assemble gaps/RESEARCH-GAPS.md from the gap cards
-discover [miner ...] [--top n] [--focus concept] [--all]   mine the ontology for candidate cards: """ + ", ".join(MINERS) + """
+discover [miner ...] [--top n] [--focus concept] [--all] [--full]   mine the ontology for candidate cards (no miner named: an overview; --full: every miner in full): """ + ", ".join(MINERS) + """
 discover --recheck            after new sources: what changed for stamped cards and rejected signals
 report [<kind> [target]] [--focus concept] [--since date|P###] [--top n]   assemble a dated report in reports/: frontier, contradictions [V001 ...], theories, causal,
                               robustness, methods, novelty "<idea>"|<S001> [--concepts a b], changes; `report all`; `report` alone lists them
@@ -8553,7 +8620,7 @@ def main():
         else: cmd_scan(m, a)
     elif c == "id": cmd_id(m, a[0])
     elif c == "split": cmd_split(m, a[0], "--update" in a)
-    elif c == "check": notes = m.check(a[0] if a else None); report(m, notes); sys.exit(1 if m.err else 0)
+    elif c == "check": a = [x for x in a if not x.startswith("--")]; notes = m.check(a[0] if a else None); report(m, notes); sys.exit(1 if m.err else 0)
     elif c == "show": cmd_show(m, " ".join(x for x in a if x != "--all"), every="--all" in a)
     elif c == "ask": cmd_ask(m, a)
     elif c == "zoom": cmd_zoom(m, a)
@@ -8580,7 +8647,7 @@ def main():
         for s_ in [x for x in m.cards.values() if x.fam == "source" and (not a or x.id == a[0])]:
             for f in source_files(root, s_.id):
                 if os.path.basename(f) not in m.sums(): seal(root, f); print("sealed", os.path.basename(f))
-    elif c == "gaps": cmd_gaps(m)
+    elif c == "gaps": cmd_gaps(m, "--all" in a)
     elif c == "gapsdoc": cmd_gapsdoc(m)
     elif c == "discover": cmd_discover(m, a)
     elif c == "dismiss": cmd_dismiss(m, a[0], " ".join(a[1:]))

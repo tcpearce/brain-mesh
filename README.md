@@ -159,6 +159,8 @@ Compare each topic once, when you first mine it. Claude records every verdict (`
 
 Then run `beyond terms` again: a shared term appears only once two papers use it.
 
+**It stays readable as it grows.** `zoom`, `routes`, `ask`, `find` and `facts` print to a budget. A concept hub lists its first cards by title and links a generated page (`index/hubs/`) for the rest; `build` and `check` count warnings by kind once there are more than forty and keep every line in `index/check.txt`; `gaps` and a bare `discover` print the head of each section. `--all` or `--full` prints everything.
+
 **What makes it work**
 
 - **Signals are prompts, not findings.** The rank orders prompts; it does not measure worth.

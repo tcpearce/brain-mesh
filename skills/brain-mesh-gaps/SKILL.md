@@ -19,7 +19,7 @@ Skipping a rung is the main way this goes wrong: proposing an experiment that pa
 
 ## 1. Scan for candidates
 
-`python3 tools/mesh.py gaps` prints signals, grouped. They are prompts for judgement, not a list of gaps. `python3 tools/mesh.py discover recognised` adds the open questions and limits that two or more independent groups state themselves, the strongest sign that the field already counts something a gap, and `routes --route fill-gap` shows each open gap with what it still lacks and whether closing it is within the research profile.
+`python3 tools/mesh.py gaps` prints signals, grouped, the first eight of each group (`gaps --all` prints every row). They are prompts for judgement, not a list of gaps. `python3 tools/mesh.py discover recognised` adds the open questions and limits that two or more independent groups state themselves, the strongest sign that the field already counts something a gap, and `routes --route fill-gap` shows each open gap with what it still lacks and whether closing it is within the research profile.
 
 | signal in the scan | kind of gap it may indicate |
 |---|---|

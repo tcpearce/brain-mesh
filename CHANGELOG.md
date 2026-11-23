@@ -2,6 +2,16 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.24.0 (2026-11-23)
+
+Lists that grow with the vault are capped, and nothing is lost. An LLM reading the vault no longer pays for them at every build.
+
+- **A hub's long list moves to its own page.** A concept card lists the first cards of each kind by title, as before. The rest used to follow on one line of links by id, and on a concept most cards name (`species`, `preparation`) that line had reached 15,000 tokens. Up to twenty are still linked on the hub; more go to a generated page, `index/hubs/<concept>--all.md`, which lists every card that names the concept by source and type. The hub links it with a count for each source. Every card is still one link from its hub, the cards' own links are untouched, and the page is removed when the list fits the hub again. On a nine-paper vault the largest hub falls from 62,000 to 19,000 characters. `"hub_inline"` in `MESH.json` sets the twenty.
+- **`check` and `build` count warnings by kind once there are more than forty**, with an example of each kind. Every error is still printed. Every line is in `index/check.txt` after a build and under `check --all`; `"check_show"` in `MESH.json` sets the forty. Build output on the same vault: 13,400 characters to 3,600.
+- **`gaps` prints the first eight rows of each section**; `gaps --all` prints every row.
+- **`discover` with no miner named is an overview**: the top three signals of each miner on one line each. A named miner prints its details as before, and `discover --full` prints every miner in full. 85,000 characters to 15,000.
+- `check --all` no longer takes the flag for a source id.
+
 ## 1.23.7 (2026-11-23)
 
 Found while measuring how the tooling scales on a vault grown to four times its size.

@@ -67,7 +67,9 @@ Tools:
 | Everything that rests on a card or source | `impact <id>` |
 | Which combinations of conditions were measured | `matrix <variable> <variable>` |
 | Cards in other sources to link | `neighbours <id>` |
-| What needs attention | `health`, `gaps` |
+| What needs attention | `health`, `gaps` (the head of each section; `gaps --all` for every row) |
+| What `check` found | `build` and `check` print every error, and every warning while they are forty or fewer; beyond that they count warnings by kind with an example of each. Every line is in `index/check.txt` after a build, under `check --all`, or for one source with `check P012` |
+| Every card that names a concept | The hub lists the first of each kind by title. When more than a few remain, they are on the concept's generated page `index/hubs/<concept>--all.md`, linked from the hub. Use `table`, `facts` or `zoom` rather than opening that page |
 | Bulk work | `index/cards.tsv`, `index/edges.tsv`, `index/coverage.tsv`: plain tables to filter with grep or a short script |
 | A bibliography | `references/library.bib` (everything), `sources/P012-…/P012_refs.bib` (one paper) |
 

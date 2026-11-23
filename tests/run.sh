@@ -664,7 +664,7 @@ sed -i 's/^\(- prioritised:: \)[0-9-]*\( high — the founding study\)/\12025-01
 (python3 tools/mesh.py check || true) | grep -q "P001: high priority since 2025-01-01 with no change since" && pass "a long-unchanged high priority is flagged for review" || fail "priority hygiene"
 # 12. discovery: miners, theory, analogy and seed cards, stamps, rejections and rechecks (1.6.0)
 rm -rf "$T/d"; cp -r "$ROOT/demo-vault" "$T/d"; cd "$T/d"; python3 "$MESH" upgrade . > /dev/null; python3 tools/mesh.py build > /dev/null
-python3 tools/mesh.py discover --top 30 > disc.txt
+python3 tools/mesh.py discover --full --top 30 > disc.txt
 grep -q "acetonitrile and swelling related? No evidence card or finding holds both" disc.txt && grep -A2 "acetonitrile and swelling" disc.txt | grep -q "touched by X001, G002" && pass "bridges finds an unjoined concept pair and names the gap that already touches it" || { cat disc.txt; fail "bridges"; }
 grep -q "acetonitrile and water related" disc.txt && fail "bridges proposed two values of one categorical variable" || pass "bridges skips sibling values of one variable"
 sed -n '/^## moderators/,/^## transfer/p' disc.txt | grep -q "solvent = water on one side, acetonitrile on the other" && sed -n '/^## moderators/,/^## transfer/p' disc.txt | grep -q "methods differ: batch-rebinding-assay against quartz-crystal-microbalance" && pass "moderators names the condition and the method that differ between the sides of a tension" || fail "moderators"
@@ -1874,4 +1874,32 @@ print("scores ok")
 PY
 grep -q "^scores ok$" sc.txt && pass "every miner scores the same whether or not links ran first; the cached pair score equals the plain one" || { cat sc.txt; fail "miner scores depend on order"; }
 python3 tools/mesh.py routes > ra.txt 2>&1; PYTHONHASHSEED=7 python3 tools/mesh.py routes > rb.txt 2>&1; PYTHONHASHSEED=99 python3 tools/mesh.py routes > rc2.txt 2>&1; cmp -s rb.txt rc2.txt && cmp -s ra.txt rb.txt && pass "routes prints the same lines on every run" || { diff rb.txt rc2.txt | head -4; fail "routes varies between runs"; }
+
+# 38. lists that grow with the vault are capped, and nothing is lost (1.24.0)
+cp -r "$ROOT/demo-vault" "$T/cap"; cd "$T/cap"; cp "$MESH" tools/mesh.py; S1=$(ls -d sources/P001*)
+for i in $(seq 100 159); do printf -- '---\ntype: observation\nstatus: measured\nupdated: 2026-11-23\n---\n# Capacity %s at %s degrees in a test of long lists\n\nThe [[binding-capacity]] was %s at %s C. **Source:** p. 1, [[P001.pdf#page=1|open page]].\n\n## Codes\n- id:: P001-%s\n- value:: [[binding-capacity]] = %s\n- when:: [[temperature]] = %s degC\n- anchor:: [[P001_text#^b0004]]\n- loc:: "binding capacity was 4.2"\n- concepts:: [[binding-capacity]]\n- missing:: method — a test card with no method card\n' "$((i * 7))" "$i" "$((i * 7))" "$i" "$i" "$((i * 7))" "$i" > "$S1/P001-$i-capacity-at-$i-degrees.md"; done
+python3 tools/mesh.py build > b1.txt 2>&1 || true
+HUB=concepts/binding-capacity.md; PG=index/hubs/binding-capacity--all.md
+grep -q "^- … and [0-9]* more (P001 [0-9]*.*): \[\[binding-capacity--all|every card that names Binding capacity\]\]$" $HUB && [ -f $PG ] && pass "a hub whose list has outgrown it links a generated page of every card, with a count for each source" || { grep -n "more" $HUB | cut -c1-200; ls index/hubs; fail "hub page"; }
+python3 - > hp.txt 2>&1 <<'PY'
+import re, glob, os
+hub, page = open("concepts/binding-capacity.md", encoding="utf-8").read(), open("index/hubs/binding-capacity--all.md", encoding="utf-8").read()
+cards = {os.path.basename(f)[:8] for f in glob.glob("sources/P00*/P00?-[0-9][0-9][0-9]-*.md") if "[[binding-capacity]]" in open(f, encoding="utf-8").read()}
+on_page = set(re.findall(r"\|(P\d{3}-\d{3})\]\]", page))
+assert len(cards) >= 60 and cards <= on_page, (len(cards), sorted(cards - on_page)[:5])
+assert "when_of::" not in hub and "value_of::" not in hub and len(hub) < 12000, len(hub)
+assert "**P001**" in page and "- observation: " in page and "[[binding-capacity]]" in page
+print("hub page ok", len(cards), len(hub))
+PY
+grep -q "^hub page ok" hp.txt && pass "every card that names the concept is on the page, and the hub carries no second copy of the list" || { cat hp.txt; fail "hub page content"; }
+! grep -q "broken link \[\[binding-capacity--all\]\]" b1.txt && cp $HUB hub1.md && cp $PG pg1.md && (python3 tools/mesh.py build > b2.txt 2>&1 || true) && cmp -s $HUB hub1.md && cmp -s $PG pg1.md && pass "the link to the page is no broken link, and a second build changes neither the hub nor the page" || { grep "broken" b1.txt | head -3; fail "hub page settles"; }
+grep -q "^warn  [0-9]* warnings of [0-9]* kinds, counted here with an example of each. Every line: index/check.txt" b1.txt && grep -q "^warn  *6[0-9] x value … not found in the anchored source · e.g. P001-1[0-9][0-9]: value" b1.txt && [ "$(grep -c '^warn ' b1.txt)" -lt 20 ] && pass "past forty warnings, build counts them by kind with an example of each" || { grep "^warn" b1.txt | head -5 | cut -c1-160; fail "check summary"; }
+[ "$(grep -c 'not found in the anchored source' index/check.txt)" -ge 60 ] && (python3 tools/mesh.py check --all > ca.txt 2>&1 || true) && [ "$(grep -c '^warn  P001-1[0-9][0-9]: value' ca.txt)" -ge 60 ] && (python3 tools/mesh.py check P002 > cp2.txt 2>&1 || true) && ! grep -q "kinds, counted here" cp2.txt && pass "every warning is in index/check.txt and under check --all; a short list is printed as before" || { wc -l index/check.txt ca.txt; fail "check full list"; }
+python3 tools/mesh.py gaps > g1.txt; python3 tools/mesh.py gaps --all > g2.txt
+grep -q "… [0-9]* more (.mesh.py gaps --all.)" g1.txt && ! grep -q "more (.mesh.py gaps --all.)" g2.txt && [ "$(wc -l < g2.txt)" -gt "$(( $(wc -l < g1.txt) + 40 ))" ] && pass "gaps shows the head of each section; --all shows every row" || { wc -l g1.txt g2.txt; fail "gaps cap"; }
+python3 tools/mesh.py discover > d1.txt 2>&1; python3 tools/mesh.py discover --full > d2.txt 2>&1
+grep -q "^This is the overview: the head of every miner" d1.txt && ! grep -q "stamp: " d1.txt && grep -q " · key [a-z]*:" d1.txt && grep -q "stamp: " d2.txt && ! grep -q "^This is the overview" d2.txt && [ "$(wc -c < d1.txt)" -lt "$(wc -c < d2.txt)" ] && pass "discover with no miner named is an overview; --full and a named miner give the details" || { head -12 d1.txt; fail "discover overview"; }
+python3 tools/mesh.py discover moderators | grep -q "This is the overview" && fail "a named miner printed the overview" || pass "a named miner prints its details as before"
+rm $S1/P001-1[0-9][0-9]-capacity-at-*.md; python3 tools/mesh.py build > b3.txt 2>&1 || true
+[ ! -f $PG ] && ! grep -q "binding-capacity--all" $HUB && pass "when the list fits the hub again, the page is removed and the hub lists its cards itself" || { ls index/hubs; fail "hub page removed"; }
 echo "ALL TESTS PASSED"

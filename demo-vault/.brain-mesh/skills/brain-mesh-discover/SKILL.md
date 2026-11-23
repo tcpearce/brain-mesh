@@ -136,7 +136,7 @@ The brain holds a handful of sources; the field holds thousands, and Claude has 
 - Around a session: a frontier map and a contradiction dossier (`brain-mesh-report`) show where the signals sit among the open contradictions and gaps; `report novelty S004` checks a seed against the brain before it is promoted.
 - On a schedule, as an insight pass with nobody watching (section 7).
 
-`python3 tools/mesh.py discover` runs every miner; name miners to run some (`discover bridges moderators`); `--focus <concept>` keeps signals involving one concept, and `--focus topic:<slug>` those involving any concept of a topic from `zoom`; `--top N` shows more per miner; `--all` includes rejected signals.
+`python3 tools/mesh.py discover` with no miner named is an overview: the top three signals of every miner, one line each, without detail or stamp lines, so that it stays small however large the brain. Name miners for their cards, tags and stamp lines (`discover bridges moderators`), or add `--full` for every miner in full; `--focus <concept>` keeps signals involving one concept, and `--focus topic:<slug>` those involving any concept of a topic from `zoom`; `--top N` shows more per miner; `--all` includes rejected signals.
 
 ## 2. The miners
 

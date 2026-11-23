@@ -2,6 +2,22 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.23.5 (2026-11-23)
+
+- **A trailing `DOI: https://…` no longer swallows the journal.** eLife ends each entry with a `DOI:` label before the link; the reader stripped the link but left the label, so the volume and pages stayed inside the title and 68 of one paper's 75 entries came out wrong. The label is stripped with the link, and the match is case-insensitive.
+- **An entry whose year is followed by no punctuation is found.** `Abraham NM, Spors H … (2004) Maintaining accuracy …` (the Journal of Neuroscience style) has no stop after the closing parenthesis, so an unnumbered list in that style split into nothing. One paper went from no list found to 45 entries, 41 traced.
+
+## 1.23.4 (2026-11-23)
+
+- **eLife-style lists** (issue #45, same code path). `Alvarez-Melis D, Fusi N. 2020. Title. Journal 7:20.` has the initials against the surname like PLOS but a bare year with no parentheses, and the heading runs straight on into the first entry. All three now read: the run-on heading is recognised for an author-year list as well as a numbered one, and the entry parser takes the year in parentheses or bare.
+- **Soft hyphens and zero-width spaces are ignored when reading references.** A PDF leaves them inside words (`Alvarez-­Melis`) and URLs, which stopped a surname, a DOI or the heading itself from matching. They are removed from the text the reference reader works on; the anchored text is untouched.
+- On the three papers added to a vault today, `refs` went from unusable to 58 of 58, 15 and 75 entries, with 58, 3 and 56 traced to the paragraphs that cite them.
+
+## 1.23.3 (2026-11-23)
+
+- **Square-bracket citations are traced** (issue #44). The fallback that reads citation numbers from the text matched round brackets only, and one stray superscript was enough to stop it running at all, so a paper citing `[1]`, `[2,3]` traced almost nothing: Snitz et al. 2013 gave 1 of 58 references a paragraph. Square brackets are read too, and the font-based pass is trusted only when it found citations for a fair share of the list. The same paper now traces 58 of 58.
+- **PLOS and BMC style entries are parsed** (issue #45). `Amoore JE (1977) Specific anosmia and the concept of primary odors. Chemical Senses and Flavor 2: 267-281.` has the initials against the surname, the year after the authors and a colon before the pages, and 14 of Snitz's 58 entries came out with no authors or no year. The authors are rewritten as `Amoore, J. E.` (with `; others` for et al.) and the colon as a comma, and the entry then goes through the author-year reader added for #5. An `In: … editors.` entry is an incollection. A classic numbered entry, whose year sits at the end, is untouched.
+
 ## 1.23.2 (2026-11-23)
 
 Three reference lists `refs` could not read.

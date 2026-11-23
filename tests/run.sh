@@ -1779,4 +1779,24 @@ grep -A12 "^## 1$" $S3/P003_refs.md | grep -q "The main list only work" && ! gre
 python3 tools/mesh.py cite P003 > r4.txt 2>&1
 grep -q "cited_by:: \[\[P003\]\] ref S1" references/R*-supp-2002-*.md && pass "cite makes a card for an S entry like any other" || { cat r4.txt; ls references; fail "cite S entry"; }
 python3 tools/mesh.py build > b.txt 2>&1; grep -q "check: 0 errors" b.txt && pass "the vault builds clean with a supplement's own references" || { grep -E "^ERROR" b.txt | head -3; fail "build after SI refs"; }
+# 34. square-bracket citations and PLOS-style entries (issues #44, #45)
+cp -r "$ROOT/demo-vault" "$T/pl"; cd "$T/pl"; cp "$MESH" tools/mesh.py; S1=$(ls -d sources/P001*)
+rm -f $S1/P001_refs.md
+printf '\nEarlier work found this [2], and two groups disagreed [4,5]. A count of (13) animals is not a citation. ^b0500\n' >> $S1/P001_text.md
+printf '\nReferences ^b0501\n' >> $S1/P001_text.md
+printf '\n1. Alpha A (1990) First work. J One 1: 1-9. 2. Beta B, Gamma C, et al. (1991) Second work. J Two 2: 10-19. 3. Delta D (1992) Third work. J Three 3: 20-29. 4. Epsilon E (1993) Fourth work. J Four 4: 30-39. 5. Zeta Z (1994) Fifth work. J Five 5: 40-49. ^b0502\n' >> $S1/P001_text.md
+python3 tools/mesh.py refs P001 --force > p1.txt 2>&1
+grep -q "P001: 5 references (numbered list)" p1.txt && pass "refs reads a PLOS-style numbered list" || { cat p1.txt; fail "plos list"; }
+grep -A12 "^## 2$" $S1/P001_refs.md | grep -q "^- authors:: Beta, B.; Gamma, C.; others$" && grep -A12 "^## 1$" $S1/P001_refs.md | grep -q "^- journal:: J One$" && grep -A12 "^## 1$" $S1/P001_refs.md | grep -q "^- pages:: 1--9$" && pass "a PLOS entry gives authors with et al., year, title, journal, volume and pages (issue #45)" || { grep -A12 "^## 1$" $S1/P001_refs.md; grep -A12 "^## 2$" $S1/P001_refs.md; fail "plos fields"; }
+grep -A12 "^## 2$" $S1/P001_refs.md | grep -q "cited_at:: b0500" && grep -A12 "^## 4$" $S1/P001_refs.md | grep -q "cited_at:: b0500" && grep -A12 "^## 5$" $S1/P001_refs.md | grep -q "cited_at:: b0500" && pass "square-bracket citations [2] and [4,5] are traced to their paragraph (issue #44)" || { grep -E "^## |cited_at" $S1/P001_refs.md; fail "square brackets"; }
+! grep -A12 "^## 3$" $S1/P001_refs.md | grep -q "cited_at:: b0500" && pass "a reference the paragraph does not cite is left alone" || { grep -A12 "^## 3$" $S1/P001_refs.md; fail "square brackets overreach"; }
+# 35. an eLife-style list: the heading run on, a bare year, and soft hyphens inside names (issue #45)
+cp -r "$ROOT/demo-vault" "$T/el"; cd "$T/el"; cp "$MESH" tools/mesh.py; S1=$(ls -d sources/P001*)
+rm -f $S1/P001_refs.md
+printf '\nThe map was built earlier (Lee et al., 2023) and the distance measure before that (Alvarez-Melis and Fusi, 2020). ^b0600\n' >> $S1/P001_text.md
+printf '\nReferences Alvarez-\xc2\xadMelis D, Fusi N. 2020. Geometric dataset distances via optimal transport. arXiv 2002.02923. Lee BK, Mayhew EJ, Sanchez-Lengeling B. 2023. A principal odor map unifies diverse tasks. Science 381:999-1006. ^b0601\n' >> $S1/P001_text.md
+python3 tools/mesh.py refs P001 --force > e1.txt 2>&1
+grep -q "P001: 2 references (author-year list)" e1.txt && pass "refs reads an eLife-style list whose heading runs on into the first entry" || { cat e1.txt; fail "elife list"; }
+grep -A12 "^## 1$" $S1/P001_refs.md | grep -q "^- authors:: Alvarez-Melis, D.; Fusi, N.$" && grep -A12 "^## 2$" $S1/P001_refs.md | grep -q "^- authors:: Lee, B. K.; Mayhew, E. J.; Sanchez-Lengeling, B.$" && pass "a bare year and a soft hyphen inside a surname do not stop the authors parsing" || { grep -A12 "^## 1$" $S1/P001_refs.md; fail "elife authors"; }
+grep -A12 "^## 1$" $S1/P001_refs.md | grep -q "cited_at:: b0600" && grep -A12 "^## 2$" $S1/P001_refs.md | grep -q "cited_at:: b0600" && pass "both are traced to the paragraph that cites them" || { grep -E "^## |cited_at" $S1/P001_refs.md; fail "elife tracing"; }
 echo "ALL TESTS PASSED"

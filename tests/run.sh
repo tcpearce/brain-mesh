@@ -1710,4 +1710,43 @@ for spec in ["count of Film where Group = washed", "count of Film", "max of Capa
 PYEOF
 python3 cv.py "$S1/P001_SI-source-data.csv" "$ROOT/tools" > cv.txt 2>&1
 grep -q "^count of Film where Group = washed -> 3 | $" cv.txt && grep -q "^count of Film -> 4 | $" cv.txt && grep -q "^max of Capacity after washing -> 4.2 | $" cv.txt && grep -q "^mean of Film -> None | no numbers in a column matching 'Film'$" cv.txt && grep -q "^mean of Capacity after washing -> 1.63499 | $" cv.txt && grep -q "^mean of Capacity after washing where Group = washed in P001_SI-source-data -> 0.779982 | $" cv.txt && pass "count works on a column of names, where and in filter the rows and the file, and a column with no numbers says so" || { cat cv.txt; fail "computed count"; }
+
+# 32. a panel with a second (right) y axis is flagged, not read silently through the left one (issue #15)
+if python3 -c "import openpyxl" 2>/dev/null; then :; fi
+if python3 -c "import pymupdf" 2>/dev/null || python3 -c "import fitz" 2>/dev/null; then
+cp -r "$ROOT/demo-vault" "$T/ax"; cd "$T/ax"; cp "$MESH" tools/mesh.py; S1=$(ls -d sources/P001*)
+python3 - <<'PYEOF'
+try: import pymupdf as fitz
+except ImportError: import fitz
+doc = fitz.open(); p = doc.new_page(width=400, height=400)
+x0, x1, base, top = 110.0, 300.0, 300.0, 120.0
+yL = lambda v: base - (v / 100.0) * (base - top)          # left axis 0 to 100 (per cent)
+yR = lambda v: base - (v / 0.8) * (base - top)            # right axis 0 to 0.8 (distance)
+p.draw_line((x0, base), (x0, top), color=(0, 0, 0), width=0.5)
+p.draw_line((x1, base), (x1, top), color=(0, 0, 0), width=0.5)
+for k in range(6):
+    v = 20.0 * k
+    p.draw_line((x0 - 4, yL(v)), (x0, yL(v)), color=(0, 0, 0), width=0.5)
+    p.insert_text((x0 - 24, yL(v) + 2.5), f"{v:.0f}", fontsize=7)
+for k in range(5):
+    v = 0.2 * k
+    p.draw_line((x1, yR(v)), (x1 + 4, yR(v)), color=(0, 0, 0), width=0.5)
+    p.insert_text((x1 + 7, yR(v) + 2.5), f"{v:.1f}", fontsize=7)
+for i, v in enumerate([40.0, 70.0]):            # bars on the left axis
+    bx = x0 + 25 + i * 60
+    p.draw_rect(fitz.Rect(bx, yL(v), bx + 28, base), color=(0, 0, 0), fill=(0.7, 0.7, 0.7), width=0.4)
+for i, v in enumerate([0.25, 0.60]):            # markers on the right axis
+    p.draw_circle(fitz.Point(x0 + 54 + i * 60, yR(v)), 2.4, color=(0, 0, 0), fill=(0, 0, 0), width=0.3)
+p.insert_text((40, 345), "Figure 1 | Discriminating neurons (bars, left) and metric distance (markers, right).", fontsize=7)
+doc.save("twoaxis.pdf")
+PYEOF
+cp twoaxis.pdf $S1/P001.pdf
+python3 tools/mesh.py figure P001 1 "70,100,340,320" F9 > ax.txt 2>&1
+grep -q "check: SECOND Y AXIS on the right (0 to 0.8) beside the left one (0 to 100)" ax.txt && pass "figure reports a panel with numeric tick labels on both sides" || { cat ax.txt; fail "second axis reported"; }
+grep -q "^# SECOND Y AXIS: numeric tick labels on both sides, 0 to 100 on the left and 0 to 0.8 on the right" $S1/P001-F9.csv && [ "$(grep -c "second y axis: verify this series' scaling" $S1/P001-F9.csv)" -ge 4 ] && pass "every row with a y value is flagged in the csv, and the header says why" || { cat $S1/P001-F9.csv; fail "second axis flagged"; }
+python3 tools/mesh.py figure P001 1 "70,100,340,320" F9 --force --ycal "0@300,100@120" > ax2.txt 2>&1
+! grep -q "SECOND Y AXIS" ax2.txt && ! grep -q "second y axis" $S1/P001-F9.csv && pass "a calibration given by hand is trusted, and the flag goes" || { cat ax2.txt; fail "second axis manual"; }
+python3 tools/mesh.py figure P001 1 "70,100,302,320" F10 > ax3.txt 2>&1
+! grep -q "SECOND Y AXIS" ax3.txt && pass "a box holding one axis is read as before" || { cat ax3.txt; fail "one axis unchanged"; }
+else echo "skip second y axis tests: PyMuPDF not installed"; fi
 echo "ALL TESTS PASSED"

@@ -2,6 +2,10 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.23.1 (2026-11-23)
+
+- **A panel with a second y axis is no longer read silently through the first** (issue #15). `figure` calibrates one y axis per box, taking whichever side carries more tick labels, so in a panel with a left and a right axis every series was converted through one of them and the other came out wrong, with nothing to show it. It now detects numeric tick labels on both sides of the plot area, prints both ranges, says in the CSV header which axis the values went through, and flags every row with a y value ("second y axis: verify this series' scaling"). Read the panel once per axis, with a box that takes in only that axis's labels, or pass `--ycal value@position,...` for the axis you want: a calibration given by hand is trusted and the flag goes.
+
 ## 1.23.0 (2026-11-23)
 
 - **A summary the authors computed from a data file is recomputed from its rows** (issue #30, the part left open). A mean or an s.e.m. the paper prints sits in no cell of its deposited source data, so `check` could only report "value not found". A card may now say how the number was made, `- computed:: <op> of <column> [where <column> = <value>] [in <sheet or file>]`, with `mean`, `median`, `sum`, `count`, `min`, `max`, `sd` or `sem`. `check` reads the file (`.csv` and `.tsv` directly, a workbook through openpyxl), recomputes the number and compares it with the value: the paper's own summary is now checked against the rows it rests on, and when they disagree the warning names both numbers. A line `check` cannot read leaves the value unchecked and says why. Columns and sheets are matched ignoring case and punctuation; anything after ` — ` is a note.

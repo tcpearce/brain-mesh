@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.23.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.23.1"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -1696,16 +1696,17 @@ def cmd_figure(m, args):
             if out and abs(keyf(it) - keyf(out[-1][-1])) <= tol: out[-1].append(it)
             else: out.append([it])
         return out
-    def calib(kind, manual, log):
+    def calib(kind, manual, log, only=None):
+        nums_ = nums if only is None else only
         if manual:  # "--ycal 0@512.3,0.8@340.1": values at page positions, for axes whose labels are not text
             pairs = [(float(p), float(v)) for v, p in (t.split("@") for t in manual.split(","))]
             return {"fit": axis_fit(pairs, log), "ticks": len(pairs), "how": "given by hand", "err_pos": 0.5, "range": (min(v for _p, v in pairs), max(v for _p, v in pairs)), "span": max(p_ for p_, _v in pairs) - min(p_ for p_, _v in pairs)}
         best = None
         if kind == "y":  # labels in a column sharing a right edge (left axis) or a left edge (right axis), values monotonic up the page
-            groups = cluster(nums, lambda r: r[0][2]) + cluster(nums, lambda r: r[0][0])
+            groups = cluster(nums_, lambda r: r[0][2]) + cluster(nums_, lambda r: r[0][0])
             pos = lambda r: (r[0][1] + r[0][3]) / 2
         else:  # labels in a row sharing a baseline, values increasing left to right
-            groups = cluster(nums, lambda r: (r[0][1] + r[0][3]) / 2)
+            groups = cluster(nums_, lambda r: (r[0][1] + r[0][3]) / 2)
             pos = lambda r: (r[0][0] + r[0][2]) / 2
         for g in groups:
             g = list({(round(pos(r), 1), r[1]): r for r in g}.values())
@@ -1729,7 +1730,15 @@ def cmd_figure(m, args):
             if f and (not best or len(pairs) > best["ticks"]):
                 best = {"fit": f, "ticks": len(pairs), "how": "tick marks" if marks_ == len(pairs) else "label centres", "err_pos": 0.25 if marks_ == len(pairs) else 1.0, "range": (min(vals_), max(vals_)), "span": max(p_ for p_, _v in pairs) - min(p_ for p_, _v in pairs)}
         return best
-    ycal, xcal = calib("y", opt.get("--ycal") if opt.get("--ycal") is not True else None, "--logy" in opt), calib("x", opt.get("--xcal") if opt.get("--xcal") is not True else None, "--logx" in opt)
+    manual_y = opt.get("--ycal") if opt.get("--ycal") is not True else None
+    ycal, xcal = calib("y", manual_y, "--logy" in opt), calib("x", opt.get("--xcal") if opt.get("--xcal") is not True else None, "--logx" in opt)
+    # A panel with a second y axis on the right: every series would be converted through one of them, silently wrong for the other (issue #15)
+    mid = (clip.x0 + clip.x1) / 2
+    side = lambda keep: [r for r in nums if keep((r[0][0] + r[0][2]) / 2 < mid)]
+    ycal2 = None
+    if not manual_y:
+        lft, rgt = calib("y", None, "--logy" in opt, only=side(lambda isleft: isleft)), calib("y", None, "--logy" in opt, only=side(lambda isleft: not isleft))
+        if lft and rgt and lft["range"] != rgt["range"]: ycal2 = (lft, rgt)
     def lattice(vals_):
         """Some figures were drawn on a coarse coordinate grid, so every edge sits on a multiple of one step. That step,
         not the PDF's numeric precision, limits how exactly a value can be read."""
@@ -1822,6 +1831,11 @@ def cmd_figure(m, args):
             a_, b_, rms = cal["fit"]
             head.append(f"# {k} axis: {'log' if log else 'linear'}, {cal['ticks']} ticks from {cal['range'][0]:g} to {cal['range'][1]:g}, placed by {cal['how']}; fit residual {rms:.2g}; position error {cal['err_pos']} pt" + (f"; the drawing sits on a {cal['grid']:.2f} pt grid, which limits precision" if cal.get("grid") else ""))
         else: head.append(f"# {k} axis: not calibrated (no numeric tick labels found; give --{k}cal value@position,value@position)")
+    if ycal2:
+        head.append(f"# SECOND Y AXIS: numeric tick labels on both sides, {ycal2[0]['range'][0]:g} to {ycal2[0]['range'][1]:g} on the left and {ycal2[1]['range'][0]:g} to {ycal2[1]['range'][1]:g} on the right."
+                    " Every y value below was converted through one axis, so the series belonging to the other is wrong. Read the panel once per axis (a box each, or --ycal value@position,... per series) and keep only the series that axis carries.")
+        for r in rows:
+            if r[4] is not None: r[8] = (r[8] + " " if r[8] else "") + "second y axis: verify this series' scaling"
     if legend: head.append("# series: " + "; ".join(f"{k} = {v}" for k, v in legend.items()))
     head.append("# Check every row against the image before a card cites it. read_error is in the axis unit (relative for a log axis).")
     body = ["kind,series,x_label,x,y,y_low,y_high,read_error,check"] + [",".join([r[0], r[1].replace(",", " "), r[2].replace(",", " "), fmt(r[3], X(0)[1] if xcal else None), fmt(r[4], r[7]), fmt(r[5], r[7]), fmt(r[6], r[7]), f"{r[7]:.2g}" if r[7] is not None else "", r[8]]) for r in rows]
@@ -1834,6 +1848,8 @@ def cmd_figure(m, args):
             print(f"  check: the {k} tick labels do not lie on a straight line (residual {cal['fit'][2]:.2g}): labels may be rounded (-0.22 for -0.225) or the axis broken or not linear. Give the true values with --{k}ticks, or read each segment separately")
     if legend and len(series - set(legend.values())) and series: print(f"  check: {len(series)} series drawn but {len(legend)} in the legend: {', '.join(sorted(series))}")
     for k, v in issues.items(): print(f"  check: {v} rows with '{k}'")
+    if ycal2: print(f"  check: SECOND Y AXIS on the right ({ycal2[1]['range'][0]:g} to {ycal2[1]['range'][1]:g}) beside the left one ({ycal2[0]['range'][0]:g} to {ycal2[0]['range'][1]:g}).\n"
+                    "         Every y value was converted through one of them, so one series' values are wrong. Read the panel once per axis, or give --ycal value@position,... for the axis you want; every row is flagged until you do.")
     print("  Look at the image and the rows together. Drop rows that are not data (axis furniture, legend keys), name the series and categories,\n"
           "  and keep the read_error in each card's value line: '= 0.52 ± 0.01 (Fig. 2, read from the vector drawing)'.")
 

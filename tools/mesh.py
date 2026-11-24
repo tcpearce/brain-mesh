@@ -1523,6 +1523,21 @@ class Mesh:
                 if root not in done and not (seeds & done):
                     W.append(f"{d}: rests on {root}, which is retracted. Re-grade, re-open or correct it as though that evidence were absent, then add '- retraction_checked:: {root} — <what changed>'")
 
+    def superseded_warnings(s, W):
+        """A card resting on a claim the brain has settled as superseded is a warning until
+        '- chronology_checked:: P012-034 - <what changed>' records that it was reviewed.
+
+        Settling a dated claim says the brain no longer asserts it. A finding that cites it as support does not stop
+        resting on it by itself: it has to be re-graded, re-opened or re-argued from what overtook it."""
+        sup = {c.id: (c.all("superseded_by") or [""])[0] for c in s.cards.values()
+               if c.fam == "evidence" and c.all("superseded_by") and not c.get("retired")}
+        for root in sorted(sup):
+            for d, _n in sorted(s.dependants({root}).items()):
+                if d in sup or s.cards[d].fam not in ("page",) or s.cards[d].get("retired"): continue
+                done = {x for v in s.cards[d].all("chronology_checked") for x in re.findall(r"\b(P\d{3}(?:-\d{3})?)\b", v)}
+                if root in done or root[:4] in done: continue
+                W.append(f"{d}: rests on {root}, which is settled as superseded ({one(reason(sup[root]), 70)}). Re-grade or re-argue it from what overtook it, then add '- chronology_checked:: {root} - <what changed>'")
+
     def recomputes(s, a, b):
         """One card is Claude's own reanalysis of the source's data (origin:: claude) and says which card of the
         source it bears out (supports:: or replicates::). It repeats that card's number on purpose, so it is not a duplicate."""
@@ -3809,7 +3824,7 @@ def cmd_health(m):
     sec("Experiments registered or running for over 90 days", [f"{row(e)} [{e.status} since {e.get('registered')}]" for e in m.pages("E") if e.status in ("registered", "running") and days(e.get("registered")) > 90])
     sec("Claims, observations and models not yet cited by any finding, tension, gap, hypothesis or experiment (low-priority sources left out)", [row(c) for c in sorted(m.evidence(), key=lambda c: (PRANK[m.level(c.id)], c.id)) if c.type in ("claim", "observation", "model") and c.id not in cited and m.level(c.id[:4]) != "low"], 15)
     sec("Cards flagged as doubtful at extraction", [f"{row(c)} [{c.get('flag')}]" for c in m.evidence() if c.get("flag")])
-    rx = m.retracted(); W_ = []; m.retraction_warnings(W_)
+    rx = m.retracted(); W_ = []; m.retraction_warnings(W_); m.superseded_warnings(W_)
     sec("Retracted sources and cards, with dependants not yet reviewed", [f"{x} {one(m.cards[x].title, 90)} [{m.cards[x].get('retracted')}; {sum(1 for w in W_ if f'rests on {x},' in w)} dependants to review]" for x in sorted(set(rx.values()))])
     sec("Published corrections registered", [f"{c.id} {one(c.title, 80)} [{sum(1 for e in m.evidence(c.id) if e.get('corrected'))} cards marked corrected]" for c in m.cards.values() if c.fam == "source" and os.path.exists(J(SRC(m.root, c.id), c.id + "_correction.pdf"))])
     rq = [r for r in m.cards.values() if r.fam == "reference" and r.status in ("not-held", "queued")]
@@ -4967,22 +4982,28 @@ def lookup_note(m, pids=None):
 
 
 PERISHABLE_TYPES = ("claim", "question", "limitation", "assumption", "cited")  # a method or an observation records what was done; it does not expire
+OWN_CAVEAT = re.compile(  # the brain's own note on what this paper leaves out is not a claim about the field, and does not expire
+    r"\b(?:in|anywhere in|reported in|given in|shown in)\s+(?:this|the)\s+(?:paper|review|study|article|supplement)\b"
+    r"|\bthe (?:paper|review|authors?|study)\s+(?:gives?|reports?|offers?|provides?|says?)\s+(?:no|none|nothing)\b"
+    r"|\bno\s+(?:test|measurement|evidence|control|baseline|comparison)\b[^.]{0,40}\b(?:in|anywhere in|reported in)\s+(?:this|the)\s+(?:paper|review|study|article)\b"
+    r"|\bno\s+(?:test|measurement|comparison)\s+of\s+(?:how|whether|what)\b"
+    r"|\bno\s+(?:test[- ]set|equivalence test|base rate|error bar|uncertainty|n\b)"
+    r"|\bno\s+particular structure\b|\brandom coil\b", re.I)
 PERISHABLE_CUES = [  # a claim about the state of the field, true as of its paper's year and no later
-    ("absence", re.compile(r"\b(?:no|not a single|none of the)\s+(?:\w+\s+){0,3}(?:structure|crystal structure|measurement|experiment|study|studies|dataset|data ?set|evidence|example|report|test|assay|model)s?\b(?!\s+(?:here|in this|of ours|was used|were used))"
+    ("absence", re.compile(r"\b(?:no|not a single|none of the)\s+(?:\w+\s+){0,3}(?:structure|crystal structure|measurement|experiment|study|studies|dataset|data ?set|example|report|assay|model)s?\b(?!\s+(?:here|in this|of ours|was used|were used))"
                            r"|\b(?:has|have|had)\s+(?:not|never)\s+(?:yet\s+)?been\s+(?:\w+ly\s+)?(?:measured|determined|reported|shown|demonstrated|studied|tested|observed|resolved|solved|characterised|characterized|identified|established)\b"
                            r"|\bremains?\s+(?:largely\s+)?(?:unknown|unclear|elusive|to be\s+(?:determined|established|shown|resolved))\b"
                            r"|\bis\s+(?:still\s+)?(?:unknown|unresolved|an open question)\b"
                            r"|\b(?:little|nothing)\s+is\s+known\b"
                            r"|\bnot\s+(?:yet\s+)?(?:available|feasible|possible|been\s+attempted)\b", re.I)),
-    ("first", re.compile(r"\bthe first\s+(?:\w+\s+){0,3}(?:structure|measurement|demonstration|report|evidence|example|time|receptor|crystal)\b"
-                         r"|\bfirst\s+(?:ever\s+)?(?:reported|measured|demonstrated|resolved|solved|described)\b"
+    ("first", re.compile(r"\bthe first\s+(?:\w+\s+){0,3}(?:structure|measurement|demonstration|crystal|proof)\b"
+                         r"|\bfirst\s+(?:ever\s+)?(?:reported|measured|demonstrated|resolved|solved)\b"
                          r"|\bto\s+(?:our|the authors)\b[^.]{0,30}\bknowledge\b"
                          r"|\b(?:unprecedented|previously unreported|hitherto unknown|never before)\b", re.I)),
     ("limit of the day", re.compile(r"\b(?:currently|at present|presently|as yet|so far|to date)\b[^.]{0,70}\b(?:no|not|cannot|impossible|unable|infeasible|out of reach)\b"
                                     r"|\b(?:technically|experimentally)\s+(?:impossible|infeasible|out of reach|intractable)\b"
                                     r"|\bbeyond\s+(?:the reach of|current)\b", re.I)),
-    ("count of the day", re.compile(r"\b\d{2,5}\b[^.]{0,40}\b(?:intact|functional|known|identified|annotated)\b[^.]{0,30}\b(?:gene|genes|receptors?|loci|pseudogenes?)\b"
-                                    r"|\b(?:repertoire|genome)\b[^.]{0,40}\b\d{2,5}\b", re.I)),
+    ("count of the day", re.compile(r"\b\d{2,5}\b[^.]{0,40}\b(?:intact|functional|known|identified|annotated|deorphan\w*)\b[^.]{0,30}\b(?:gene|genes|receptors?|loci|pseudogenes?)\b", re.I)),
 ]
 
 
@@ -5014,8 +5035,11 @@ def perishable_claims(m):
         if c.get("retired") or c.all("superseded_by") or c.type not in PERISHABLE_TYPES: continue
         yr = pub_year(m, c.id)
         if not yr: continue
-        text = c.title + " " + " ".join(l for l in c.raw.split("\n") if not l.startswith("- ") and not l.startswith("#"))
-        kind = next((k for k, rx in PERISHABLE_CUES if rx.search(text)), None)
+        body = " ".join(l for l in re.sub(r"(?s)\A---\n.*?\n---\n", "", c.raw).split("\n")
+                        if not l.startswith("- ") and not l.startswith("#"))
+        text = c.title + ". " + body  # a full stop between them: the cues read a sentence, and a title is one
+        kind = next((k for k, rx in PERISHABLE_CUES
+                     if rx.search(c.title if k == "count of the day" else text) and not OWN_CAVEAT.search(text)), None)
         if not kind: continue
         terms = m.terms(c)
         # a later source counts only where it shares most of what the claim is about, not one broad concept in common
@@ -5078,6 +5102,24 @@ def cmd_chronology(m, args):
     if quiet:
         print(f"\n## Concepts whose evidence stops {stale} years ago or more ({len(quiet)})")
         for y, con, n in sorted(quiet, key=lambda r: (r[0], r[1].id))[:12]: print(f"  {con.id}: newest evidence {y}, {n} cards")
+    behind = []
+    for p in m.cards.values():
+        if p.fam != "page" or p.get("retired") or p.id[0] not in "KXGH": continue
+        rest = {x for k in ("support", "against", "sides", "from", "cites") for v in p.all(k) for x in m.ids(v)[0]}
+        rest = {x for x in rest if m.cards.get(x) is not None and m.cards[x].fam == "evidence"}
+        if not rest: continue
+        mine_ = max((pub_year(m, x) or 0) for x in rest)
+        terms = {t for x in rest for t in m.terms(m.cards[x])}
+        newer = sorted(((pub_year(m, s.id) or 0, s.id) for s in m.cards.values()
+                        if s.fam == "source" and not s.get("retired") and (pub_year(m, s.id) or 0) > mine_
+                        and len(terms & {t for e in m.evidence(s.id) for t in m.terms(e)}) >= 2), reverse=True)
+        if mine_ and newer: behind.append((mine_, p, newer))
+    if behind:
+        print(f"\n## Findings, tensions, gaps and hypotheses whose evidence stops before a source that bears on them ({len(behind)})")
+        print("Not stale by itself: the newer source may say nothing about it. But it has not been read against them.")
+        for mine_, p, newer in sorted(behind, key=lambda r: (r[0], r[1].id))[:15]:
+            print(f"  {p.id} [{p.status}] newest evidence {mine_} — {one(p.title, 66)}")
+            print(f"      read since: {', '.join(f'{s} ({y})' for y, s in newer[:5])}" + (" …" if len(newer) > 5 else ""))
     print("\nA claim with a shelf life is not a fault: it is knowledge with a date. What is a fault is asserting it as if it had none.")
 
 

@@ -14,6 +14,8 @@ A claim that no structure exists, that something has never been measured, or tha
 - **Every concept hub's generated block now gives the span of years its evidence covers and the newest source bearing on it**, so a hub reads as an arc rather than a heap.
 - `chronology_stale_years` in MESH.json, 8 by default: five years is a long time in receptor structures and nothing at all in psychophysics.
 - Hooked into the pipeline: `brain-mesh-add-paper` marks a shelf life as it cards one, `brain-mesh-gaps` dates a gap's framing before carding it, and `brain-mesh-housekeeping` runs `chronology` in the health check.
+- **A card resting on a settled claim is warned about**, until `- chronology_checked:: <card> — <what changed>` records that it was reviewed. Settling a dated claim says the brain no longer asserts it; a finding that cites it as support does not stop resting on it by itself. This mirrors the retraction-dependants check, which exists for the same reason.
+- **The synthesis layer has a date too.** `chronology` lists the findings, tensions, gaps and hypotheses whose newest evidence predates a source since read that bears on the same concepts. Not stale by itself — the newer source may say nothing about it — but not yet read against it either.
 - Tests section 45.
 
 ## 1.27.0 (2026-11-24)

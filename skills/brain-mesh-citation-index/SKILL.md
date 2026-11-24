@@ -59,6 +59,14 @@ Under `## What it claims`, two to eight lines, each one statement the abstract m
 
 Set `status: queued` if the work now looks worth reading in full, and say why in `## Notes`.
 
+Some works bear on no concept this vault has, and should not grow one: a generic method or optimiser, a piece of tooling, a study in another field the paper cites in passing. Index it for the record and say so, rather than stretching for a concept or inventing one:
+
+```
+- concepts:: none — a generic machine-learning optimiser, not odour coding
+```
+
+The reason is required. `check` then leaves the card alone and it reaches no hub, which is correct: it is in the index, and in no part of the ontology.
+
 ## 4a. Set its priority: this one is yours to judge
 
 A concept is the user's call, but **the priority of a cited work is the indexer's**. Set it as you index, with the reason on the card:

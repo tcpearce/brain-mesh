@@ -2,6 +2,15 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.24.2 (2026-11-24)
+
+**A cited work the vault has no concept for, and the claim warnings made bearable.**
+
+Indexing 704 works showed two rough edges at once. Thirty-six of them were generic methods, tooling or work from another field: the vault's own rules say not to grow a concept for such a thing, yet `check` asked for one on every indexed card, and the indexing agents ended up writing the judgement in prose where nothing could read it.
+
+- **`- concepts:: none — <why it bears on none>`** is now the way to say it. The card is indexed for the record, reaches no hub, and `check` leaves it alone. The reason is required: `none` must be a judgement, not an omission. Such a card no longer counts as still to index in `literature --unindexed`.
+- **A claim from an abstract that names no concept** was warned about one line per claim, 212 lines across the vault. It is now one line per card, with a count and the first example, and not at all on a `concepts:: none` card.
+
 ## 1.24.1 (2026-11-23)
 
 **The abstracts feed discovery, and the indexer sets a cited work's priority.**

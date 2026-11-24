@@ -1702,7 +1702,7 @@ grep -q "R0900: has an abstract but no '- indexed::" b.txt && pass "an abstract 
 sed -i 's/^- id:: R0900$/- id:: R0900\n- indexed:: 2026-11-23 — from the publisher/' references/R0900-*.md
 sed -i 's/^- The films swell by 12 per cent over the same range (\[\[swelling\]\])$/- The films swell by 12 per cent over the same range/' references/R0900-*.md
 python3 tools/mesh.py build > b.txt 2>&1
-grep -q "R0900: a claim from the abstract names no concept" b.txt && pass "a claim that names no concept is flagged" || { grep "R0900" b.txt; fail "claim no concept"; }
+grep -q "R0900: 1 of 2 claims from the abstract name no concept" b.txt && pass "claims that name no concept are flagged, counted, one line a card" || { grep "R0900" b.txt; fail "claim no concept"; }
 # 35. the citation index feeds discovery: abstracts raise terms the brain cannot name, and a high-priority work heads the reading list
 cp -r "$ROOT/demo-vault" "$T/cid"; cd "$T/cid"; cp "$MESH" tools/mesh.py; mkdir -p references
 cat > references/R0901-doe-2019-capacity-of-imprinted-films.md <<'REF'
@@ -1799,4 +1799,38 @@ sed -i 's/^- concepts:: /- indexed:: 2026-11-23 — from the publisher\n- concep
 python3 tools/mesh.py priority R0901 high "the measurement every card here assumes and none rests on" > /dev/null 2>&1
 python3 tools/mesh.py build > b.txt 2>&1; python3 tools/mesh.py literature > lit.txt 2>&1
 grep -q "Cited works set high priority while indexing (1)" lit.txt && grep -q "R0901" lit.txt && grep -q "the measurement every card here assumes" lit.txt && pass "a cited work set high while indexing heads the reading list, with its reason" || { cat lit.txt; fail "high-priority reading list"; }
+cat > references/R0904-ruiz-2018-a-gradient-optimiser.md <<'REF'
+---
+type: reference
+status: not-held
+updated: 2026-11-23
+---
+# Ruiz (2018) A gradient optimiser
+
+## Abstract
+
+A first-order optimiser with per-parameter step sizes. It converges faster than plain gradient descent on the benchmarks tried.
+
+## What it claims
+- The optimiser converges faster than plain gradient descent
+
+## Notes
+
+## Codes
+- id:: R0904
+- authors:: Ruiz, A.
+- year:: 2018
+- title:: A gradient optimiser
+- journal:: J. Test
+- kind:: article
+- concepts:: none — generic machine-learning method, outside what this vault is about
+- indexed:: 2026-11-23 — abstract from the publisher's page
+- cited_by:: [[P001]] ref 4 — b0004
+REF
+python3 tools/mesh.py build > b.txt 2>&1
+! grep -qE "R0904: (indexed but names no concept|[0-9]+ of [0-9]+ claims)" b.txt && grep -q "check: 0 errors" b.txt && pass "a work the vault has no concept for is indexed for the record, with no complaint" || { grep "R0904" b.txt; fail "concepts none"; }
+python3 tools/mesh.py literature --unindexed > lu.txt 2>&1
+! grep -q "R0904" lu.txt && pass "a 'concepts:: none' work does not count as still to index" || { cat lu.txt; fail "concepts none unindexed"; }
+sed -i 's/^- concepts:: none .*$/- concepts:: none/' references/R0904-*.md; python3 tools/mesh.py build > b.txt 2>&1
+grep -q "R0904: '- concepts:: none' needs a reason" b.txt && pass "'none' with no reason is sent back for one" || { grep "R0904" b.txt; fail "concepts none reason"; }
 echo "ALL TESTS PASSED"

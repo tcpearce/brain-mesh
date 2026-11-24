@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.24.1"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.24.2"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -95,6 +95,16 @@ def wr(p, t):  # always LF line endings: a build on Windows must produce the sam
     os.makedirs(os.path.dirname(p), exist_ok=True)
     with open(p, "w", encoding="utf-8", newline="\n") as f: f.write(t)
 def squeeze(s): return re.sub(r"[^a-z0-9]+", "", unicodedata.normalize("NFKC", str(s)).lower())
+def concepts_none(r):
+    """A cited work the vault has no concept for, and should not grow one for: '- concepts:: none \u2014 <why>'. True
+    when the line says 'none' with no reason given, the reason when it has one, False when the card names concepts.
+    A generic method, or a work from another field, is indexed for the record and reaches no hub; that is not a fault."""
+    for v in r.all("concepts"):
+        mo = re.match(r"\s*none\b\s*[\u2014\-:]?\s*(.*)$", str(v), re.I)
+        if mo: return mo.group(1).strip() or True
+    return False
+
+
 def section_bullets(raw, head):
     """The '- ' lines of a card's '## <head>' section, [] when there is none."""
     mo = re.search(r"(?m)^## " + re.escape(head) + r"\s*$(.*?)(?=^## |\Z)", raw, re.S)
@@ -916,11 +926,14 @@ class Mesh:
                 if bad: E.append(f"{i}: 'concepts::' must link concept cards (got {', '.join(bad)})")
                 has_abs = bool(re.search(r"(?m)^## Abstract\s*$", c.raw))
                 claims = section_bullets(c.raw, "What it claims")
+                nocon = concepts_none(c)
                 if c.get("indexed"):
                     if not has_abs: W.append(f"{i}: indexed but has no '## Abstract' section; paste the abstract, or say under it why there is none")
-                    if not cons: W.append(f"{i}: indexed but names no concept; add '- concepts:: [[a]], [[b]]' for what the work is about, so it reaches the hubs")
-                    for l in claims:
-                        if not WIKI.search(l): W.append(f"{i}: a claim from the abstract names no concept: {one(l, 70)}")
+                    if nocon is True: W.append(f"{i}: '- concepts:: none' needs a reason: 'none \u2014 <why the work bears on no concept here>'")
+                    elif not cons and not nocon: W.append(f"{i}: indexed but names no concept; add '- concepts:: [[a]], [[b]]' for what the work is about, so it reaches the hubs, or '- concepts:: none \u2014 <why>' if it bears on none")
+                    mute = [l for l in claims if not WIKI.search(l)]
+                    if mute and not nocon:
+                        W.append(f"{i}: {len(mute)} of {len(claims)} claims from the abstract name no concept, so they reach no hub: {one(mute[0], 60)}")
                 elif has_abs: W.append(f"{i}: has an abstract but no '- indexed:: <date> <where the abstract came from>' line")
             elif c.fam == "concept":
                 if c.type != "concept": E.append(f"{i}: type must be 'concept'")
@@ -4214,7 +4227,7 @@ def cmd_literature(m, args):
         if r.fam != "reference" or r.get("retired") or r.status == "held": continue
         ts = {x for v in r.all("concepts") for x in m.ids(v)[0]}
         for t in ts: idx[t].append(r)
-        if not ts:
+        if not ts and not concepts_none(r):
             for p, _n, _b in ref_cites(r): unidx[p].append(r)
     rows = []
     for con in cons:

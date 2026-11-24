@@ -2,38 +2,115 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
-## 1.24.2 (2026-11-24)
-
-**A cited work the vault has no concept for, and the claim warnings made bearable.**
-
-Indexing 704 works showed two rough edges at once. Thirty-six of them were generic methods, tooling or work from another field: the vault's own rules say not to grow a concept for such a thing, yet `check` asked for one on every indexed card, and the indexing agents ended up writing the judgement in prose where nothing could read it.
-
-- **`- concepts:: none — <why it bears on none>`** is now the way to say it. The card is indexed for the record, reaches no hub, and `check` leaves it alone. The reason is required: `none` must be a judgement, not an omission. Such a card no longer counts as still to index in `literature --unindexed`.
-- **A claim from an abstract that names no concept** was warned about one line per claim, 212 lines across the vault. It is now one line per card, with a count and the first example, and not at all on a `concepts:: none` card.
-
-## 1.24.1 (2026-11-23)
-
-**The abstracts feed discovery, and the indexer sets a cited work's priority.**
-
-Indexing a citation is where the field's own vocabulary enters the vault. Two changes make that count.
-
-- **`beyond terms` reads the abstracts.** Until now it mined the titles of cited works for phrases the ontology has no concept for. A title is a few words; an abstract is the paragraph where a term the field takes for granted actually appears, long before the brain reads the work. For an indexed card it now reads the abstract and the claims drawn from it as well as the title, so a missing concept shows up on the strength of how often the literature uses it.
-- **Priority on a cited work is the indexer's to set**, unlike a concept's, which stays the user's. An agent indexing a reference may set `high` where the work is significant in its field, central to the vault's subject, or would fill a hole the brain plainly has, and `low` where the brain cites it only for a method or a passing fact — with the reason on the card, as `priority` always records.
-- **`mesh.py literature` heads its output with those works**, most-cited first, each with the reason given: the reading list the index exists to produce.
-- `FORMATS.md` and the `brain-mesh-citation-index` skill state both rules; tests section 35 covers them.
-
-## 1.24.0 (2026-11-23)
+## 1.27.0 (2026-11-24)
 
 **The citation index: the works a vault cites but has not read, indexed from their abstracts.**
 
-A brain mesh holds a few papers in full and cites hundreds it has never read. Those citations are the field around the vault, already filtered by the papers the user chose. A reference card may now be indexed from its abstract, which turns that list into a map of the surrounding literature.
+A brain mesh holds a few papers in full and cites hundreds it has never read. Those citations are the field around the vault, already filtered by the papers the user chose. A reference card may now be indexed from its abstract, which turns that list into a map of the surrounding literature. (Branched at 1.22.2 and merged after main reached 1.26.0, so it is numbered above it.)
 
 - **Reference cards** may carry `## Abstract` (verbatim, or a line saying why there is none), `## What it claims` (two to eight statements, each naming the concepts it bears on as links), and Codes `- concepts:: [[a]], [[b]]` and `- indexed:: <date> — <where the abstract came from>`.
 - **An indexed claim is never evidence.** It comes from an abstract, not from text the brain has read and anchored: nothing may rest on it, and no finding may cite it. `FORMATS.md` states the rule.
-- **Every concept hub now lists the cited works about it**, with what each claims and who cites it, beside the evidence the brain has read. A work reaches a hub through its own `concepts::` line, so the hub shows the literature on that concept, not only the papers read.
+- **Every concept hub lists the cited works about it**, with what each claims and who cites it, beside the evidence the brain has read. A work reaches a hub through its own `concepts::` line, so the hub shows the literature on that concept, not only the papers read.
 - **`mesh.py literature`** ranks concepts by the cited works that bear on them against the sources actually read, so the thinnest coverage comes first; `literature <concept>` asks about one, and `literature --unindexed` lists the works still to index, by the source that cites them.
-- **`check`** validates the index: concepts must be concept cards, an indexed card must name concepts and carry an abstract, each claim must name a concept, and an abstract with no provenance line is flagged.
-- **A new skill, `brain-mesh-citation-index`**, says how to index: where to find an abstract, never to invent one, how to write claims from it, and how to split the work between agents.
+- **`beyond terms` reads the abstracts.** It mines the works a vault cites for phrases the ontology has no concept for, and read only their titles. For an indexed card it now reads the abstract and the claims drawn from it as well: a title is a few words, an abstract is where a term the field takes for granted actually appears, long before the brain reads the work. Unindexed works still contribute their title alone.
+- **Priority on a cited work is the indexer's to set**, unlike a concept's, which stays the user's. The agent reading the abstract is the one who can see that a work is significant in its field, central to the vault's subject, or would fill a hole the brain plainly has. `mesh.py literature` heads its output with those works, most-cited first, each with the reason given: the reading list the index exists to produce.
+- **`- concepts:: none — <why it bears on none>`** for a work the vault has no concept for and should not grow one for: a generic method, a tool, a study from another field. It is indexed for the record, reaches no hub, and `check` leaves it alone; the reason is required. A claim from an abstract that names no concept is now reported once a card, with a count, instead of once a claim.
+- **A new skill, `brain-mesh-citation-index`**: where to find an abstract (held source → DOI/Crossref → PubMed/arXiv → search → say there is none), never to invent one, how to write claims from it, how to judge priority, and how to split a large run between agents that write only in `references/`.
+- **`mesh.py literature --gaps`** names the concepts the cited literature covers and the brain has not read, leaving out those a gap card already names. That is the step that makes the index pay: section 5a of the skill says how to judge each one, and the distinction the index is uniquely able to settle — a concept a dozen indexed works bear on is a reading list; one they circle without answering is a research gap. The thresholds are `literature_gap_min` and `literature_gap_ratio` in MESH.json.
+- A gap's priority stays the user's, like a concept's, even though a cited work's is now the indexer's.
+- Tests sections 42, 43 and 44.
+
+## 1.26.0 — 2026-11-23
+
+`build` and `check` do each piece of work once and keep what they work out from unchanged files. On a twelve-source vault `build` falls from 34 s to 4 s and `check` from 13 s to 1.6 s (5.6 s the first time); at 36 sources, 91 s to 10 s and 47 s to 5 s. Every file `build` writes and every line `check`, `gaps`, `discover`, `scan`, `health`, `routes`, `facts`, `contradictions` and `independence` print is the same as before, compared on both vaults.
+
+- **A quadratic pass in `build`.** To list the cards that cite each reference, every card's text was read again for every reference card: 495 references by 2,000 cards was two thirds of the build. They are now found in one pass.
+- **Anchored material is read once per run, not once per card.** `check` squeezed the text and read the numbers of everything a card anchors, for each card; a deposited data file of two million numbers was read again for every card that cites it. Each paragraph, table and data file is now digested once, and a card's loc phrase and values are looked up in the pieces.
+- **Kept between runs** in `index/.scratch/cache/` (not versioned, safe to delete, about 3 MB for twelve sources): a workbook's text cells, a data file's numbers (sorted, packed and compressed), the digest of a large file, and where each concept is named in each source. Each is reused only while the file's size and modification time and the tooling version are unchanged; a concept's hits are searched again when its slug, title or aliases change. So adding a paper or a concept costs the work for that paper or concept.
+- **Duplicate checks** work out each card's signature and title words once rather than for every pair, and compare concept names in full only where difflib's quick upper bounds allow a match.
+- **Ties are ordered by name** in `zoom`, `gaps`, `report` and `routes`. `zoom`'s "appears with" line could change from one run to the next, because ties were settled by the order of a set. Seven such rankings now use the same rule as the rest of the tooling.
+- What still grows with the vault: loading the cards and the checks that compare cards with each other, about a quarter of a second per source for `build`.
+
+## 1.25.0 — 2026-11-23
+
+Marked PDFs leave git, and a card's **open page** link now lands on its highlight.
+
+- **A fault this found.** A marked copy was saved with a setting that renumbers the PDF's objects, so the annotation number written into each card's link (`#page=5&annotation=412R`) named nothing in the saved file: the link opened the right page but did not go to the highlight. In a twelve-source vault none of 1,103 links matched. Each highlight a card links to now sits at a fixed object number, the size of the original's object table plus the card's own number, and the file is saved without renumbering. The number is the same on every computer and after every rebuild, and changes only when a card moves to another page. The first `build` rewrites the one link line in each evidence card.
+- **Marked copies are built, not committed.** `build` makes `P012_marked.pdf` from the original, the cards and a side file, always starting from the original, so the result does not depend on what was built before. `.gitignore` lists `sources/*/P*_marked.pdf` (new vaults, and at `upgrade` or the next `build`), and the first `sync` stops versioning the copies an older vault committed; they stay on disk. In that vault the marked copies were 56 MB of the working tree and 156 MB of the history, a full copy stored each time a source's cards changed. History is not rewritten.
+- **Your own annotations travel in a side file.** Highlights, underlines, strike-outs, squiggles, notes, typed text, pen strokes, boxes, ovals, lines and polygons that you add to a marked copy are read at the next `build` into `P012_annotations.json`, a small text file that is committed, and drawn again on every rebuild and in every copy of the vault. One you delete is removed everywhere; one added elsewhere arrives. An annotation of another kind (a stamp, an attached file) stays in that computer's copy, and before a rebuild replaces it the copy is kept under `index/.scratch/kept/` and `build` says so. Annotations the publisher's PDF already carries are not taken for yours.
+- Whether a marked copy is current is recorded on the computer that built it (`index/.scratch/marked.json`, and inside the PDF), not in the versioned `index/marks.json`, which now holds only where each card is marked.
+- `"marked_in_git": true` in `MESH.json` keeps marked copies versioned, for a vault whose owner only pulls and runs no tooling. `BRAIN_MESH_NO_MARK=1` skips building them, for a session that opens no PDF.
+- After a pull on the computer where Obsidian runs, `build` (or `sync`) makes that computer's marked copies. A fresh copy of a twelve-source vault takes about a minute more on its first build.
+
+## 1.24.1 — 2026-11-23
+
+Figure and equation crops are WebP. In a twelve-source vault 264 crops took 48.7 MB as PNG, a quarter of the working tree and about 4 MB for every paper added; as WebP at the same pixel size they take 10.3 MB.
+
+- **`figure` writes WebP** (`P012-F2c.webp`, `P012-eq4.webp`) at 300 dpi as before, at quality 80 (MESH.json `"crop_quality"`: 1 to 100, or `"lossless"`). It needs Pillow; without it the crop is a PNG as before. A panel the vault already holds as PNG is cut again as PNG, so the cards that embed it stay right.
+- **Thin coloured lines are protected.** Lossy WebP halves the colour resolution, which fades one-pixel coloured lines. Each crop is compared with its rendering over the inked pixels, and one that would differ by more than a set amount (28 dB) is written lossless, every pixel kept. In the vault above that is 22 crops of 264.
+- **`crops`** reports the room the crops take and what converting would save, and changes nothing. **`crops --convert`** (optionally for named sources, with `--quality N` or `--lossless`) writes each PNG crop as WebP, rewrites every embed and mention of it in cards, hubs, scan files and the user's notes, removes the PNG and logs the change. Then `build`. Git keeps the PNG in history, and `figure` can cut any crop again from the PDF.
+- `scan` matches a figure or equation to its hub embed and its `not_key::` line by name without the extension, so decisions recorded under the PNG name still stand. `latex` reads a crop in either format. `*.webp binary` joins `.gitattributes`, in new vaults and at `upgrade`.
+
+## 1.24.0 (2026-11-23)
+
+Lists that grow with the vault are capped, and nothing is lost. An LLM reading the vault no longer pays for them at every build.
+
+- **A hub's long list moves to its own page.** A concept card lists the first cards of each kind by title, as before. The rest used to follow on one line of links by id, and on a concept most cards name (`species`, `preparation`) that line had reached 15,000 tokens. Up to twenty are still linked on the hub; more go to a generated page, `index/hubs/<concept>--all.md`, which lists every card that names the concept by source and type. The hub links it with a count for each source. Every card is still one link from its hub, the cards' own links are untouched, and the page is removed when the list fits the hub again. On a nine-paper vault the largest hub falls from 62,000 to 19,000 characters. `"hub_inline"` in `MESH.json` sets the twenty.
+- **`check` and `build` count warnings by kind once there are more than forty**, with an example of each kind. Every error is still printed. Every line is in `index/check.txt` after a build and under `check --all`; `"check_show"` in `MESH.json` sets the forty. Build output on the same vault: 13,400 characters to 3,600.
+- **`gaps` prints the first eight rows of each section**; `gaps --all` prints every row.
+- **`discover` with no miner named is an overview**: the top three signals of each miner on one line each. A named miner prints its details as before, and `discover --full` prints every miner in full. 85,000 characters to 15,000.
+- `check --all` no longer takes the flag for a source id.
+
+## 1.23.7 (2026-11-23)
+
+Found while measuring how the tooling scales on a vault grown to four times its size.
+
+- **A miner's scores no longer depend on which miners ran before it.** The rarity weighting every miner shares read a variable that the `links` miner reassigned, so every miner after it (`unify`, `recognised`, `limits` and the others added in 1.21.0) was scored with counts taken over another set of cards whenever `links` had run first. `discover links unify` and `discover unify` now rank `unify` the same way, and `zoom` and `routes` rest on the intended weights. Expect some scores in `discover` to move.
+- **Scoring pairs of cards is about twice as fast on a large vault.** A card's own part of the comparison (its concepts, their summed weight, its title words) is worked out once for each weighting. `zoom` on 4,400 evidence cards: 14 s to 6 s, with the same output.
+- **`routes` prints the same lines on every run.** The three techniques named in "obtained by" were picked in an order that varied between runs when counts tied.
+
+## 1.23.6 (2026-11-23)
+
+What the review of pull requests #41 and #43 found, each seen on real papers.
+
+- **`check` is no slower for reading data files.** Reading workbooks and deposited CSV files had taken `check` on a twenty-source vault from 15 to 23 seconds: every workbook was opened a second time whenever a value was not found, whether or not the card had a `computed::` line, and every value was compared with every number of the file. A workbook is now opened once for both uses, its rows are read only for a card that has a `computed::` line, and a number is looked up in a sorted list. Back to 15 seconds, with the same warnings.
+- **A work cited only by a supplement's list is read back as cited.** `ref_cites` did not read `ref S1`, so such a reference card dropped out of its paper's reference list, of the reading queue's counts and of every other reader of `cited_by::`.
+- **A numbered protocol in a supplement is not taken for references.** A supplement's numbered list is kept only when at least half of its entries carry a year; otherwise `refs` leaves it out and says so. (A numbered algorithm in one supplement had become five reference entries.) A supplement's list is also parsed in its own style when that differs from the main list's.
+- **Author-year entries.** A publisher's place (`Montclair, NJ: Author.`) no longer starts an entry, and APA's `Journal, 30(5), 342–361` gives journal, volume and pages.
+- Known limits: an author-year list with no comma between surname and initials and no brackets round the year (`Buck L, Axel R. 1991.`) is read only in the PLOS and eLife forms; book entries give no publisher field.
+
+## 1.23.5 (2026-11-23)
+
+- **A trailing `DOI: https://…` no longer swallows the journal.** eLife ends each entry with a `DOI:` label before the link; the reader stripped the link but left the label, so the volume and pages stayed inside the title and 68 of one paper's 75 entries came out wrong. The label is stripped with the link, and the match is case-insensitive.
+- **An entry whose year is followed by no punctuation is found.** `Abraham NM, Spors H … (2004) Maintaining accuracy …` (the Journal of Neuroscience style) has no stop after the closing parenthesis, so an unnumbered list in that style split into nothing. One paper went from no list found to 45 entries, 41 traced.
+
+## 1.23.4 (2026-11-23)
+
+- **eLife-style lists** (issue #45, same code path). `Alvarez-Melis D, Fusi N. 2020. Title. Journal 7:20.` has the initials against the surname like PLOS but a bare year with no parentheses, and the heading runs straight on into the first entry. All three now read: the run-on heading is recognised for an author-year list as well as a numbered one, and the entry parser takes the year in parentheses or bare.
+- **Soft hyphens and zero-width spaces are ignored when reading references.** A PDF leaves them inside words (`Alvarez-­Melis`) and URLs, which stopped a surname, a DOI or the heading itself from matching. They are removed from the text the reference reader works on; the anchored text is untouched.
+- On the three papers added to a vault today, `refs` went from unusable to 58 of 58, 15 and 75 entries, with 58, 3 and 56 traced to the paragraphs that cite them.
+
+## 1.23.3 (2026-11-23)
+
+- **Square-bracket citations are traced** (issue #44). The fallback that reads citation numbers from the text matched round brackets only, and one stray superscript was enough to stop it running at all, so a paper citing `[1]`, `[2,3]` traced almost nothing: Snitz et al. 2013 gave 1 of 58 references a paragraph. Square brackets are read too, and the font-based pass is trusted only when it found citations for a fair share of the list. The same paper now traces 58 of 58.
+- **PLOS and BMC style entries are parsed** (issue #45). `Amoore JE (1977) Specific anosmia and the concept of primary odors. Chemical Senses and Flavor 2: 267-281.` has the initials against the surname, the year after the authors and a colon before the pages, and 14 of Snitz's 58 entries came out with no authors or no year. The authors are rewritten as `Amoore, J. E.` (with `; others` for et al.) and the colon as a comma, and the entry then goes through the author-year reader added for #5. An `In: … editors.` entry is an incollection. A classic numbered entry, whose year sits at the end, is untouched.
+
+## 1.23.2 (2026-11-23)
+
+Three reference lists `refs` could not read.
+
+- **A numbered list run together in one paragraph** (issue #23). Some two-column PDFs come out as a few long blocks, `References 1. Dulac, C. & Torello, A. T. … 2. Belluscio, L. …`, and the heading sits in the same block as the first entries, so `refs` found no list at all and said, wrongly, that the list was author-year. A heading with the list run on after it now starts the region at that paragraph, and a list broken in two by the Methods is picked up in both places so its numbering continues. The paragraphs between the two parts count as text, so citations in the Methods are traced too.
+- **Author-year lists** (issue #5), common in chemical senses, psychophysics and food science, are parsed: entries are split at a surname followed by initials and a year, the fields are read by moving the year to the end and reusing the same field parser (so journal, volume, pages and DOI come out as before), and the citing paragraphs are found by surname and year, `(Snitz et al. 2013)`, `(Haddad and Sobel, 2008)`, `Laska et al. (1999a)`, with the letter of `1999a` kept. Entries are numbered in the order printed, so `cite` and `cites:: ref N` work unchanged.
+- **A supplement's own reference list** (issue #28). Its numbers mean its own works, not the main text's, so cards anchored in the supplement were told to cite the wrong papers. `refs` now writes it as entries `S1` onwards, traces the supplement's paragraphs against it (through `P012_SI.pdf` where there is one), and `cite` makes cards from `S` entries like any other. Reference numbers are carried as written throughout, and `S` entries sort after the main list.
+
+## 1.23.1 (2026-11-23)
+
+- **A panel with a second y axis is no longer read silently through the first** (issue #15). `figure` calibrates one y axis per box, taking whichever side carries more tick labels, so in a panel with a left and a right axis every series was converted through one of them and the other came out wrong, with nothing to show it. It now detects numeric tick labels on both sides of the plot area, prints both ranges, says in the CSV header which axis the values went through, and flags every row with a y value ("second y axis: verify this series' scaling"). Read the panel once per axis, with a box that takes in only that axis's labels, or pass `--ycal value@position,...` for the axis you want: a calibration given by hand is trusted and the flag goes.
+
+## 1.23.0 (2026-11-23)
+
+- **A summary the authors computed from a data file is recomputed from its rows** (issue #30, the part left open). A mean or an s.e.m. the paper prints sits in no cell of its deposited source data, so `check` could only report "value not found". A card may now say how the number was made, `- computed:: <op> of <column> [where <column> = <value>] [in <sheet or file>]`, with `mean`, `median`, `sum`, `count`, `min`, `max`, `sd` or `sem`. `check` reads the file (`.csv` and `.tsv` directly, a workbook through openpyxl), recomputes the number and compares it with the value: the paper's own summary is now checked against the rows it rests on, and when they disagree the warning names both numbers. A line `check` cannot read leaves the value unchecked and says why. Columns and sheets are matched ignoring case and punctuation; anything after ` — ` is a note.
+- **A deposited `.csv` or `.tsv` is read at full precision**, like a workbook since 1.22.1: a value the card rounds from it is confirmed within half a unit in its last decimal place. A number printed in the running text still has to match as printed.
 
 ## 1.22.2 (2026-11-23)
 

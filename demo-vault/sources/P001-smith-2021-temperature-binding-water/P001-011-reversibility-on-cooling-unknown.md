@@ -7,7 +7,7 @@ updated: 2026-11-20
 
 The authors state that it remains unknown whether the loss of [[binding-capacity|binding capacity]] at higher [[temperature]] is reversible on cooling.
 
-**Source:** Smith & Jones 2021, Discussion, p. 2 · [[P001_marked.pdf#page=2&annotation=120R|open page]]
+**Source:** Smith & Jones 2021, Discussion, p. 2 · [[P001_marked.pdf#page=2&annotation=22R|open page]]
 
 ## Codes
 - id:: P001-011

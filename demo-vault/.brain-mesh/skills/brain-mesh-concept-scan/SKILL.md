@@ -65,14 +65,14 @@ For every concept that gained a fact, add-paper step 9 (a fact on a logged contr
 
 Do this as you go, source by source: a hub should show the equations and figures that define or measure its concept, not just name the cards that hold them. **Equations and figures for the hubs** in the `scan` output, and in `P012_scan.md`, lists every equation and figure panel of the source for each concept its card names in `concepts::`, until each is on that hub or decided.
 
-1. **Get the image.** A printed equation is cropped as `P012-eq4.png`, and a figure panel as `P012-F2c.png` (`P012-SF3.png` in the supplementary material), with `mesh.py figure` (add-paper, **Reading values from figures** and **Equations**). An item listed "no image yet" whose figure is key: crop it now, choosing a box that takes in the panel, its axes and legend.
+1. **Get the image.** A printed equation is cropped as `P012-eq4.webp`, and a figure panel as `P012-F2c.webp` (`P012-SF3.webp` in the supplementary material), with `mesh.py figure`; the scan lists each item under the name its file has, which is `.png` in a vault whose crops were made before 1.24.1 (add-paper, **Reading values from figures** and **Equations**). An item listed "no image yet" whose figure is key: crop it now, choosing a box that takes in the panel, its axes and legend.
 2. **Judge it for this concept.** Key means it defines the concept, gives its functional form, or shows its principal measurement or result. A figure that only touches the concept is not key for it, though it may be for another.
 3. **Put a key one on the hub**, under `## Key equations and figures` (after **Open questions**, before **Where it appears**), one entry each:
    - a bold name and one sentence on what it shows, with the conditions;
-   - for an equation, the LaTeX as a `$$ … $$` block with its symbols linked to their concepts, then `![[P012-eq4.png]]`; for a figure, `![[P012-F2c.png|400]]`;
+   - for an equation, the LaTeX as a `$$ … $$` block with its symbols linked to their concepts, then `![[P012-eq4.webp]]`; for a figure, `![[P012-F2c.webp|400]]`;
    - the evidence card it comes from (`[[P012-028|Pellegrino et al. 2025, Fig. 1D]]`), which carries the link to the page;
    - every work that card cites for it, as `[[R0042-…|Keller et al. 2017]]`, with the matching `- cites:: [[R0042]] — <what it supports>` in the hub's Codes. An equation the paper takes from earlier work is credited to that work as well as to the paper.
-4. **Or decide.** For one that is not key to that concept, write `- not_key:: [[concept]] P012-F2c.png — why` in `P012_scan.md`. The line is kept when the scan runs again.
+4. **Or decide.** For one that is not key to that concept, write `- not_key:: [[concept]] P012-F2c.webp — why` in `P012_scan.md`. The line is kept when the scan runs again.
 
 When two sources give the same equation, keep one entry and cite both. Where they differ (another form, other parameters), show both and say how they differ.
 

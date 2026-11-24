@@ -7,7 +7,7 @@ updated: 2026-11-20
 
 The authors suggest that the loss of [[binding-capacity|binding capacity]] reported by Smith and Jones in [[water]] arises from water uptake ([[swelling]]) by the film and not from heating itself. They present no measurement in water.
 
-**Source:** Garcia & Chen 2023, Discussion, p. 1 · [[P002_marked.pdf#page=1&annotation=73R|open page]]
+**Source:** Garcia & Chen 2023, Discussion, p. 1 · [[P002_marked.pdf#page=1&annotation=15R|open page]]
 
 ## Codes
 - id:: P002-006

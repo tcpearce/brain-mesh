@@ -47,7 +47,7 @@ Every session starts and ends with one command, `python3 tools/mesh.py sync` (`p
 - **One vault per research topic,** in its own private GitHub repository. Publisher PDFs stay out of anything shared.
 - **Write the scope first,** in the Overview of `MAP.md`: what is in, what is out, what the brain is for. A stated scope is what later lets a gap be called a gap.
 - **Put your standing rules in the vault's `CLAUDE.md`,** below the generated part: every agent reads it at the start of every session. Example: "generic statistics terms are low priority".
-- **Browse in Obsidian.** Start at `MAP`, follow a concept hub, and open a paper's marked PDF: every card is a highlight on the page, and unhighlighted text has no card.
+- **Browse in Obsidian.** Start at `MAP`, follow a concept hub, and open a paper's marked PDF: every card is a highlight on the page, and unhighlighted text has no card. Marked PDFs are built on your computer by `build` rather than kept in git; highlights and notes you add to one are saved beside it in a small text file that git does carry.
 
 ### 1. Add papers
 
@@ -158,6 +158,8 @@ Compare each topic once, when you first mine it. Claude records every verdict (`
 - **Beyond the brain:** a lead or an outside tool that a paper now names, and a term you set aside that twice as many papers now use.
 
 Then run `beyond terms` again: a shared term appears only once two papers use it.
+
+**It stays readable as it grows.** `zoom`, `routes`, `ask`, `find` and `facts` print to a budget. A concept hub lists its first cards by title and links a generated page (`index/hubs/`) for the rest; `build` and `check` count warnings by kind once there are more than forty and keep every line in `index/check.txt`; `gaps` and a bare `discover` print the head of each section. `--all` or `--full` prints everything. Figure and equation crops are WebP, about a fifth of the size of PNG; `crops --convert` converts the PNG crops of an older vault and rewrites their embeds. `build` and `check` keep what they work out from files that have not changed (a workbook's cells, a data file's numbers, where each concept is named in each source) in `index/.scratch/cache/` on your computer, so adding a paper costs the work for that paper; a twelve-source vault builds in about four seconds.
 
 **What makes it work**
 
@@ -270,7 +272,7 @@ Both keep a session's context small however large the brain grows. The commands 
 | `skills/brain-mesh-discover/SKILL.md` | Discovery sessions with the user: topics by need to know, routes to a contribution, the research profile, checks outside the brain, the miners; theory, analogy and seed cards; rechecking them as sources arrive. |
 | `skills/brain-mesh-beyond/SKILL.md` | Finding what the ontology lacks by comparing it with something outside it: the sources' own words, Wikipedia, MeSH, a review, the literature around the sources, and the tools other fields use for the same kind of problem. |
 | `skills/brain-mesh-housekeeping/SKILL.md` | Health report, merges, corrections and retractions, audits, edits made in Obsidian. |
-| `tools/mesh.py` | The tooling. One file, Python 3.8+, standard library plus PyMuPDF for PDFs. `python3 tools/mesh.py help` lists the commands. |
+| `tools/mesh.py` | The tooling. One file, Python 3.8+, standard library plus PyMuPDF for PDFs (and, optionally, Pillow for small figure crops). `python3 tools/mesh.py help` lists the commands. |
 | `loader/SKILL.md` | The small skill that is synced to Claude. It clones or pulls this repository and routes to the right document. |
 | `demo-vault/` | A complete small vault built from invented papers. Open the folder in Obsidian and start at `MAP`. |
 | `tests/run.sh` | Tests for the tooling. |
@@ -286,7 +288,7 @@ In Claude, the synced `brain-mesh` skill does the loading. By hand:
 
 ```bash
 git clone https://github.com/tcpearce/brain-mesh.git && cd brain-mesh
-pip install pymupdf
+pip install pymupdf pillow                          # Pillow is optional: it makes figure crops WebP instead of PNG
 bash tests/run.sh                                   # should end with ALL TESTS PASSED
 python3 tools/mesh.py init ../my-vault "My topic brain" "One-line topic"
 ```

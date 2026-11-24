@@ -7,7 +7,7 @@ updated: 2026-11-20
 
 One [[imprinted-polymer-film|film]] at 35 °C in [[water]] showed a transient increase in [[binding-capacity|binding capacity]] during the first 5 minutes. The authors could not explain it and report no value.
 
-**Source:** Smith & Jones 2021, Results, p. 1 · [[P001_marked.pdf#page=1&annotation=95R|open page]]
+**Source:** Smith & Jones 2021, Results, p. 1 · [[P001_marked.pdf#page=1&annotation=17R|open page]]
 
 ## Codes
 - id:: P001-006

@@ -1,100 +1,98 @@
 {
  "P001": {
-  "sig": "531eefa2d54d303b9c51df3b94ae5d6d261a5d63",
   "cards": {
    "P001-001": {
     "page": 1,
-    "annot": 69,
+    "annot": 12,
     "how": "highlight"
    },
    "P001-002": {
     "page": 1,
-    "annot": 75,
+    "annot": 13,
     "how": "highlight"
    },
    "P001-003": {
     "page": 1,
-    "annot": 80,
+    "annot": 14,
     "how": "highlight"
    },
    "P001-004": {
     "page": 1,
-    "annot": 85,
+    "annot": 15,
     "how": "highlight"
    },
    "P001-005": {
     "page": 1,
-    "annot": 90,
+    "annot": 16,
     "how": "highlight"
    },
    "P001-006": {
     "page": 1,
-    "annot": 95,
+    "annot": 17,
     "how": "highlight"
    },
    "P001-007": {
     "page": 2,
-    "annot": 100,
+    "annot": 18,
     "how": "highlight"
    },
    "P001-008": {
     "page": 2,
-    "annot": 105,
+    "annot": 19,
     "how": "highlight"
    },
    "P001-009": {
     "page": 2,
-    "annot": 110,
+    "annot": 20,
     "how": "highlight"
    },
    "P001-010": {
     "page": 2,
-    "annot": 115,
+    "annot": 21,
     "how": "highlight"
    },
    "P001-011": {
     "page": 2,
-    "annot": 120,
+    "annot": 22,
     "how": "highlight"
    }
   }
  },
  "P002": {
-  "sig": "c5d8771d2e75e41a7e52b0682768a84941b179d9",
   "cards": {
    "P002-001": {
     "page": 1,
-    "annot": 47,
+    "annot": 10,
     "how": "highlight"
    },
    "P002-002": {
     "page": 1,
-    "annot": 53,
+    "annot": 11,
     "how": "highlight"
    },
    "P002-003": {
     "page": 1,
-    "annot": 58,
+    "annot": 12,
     "how": "highlight"
    },
    "P002-004": {
     "page": 1,
-    "annot": 63,
+    "annot": 13,
     "how": "highlight"
    },
    "P002-005": {
     "page": 1,
-    "annot": 68,
+    "annot": 14,
     "how": "highlight"
    },
    "P002-006": {
     "page": 1,
-    "annot": 73,
+    "annot": 15,
     "how": "highlight"
    },
    "P002-007": {
     "page": 1,
-    "annot": 78,
+    "annot": 16,
     "how": "highlight"
    }
   }

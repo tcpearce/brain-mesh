@@ -7,7 +7,7 @@ updated: 2026-11-20
 
 The authors cite prior work reporting that [[swelling]] scales with [[temperature]] in hydrogels. This is their background, not their result.
 
-**Source:** Smith & Jones 2021, Discussion, p. 2, citing Lee 2015 · [[P001_marked.pdf#page=2&annotation=115R|open page]]
+**Source:** Smith & Jones 2021, Discussion, p. 2, citing Lee 2015 · [[P001_marked.pdf#page=2&annotation=21R|open page]]
 
 ## Codes
 - id:: P001-010

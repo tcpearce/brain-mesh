@@ -8,7 +8,7 @@ updated: 2026-11-20
 At 25 °C in [[water]], the [[binding-capacity|binding capacity]] of the [[imprinted-polymer-film|imprinted polymer film]] for [[analyte-x|analyte X]] was 4.2 ± 0.3 across three replicate films. The paper does not say whether ± is a standard deviation or a standard error.
 
 **Basis:** [[P001-002-batch-rebinding-uv-254|batch rebinding with UV detection]].
-**Source:** Smith & Jones 2021, Results, p. 1 · [[P001_marked.pdf#page=1&annotation=80R|open page]]
+**Source:** Smith & Jones 2021, Results, p. 1 · [[P001_marked.pdf#page=1&annotation=14R|open page]]
 
 ## Codes
 - id:: P001-003

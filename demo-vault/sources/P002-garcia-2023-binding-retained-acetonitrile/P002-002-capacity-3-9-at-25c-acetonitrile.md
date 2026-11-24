@@ -8,7 +8,7 @@ updated: 2026-11-20
 At 25 °C in [[acetonitrile]], the [[binding-capacity|binding capacity]] of the [[imprinted-polymer-film|imprinted polymer film]] for [[analyte-x|analyte X]] was 3.9 ± 0.4 (four films).
 
 **Basis:** [[P002-001-capacity-measured-by-qcm|quartz crystal microbalance]].
-**Source:** Garcia & Chen 2023, Results, p. 1 · [[P002_marked.pdf#page=1&annotation=53R|open page]]
+**Source:** Garcia & Chen 2023, Results, p. 1 · [[P002_marked.pdf#page=1&annotation=11R|open page]]
 
 ## Codes
 - id:: P002-002

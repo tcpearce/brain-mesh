@@ -8,7 +8,7 @@ updated: 2026-11-20
 In [[acetonitrile]], [[binding-capacity|binding capacity]] did not change significantly between 25 and 45 °C (p = 0.41, four films). This is a null result: the test used is not named.
 
 **Basis:** capacities at [[P002-002-capacity-3-9-at-25c-acetonitrile|25 °C]] and [[P002-003-capacity-3-7-at-45c-acetonitrile|45 °C]].
-**Source:** Garcia & Chen 2023, Results, p. 1 · [[P002_marked.pdf#page=1&annotation=63R|open page]]
+**Source:** Garcia & Chen 2023, Results, p. 1 · [[P002_marked.pdf#page=1&annotation=13R|open page]]
 
 ## Codes
 - id:: P002-004

@@ -60,7 +60,7 @@ concepts/<slug>.md                         concept cards (the hubs)
 sources/P012-<first author>-<year>-<words>/  one folder per source:
   P012-<slug>.md  P012-007-<slug>.md  P012-claims.md     source card, evidence cards, claims card
   P012.pdf  P012_marked.pdf  P012_text.md                the original (never changed), the marked copy, the anchored text
-  P012_SI*, P012_correction*, P012-T2.csv, P012-F5c.png/.csv   supplementary material, corrections, tables, figure panels and their values
+  P012_SI*, P012_correction*, P012-T2.csv, P012-F5c.webp/.csv  supplementary material, corrections, tables, figure panels and their values
   P012_refs.md  P012_refs.bib  P012_scan.md  P012_concepts.md  P012_progress.md   reference list, concept scan, proposals, an agent's notes
 references/R0042-<slug>.md  library.bib    the works the sources cite
 findings/K###  tensions/X###  contradictions/V###  gaps/G###   the brain's own conclusions and unknowns

@@ -86,7 +86,7 @@ The user is free to edit prose. After they have, `build` shows what moved: a val
 - A note the user made in `concepts/` becomes a concept card at the next `build` (`brain-mesh` FORMATS.md, **Concept cards**). Check its kind and aliases with them, then `scan <concept>` to find it in the sources already in the brain.
 - A renamed file gets its id back automatically. If a card was renamed but kept its id at the start, `build` re-points the links. If the id was dropped, `build` restores it from the card's `- id::` line, keeps the user's wording as the slug, and rewrites the links Obsidian had pointed at the new name. A renamed concept keeps its old file name, which is its id, and gains the user's new name as an alias.
 - Edits inside `## Linked from` or an AUTO block are overwritten by the next `build`. Move anything of value into the card's own prose first.
-- The user's own highlights and notes on a marked PDF are kept when it is regenerated. Annotations on an original PDF change its checksum: move them to the marked copy and restore the original.
+- The user's own highlights and notes on a marked PDF are saved by `build` to `P012_annotations.json` (committed; the marked copy is not) and drawn again each time the copy is rebuilt, on every computer. Annotations on an original PDF change its checksum: move them to the marked copy and restore the original.
 
 ## Periodic audit
 

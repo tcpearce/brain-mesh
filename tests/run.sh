@@ -345,7 +345,7 @@ d.save("eq.pdf")
 PY
 python3 tools/mesh.py anchor P001 eq.pdf > /dev/null
 python3 tools/mesh.py equations P001 > eqs.txt; grep -q "numbered (1)" eqs.txt && pass "equations finds a numbered equation" || fail "equations"
-python3 tools/mesh.py figure P001 1 110,74,360,98 eq1 > /dev/null; [ -f sources/P001/P001-eq1.png ] && pass "an equation is cropped as an image" || fail "equation crop"
+python3 tools/mesh.py figure P001 1 110,74,360,98 eq1 > /dev/null; { [ -f sources/P001/P001-eq1.webp ] || [ -f sources/P001/P001-eq1.png ]; } && pass "an equation is cropped as an image" || fail "equation crop"
 cat > batch.md <<'CARDS'
 === odorant-distance
 ---
@@ -664,7 +664,7 @@ sed -i 's/^\(- prioritised:: \)[0-9-]*\( high — the founding study\)/\12025-01
 (python3 tools/mesh.py check || true) | grep -q "P001: high priority since 2025-01-01 with no change since" && pass "a long-unchanged high priority is flagged for review" || fail "priority hygiene"
 # 12. discovery: miners, theory, analogy and seed cards, stamps, rejections and rechecks (1.6.0)
 rm -rf "$T/d"; cp -r "$ROOT/demo-vault" "$T/d"; cd "$T/d"; python3 "$MESH" upgrade . > /dev/null; python3 tools/mesh.py build > /dev/null
-python3 tools/mesh.py discover --top 30 > disc.txt
+python3 tools/mesh.py discover --full --top 30 > disc.txt
 grep -q "acetonitrile and swelling related? No evidence card or finding holds both" disc.txt && grep -A2 "acetonitrile and swelling" disc.txt | grep -q "touched by X001, G002" && pass "bridges finds an unjoined concept pair and names the gap that already touches it" || { cat disc.txt; fail "bridges"; }
 grep -q "acetonitrile and water related" disc.txt && fail "bridges proposed two values of one categorical variable" || pass "bridges skips sibling values of one variable"
 sed -n '/^## moderators/,/^## transfer/p' disc.txt | grep -q "solvent = water on one side, acetonitrile on the other" && sed -n '/^## moderators/,/^## transfer/p' disc.txt | grep -q "methods differ: batch-rebinding-assay against quartz-crystal-microbalance" && pass "moderators names the condition and the method that differ between the sides of a tension" || fail "moderators"
@@ -979,7 +979,9 @@ sed -i 's/^## Where it appears$/## Key equations and figures\n- **Swelling law**
 printf -- '- not_key:: [[binding-capacity]] P001-eq1.png — about swelling, not capacity\n- not_key:: [[temperature]] P001-eq1.png — temperature only enters as a variable\n- not_key:: [[imprinted-polymer-film]] P001-eq1.png — not about the film as such\n- not_key:: [[cavity-collapse]] P001-eq1.png — the law is for swelling, not collapse\n' >> $S1/P001_scan.md
 python3 tools/mesh.py scan P001 > scan.txt
 ! grep -q "P001-eq1.png — P001-007" scan.txt && grep -q "^## Equations and figures for the hubs (0 to add)" $S1/P001_scan.md && grep -q "^- not_key:: \[\[temperature\]\] P001-eq1.png — temperature only" $S1/P001_scan.md && pass "an equation on the hub, or decided not key, leaves the list, and the decisions are kept" || { cat scan.txt; cat $S1/P001_scan.md; fail "scan equations done"; }
-cp "$T/c7.bak" "$c7"; rm $S1/P001-eq1.png
+mv $S1/P001-eq1.png $S1/P001-eq1.webp; python3 tools/mesh.py scan P001 > scan.txt
+grep -q "^## Equations and figures for the hubs (0 to add)" $S1/P001_scan.md && pass "a crop converted to WebP still counts as embedded and decided where the hub and the scan file name its PNG" || { cat scan.txt; fail "crop matched by name without its extension"; }
+cp "$T/c7.bak" "$c7"; rm $S1/P001-eq1.webp
 # 15. every link can be followed both ways (1.12.0)
 cp -r "$ROOT/demo-vault" "$T/bl"; cd "$T/bl"; cp "$MESH" tools/mesh.py
 S1=$(ls -d sources/P001*)
@@ -1237,15 +1239,15 @@ if command -v git > /dev/null; then
   git add -A > /dev/null; git commit -qm init; git push -q -u origin main 2> /dev/null
   git clone -q -b main "$T/lg.git" "$T/lg2"; git -C "$T/lg2" config user.email u@u; git -C "$T/lg2" config user.name u
   python3 -c "import json; c = json.load(open('MESH.json')); c['large_file_mb'] = 0.002; json.dump(c, open('MESH.json', 'w'), indent=1)"
-  python3 tools/mesh.py linked --all > lk.txt; grep -q "^linked: 4 file(s) newly linked" lk.txt && grep -q "^| P001.pdf | 0.0 | [0-9a-f]\{64\} | " ledger/linked-files.md && grep -q "^| P001_marked.pdf | .* | rebuilt by \`mesh.py build\` from the original |" ledger/linked-files.md && grep -q "^sources/P001\*/P001.pdf$" .gitignore && pass "linked --all links the files over the limit and lists them in .gitignore" || { cat lk.txt ledger/linked-files.md .gitignore; fail "linked --all"; }
+  python3 tools/mesh.py linked --all > lk.txt; grep -q "^linked: 2 file(s) newly linked" lk.txt && grep -q "^| P001.pdf | 0.0 | [0-9a-f]\{64\} | " ledger/linked-files.md && ! grep -q "P001_marked" ledger/linked-files.md && grep -q "^sources/\*/P\*_marked.pdf$" .gitignore && grep -q "^sources/P001\*/P001.pdf$" .gitignore && pass "linked --all links the originals over the limit and lists them in .gitignore; marked copies are ignored as a kind" || { cat lk.txt ledger/linked-files.md .gitignore; fail "linked --all"; }
   python3 tools/mesh.py sync "link large files" > "$T/lg-s.txt" 2>&1; [ -z "$(git ls-files sources | grep '\.pdf$')" ] && [ -z "$(git -C "$T/lg.git" ls-tree -r --name-only main sources | grep '\.pdf$')" ] && [ -f "$(ls -d sources/P001*)/P001.pdf" ] && pass "sync stops tracking linked files but keeps them in the folder" || { cat "$T/lg-s.txt"; git ls-files sources | grep pdf; fail "linked untracked"; }
   (cd "$T/lg2" && python3 tools/mesh.py sync > "$T/lg2-s.txt" 2>&1); S2=$(ls -d "$T"/lg2/sources/P001*)
-  [ -f "$S2/P001.pdf" ] && [ -f "$S2/P001_marked.pdf" ] && grep -q "^linked: restored 4 linked file(s) from git history" "$T/lg2-s.txt" && [ -z "$(git -C "$T/lg2" status --porcelain)" ] && pass "another copy of the vault gets back from history the files a pull stopped tracking" || { cat "$T/lg2-s.txt"; ls "$S2"; git -C "$T/lg2" status --porcelain; fail "linked restore on pull"; }
+  [ -f "$S2/P001.pdf" ] && [ -f "$S2/P001_marked.pdf" ] && grep -q "^linked: restored 2 linked file(s) from git history" "$T/lg2-s.txt" && [ -z "$(git -C "$T/lg2" status --porcelain)" ] && pass "another copy of the vault gets back from history the originals a pull stopped tracking, and builds its own marked copies" || { cat "$T/lg2-s.txt"; ls "$S2"; git -C "$T/lg2" status --porcelain; fail "linked restore on pull"; }
   rm "$S2/P001.pdf"; (cd "$T/lg2" && python3 tools/mesh.py linked --restore) | grep -q "^linked --restore: 1 restored from git history$" && [ -f "$S2/P001.pdf" ] && pass "linked --restore brings back a linked file from history" || fail "linked --restore"
   S1=$(ls -d sources/P001*); mv "$S1/P001.pdf" "$T/p1.pdf"
   (python3 tools/mesh.py check || true) > "$T/lg-c.txt"; grep -q "^note  P001: P001.pdf is a linked file (kept out of git) and is not in this copy of the vault; .* otherwise get it from " "$T/lg-c.txt" && ! grep -q "^warn .*P001.pdf is a linked file" "$T/lg-c.txt" && pass "check notes an absent linked original and where to get it, without counting it as a warning" || { cat "$T/lg-c.txt"; fail "check linked absent"; }
   python3 tools/mesh.py linked --verify > "$T/lg-v.txt" 2>&1 && fail "linked --verify passed with a file missing" || { grep -q "^missing  P001.pdf" "$T/lg-v.txt" && pass "linked --verify reports a missing original" || { cat "$T/lg-v.txt"; fail "verify missing"; }; }
-  cp "$T/p1.pdf" "$S1/P001.pdf"; python3 tools/mesh.py linked --verify > "$T/lg-v.txt" 2>&1 && grep -q "4 of 4 linked files present and unchanged" "$T/lg-v.txt" && pass "linked --verify passes once the original is back" || { cat "$T/lg-v.txt"; fail "verify ok"; }
+  cp "$T/p1.pdf" "$S1/P001.pdf"; python3 tools/mesh.py linked --verify > "$T/lg-v.txt" 2>&1 && grep -q "2 of 2 linked files present and unchanged" "$T/lg-v.txt" && pass "linked --verify passes once the original is back" || { cat "$T/lg-v.txt"; fail "verify ok"; }
   head -c 50000 /dev/urandom > big.bin; python3 tools/mesh.py sync "a stray large file" > "$T/lg-s.txt" 2>&1 && fail "sync committed a large file outside the sources" || { grep -q "would be committed: big.bin" "$T/lg-s.txt" && [ -z "$(git ls-files big.bin)" ] && pass "sync refuses a large file outside the source folders" || { cat "$T/lg-s.txt"; fail "sync large stray"; }; }
   mkdir -p ingest; mv big.bin ingest/; python3 tools/mesh.py sync "papers waiting in ingest" > "$T/lg-s.txt" 2>&1; [ -z "$(git ls-files ingest)" ] && grep -q "sync: committed\|up to date" "$T/lg-s.txt" && pass "papers in ingest/ are never committed" || { cat "$T/lg-s.txt"; fail "ingest committed"; }
   python3 -c "
@@ -1658,7 +1660,411 @@ python3 tools/mesh.py independence P001 P002 > i40.txt; grep -q "^P001$" i40.txt
 printf -- '- used_by:: [[P003-own-2026-heat-cool-cycle-results]] — looked up the structure of analyte X\n' >> data-sets/D001-*.md
 python3 tools/mesh.py independence K001 > k40.txt; grep -q "2 sources, 2 independent groups: P001 | P003" k40.txt && grep -q "^   not counted, lookup resources: D001 (ChemLookup; used by P001, P003)$" k40.txt && pass "a finding's groups name the lookup resources left out, and stay apart" || { cat k40.txt; fail "lookup role on findings"; }
 sed -i 's/^- role:: lookup$/- role:: reference/' data-sets/D001-*.md; (python3 tools/mesh.py check || true) | grep -q "D001: role 'reference' is not data or lookup" && pass "check questions a role it does not know" || fail "role value"
-# 34. the citation index: a cited work indexed from its abstract reaches the hubs and the literature view
+# 31. a summary the authors computed from a deposited data file is recomputed from its rows (issue #30)
+cp -r "$ROOT/demo-vault" "$T/cv"; cd "$T/cv"; cp "$MESH" tools/mesh.py; S1=$(ls -d sources/P001*)
+cat > $S1/P001_SI-source-data.csv <<'CSV'
+# Fig S4 source data, one row per film
+Film,Group,Capacity after washing
+A,washed,0.8230456
+B,washed,0.6011
+C,washed,0.9158
+D,control,4.2
+CSV
+cat > $S1/P001-012-mean-capacity-after-washing.md <<'CARD'
+---
+type: observation
+status: measured
+updated: 2026-11-23
+---
+# Averaged over the three washed films, binding capacity after washing is 0.78 of the unwashed film
+
+The three washed films kept a mean 0.78 of their [[binding-capacity|binding capacity]] in [[water]] at 60 degC.
+
+## Codes
+- id:: P001-012
+- value:: [[binding-capacity]] = 0.78 of the unwashed film (mean of three films, source data)
+- when:: [[temperature]] = 60 degC
+- when:: [[solvent]] = [[water]]
+- computed:: mean of Capacity after washing where Group = washed
+- anchor:: SI-source-data
+- loc:: "Capacity after washing"
+- via:: si
+CARD
+python3 tools/mesh.py build > b.txt 2>&1; grep -q "check: 0 errors" b.txt && ! grep -q "P001-012: value" b.txt && pass "a mean the data file does not hold is recomputed from the rows a computed:: line names" || { grep "P001-012" b.txt; fail "computed mean"; }
+sed -i 's/= 0.78 of the unwashed film/= 0.55 of the unwashed film/' $S1/P001-012-*.md; python3 tools/mesh.py build > b.txt 2>&1
+grep -q "P001-012: value 0.55 does not match what '- computed::' recomputes from the anchored data (0.779982)" b.txt && pass "a value that disagrees with the recomputation is named with both numbers" || { grep "P001-012" b.txt; fail "computed mismatch"; }
+sed -i 's/= 0.55 of the unwashed film/= 0.78 of the unwashed film/; s/^- computed:: mean of Capacity after washing where Group = washed$/- computed:: the mean of the washed films/' $S1/P001-012-*.md; python3 tools/mesh.py build > b.txt 2>&1
+grep -q "P001-012: value 0.78 rests on '- computed::' but it could not be recomputed (not in the form" b.txt && pass "a computed:: line check cannot read leaves the value unchecked, and says so" || { grep "P001-012" b.txt; fail "computed unparsed"; }
+sed -i "s/^- computed:: the mean of the washed films$/- computed:: sd of Capacity after washing where Group = washed/" $S1/P001-012-*.md
+sed -i 's/= 0.78 of the unwashed film/= 0.16 of the unwashed film/' $S1/P001-012-*.md; python3 tools/mesh.py build > b.txt 2>&1
+grep -q "check: 0 errors" b.txt && ! grep -q "P001-012: value" b.txt && pass "sd and sem are recomputed the same way" || { grep "P001-012" b.txt; fail "computed sd"; }
+sed -i 's/^- computed:: .*$/- computed:: mean of Capacity after washing where Group = washed/; s/= 0.16 of the unwashed film/= 0.7799 of the unwashed film/' $S1/P001-012-*.md
+sed -i 's/^- anchor:: SI-source-data$/- anchor:: [[P001_text#^b0004]]/' $S1/P001-012-*.md; python3 tools/mesh.py build > b.txt 2>&1
+grep -q "P001-012: value 0.7799 rests on '- computed::' but it could not be recomputed (no data file is anchored" b.txt && pass "a computed:: line with no data file anchored says the value is unchecked" || { grep "P001-012" b.txt; fail "computed no file"; }
+cat > cv.py <<'PYEOF'
+import sys
+sys.path.insert(0, sys.argv[2])
+import mesh
+tabs = mesh.data_tables(sys.argv[1])
+for spec in ["count of Film where Group = washed", "count of Film", "max of Capacity after washing", "mean of Film", "mean of Capacity after washing", "mean of Capacity after washing where Group = washed in P001_SI-source-data"]:
+    v, why = mesh.computed_value(tabs, spec)
+    print(spec, "->", "None" if v is None else format(v, ".6g"), "|", why)
+PYEOF
+python3 cv.py "$S1/P001_SI-source-data.csv" "$ROOT/tools" > cv.txt 2>&1
+grep -q "^count of Film where Group = washed -> 3 | $" cv.txt && grep -q "^count of Film -> 4 | $" cv.txt && grep -q "^max of Capacity after washing -> 4.2 | $" cv.txt && grep -q "^mean of Film -> None | no numbers in a column matching 'Film'$" cv.txt && grep -q "^mean of Capacity after washing -> 1.63499 | $" cv.txt && grep -q "^mean of Capacity after washing where Group = washed in P001_SI-source-data -> 0.779982 | $" cv.txt && pass "count works on a column of names, where and in filter the rows and the file, and a column with no numbers says so" || { cat cv.txt; fail "computed count"; }
+
+# 32. a panel with a second (right) y axis is flagged, not read silently through the left one (issue #15)
+if python3 -c "import openpyxl" 2>/dev/null; then :; fi
+if python3 -c "import pymupdf" 2>/dev/null || python3 -c "import fitz" 2>/dev/null; then
+cp -r "$ROOT/demo-vault" "$T/ax"; cd "$T/ax"; cp "$MESH" tools/mesh.py; S1=$(ls -d sources/P001*)
+python3 - <<'PYEOF'
+try: import pymupdf as fitz
+except ImportError: import fitz
+doc = fitz.open(); p = doc.new_page(width=400, height=400)
+x0, x1, base, top = 110.0, 300.0, 300.0, 120.0
+yL = lambda v: base - (v / 100.0) * (base - top)          # left axis 0 to 100 (per cent)
+yR = lambda v: base - (v / 0.8) * (base - top)            # right axis 0 to 0.8 (distance)
+p.draw_line((x0, base), (x0, top), color=(0, 0, 0), width=0.5)
+p.draw_line((x1, base), (x1, top), color=(0, 0, 0), width=0.5)
+for k in range(6):
+    v = 20.0 * k
+    p.draw_line((x0 - 4, yL(v)), (x0, yL(v)), color=(0, 0, 0), width=0.5)
+    p.insert_text((x0 - 24, yL(v) + 2.5), f"{v:.0f}", fontsize=7)
+for k in range(5):
+    v = 0.2 * k
+    p.draw_line((x1, yR(v)), (x1 + 4, yR(v)), color=(0, 0, 0), width=0.5)
+    p.insert_text((x1 + 7, yR(v) + 2.5), f"{v:.1f}", fontsize=7)
+for i, v in enumerate([40.0, 70.0]):            # bars on the left axis
+    bx = x0 + 25 + i * 60
+    p.draw_rect(fitz.Rect(bx, yL(v), bx + 28, base), color=(0, 0, 0), fill=(0.7, 0.7, 0.7), width=0.4)
+for i, v in enumerate([0.25, 0.60]):            # markers on the right axis
+    p.draw_circle(fitz.Point(x0 + 54 + i * 60, yR(v)), 2.4, color=(0, 0, 0), fill=(0, 0, 0), width=0.3)
+p.insert_text((40, 345), "Figure 1 | Discriminating neurons (bars, left) and metric distance (markers, right).", fontsize=7)
+doc.save("twoaxis.pdf")
+PYEOF
+cp twoaxis.pdf $S1/P001.pdf
+python3 tools/mesh.py figure P001 1 "70,100,340,320" F9 > ax.txt 2>&1
+grep -q "check: SECOND Y AXIS on the right (0 to 0.8) beside the left one (0 to 100)" ax.txt && pass "figure reports a panel with numeric tick labels on both sides" || { cat ax.txt; fail "second axis reported"; }
+grep -q "^# SECOND Y AXIS: numeric tick labels on both sides, 0 to 100 on the left and 0 to 0.8 on the right" $S1/P001-F9.csv && [ "$(grep -c "second y axis: verify this series' scaling" $S1/P001-F9.csv)" -ge 4 ] && pass "every row with a y value is flagged in the csv, and the header says why" || { cat $S1/P001-F9.csv; fail "second axis flagged"; }
+python3 tools/mesh.py figure P001 1 "70,100,340,320" F9 --force --ycal "0@300,100@120" > ax2.txt 2>&1
+! grep -q "SECOND Y AXIS" ax2.txt && ! grep -q "second y axis" $S1/P001-F9.csv && pass "a calibration given by hand is trusted, and the flag goes" || { cat ax2.txt; fail "second axis manual"; }
+python3 tools/mesh.py figure P001 1 "70,100,302,320" F10 > ax3.txt 2>&1
+! grep -q "SECOND Y AXIS" ax3.txt && pass "a box holding one axis is read as before" || { cat ax3.txt; fail "one axis unchanged"; }
+else echo "skip second y axis tests: PyMuPDF not installed"; fi
+
+# 33. reference lists: run together in one paragraph, author-year, and a supplement's own list (issues #23, #5, #28)
+cp -r "$ROOT/demo-vault" "$T/rf"; cd "$T/rf"; cp "$MESH" tools/mesh.py; S1=$(ls -d sources/P001*); S2=$(ls -d sources/P002*); S3=$(ls -d sources/P003*)
+# issue #23: the heading and the numbered list in one block, and the list split in two by the Methods
+rm -f $S1/P001_refs.md
+printf '\nReferences 1. Dulac, C. & Torello, A. T. Molecular detection of pheromone signals. Nat. Rev. Neurosci. 4, 551-562 (2003). 2. Belluscio, L. & Katz, L. C. Symmetry of odorant maps. J. Neurosci. 19, 1-10 (1999). ^b0200\n' >> $S1/P001_text.md
+printf '\nMETHODS ^b0201\n' >> $S1/P001_text.md
+printf '\nReferences 3. Mayer, C. et al. Developmental diversification of interneurons. Nature 555, 457-462 (2018). ^b0202\n' >> $S1/P001_text.md
+python3 tools/mesh.py refs P001 --force > r1.txt 2>&1
+grep -q "^## 3$" $S1/P001_refs.md && grep -q "Developmental diversification of interneurons" $S1/P001_refs.md && grep -q "P001: 3 references (numbered list)" r1.txt && pass "refs reads a numbered list run on after its heading, in two parts split by the Methods (issue #23)" || { cat r1.txt; grep -c "^## " $S1/P001_refs.md; fail "run-on refs"; }
+# issue #5: an author-year list, with the citing paragraphs found by surname and year
+rm -f $S2/P002_refs.md
+printf '\nWe followed the published metric (Snitz et al. 2013) and the earlier account (Haddad and Sobel, 2008). Laska et al. (1999a) disagree. ^b0300\n' >> $S2/P002_text.md
+printf '\nREFERENCES ^b0301\n' >> $S2/P002_text.md
+printf '\nHaddad, R., and Sobel, N. (2008). A metric for odorant comparison. Nature Methods 5, 425-429. https://doi.org/10.1038/nmeth.1197 Laska, M., Teubner, P. (1999a). Olfactory discrimination ability for homologous series. Chemical Senses 24, 263-270. Snitz, K., Yablonka, A., Weiss, T. (2013). Predicting odor perceptual similarity from odor structure. PLoS Computational Biology 9, e1003184. ^b0302\n' >> $S2/P002_text.md
+python3 tools/mesh.py refs P002 --force > r2.txt 2>&1
+grep -q "P002: 3 references (author-year list)" r2.txt && grep -q "^- title:: A metric for odorant comparison$" $S2/P002_refs.md && grep -q "^- doi:: 10.1038/nmeth.1197$" $S2/P002_refs.md && pass "refs parses an author-year reference list (issue #5)" || { cat r2.txt; cat $S2/P002_refs.md; fail "author-year refs"; }
+grep -A12 "^## 3$" $S2/P002_refs.md | grep -q "^- cited_at:: b0300$" && grep -A12 "^## 1$" $S2/P002_refs.md | grep -q "^- cited_at:: b0300$" && pass "an author-year citation is traced to its paragraph by surname and year, 1999a included" || { grep -A12 "^## " $S2/P002_refs.md | grep -E "^## |cited_at"; fail "author-year tracing"; }
+# issue #28: a supplement with its own numbered list
+rm -f $S3/P003_refs.md
+printf '\nREFERENCES ^b0400\n' >> $S3/P003_text.md
+printf '\n1. Main, A. The main list only work. J. Main 1, 1-9 (2001). ^b0401\n' >> $S3/P003_text.md
+printf '\nThe supplementary method follows earlier work1. ^s0400\n' >> $S3/P003_SI_text.md
+printf '\nReferences 1. Supp, B. A work only the supplement cites. J. Supp 2, 10-19 (2002). ^s0401\n' >> $S3/P003_SI_text.md
+python3 tools/mesh.py refs P003 --force > r3.txt 2>&1
+grep -q "^## S1$" $S3/P003_refs.md && grep -A12 "^## S1$" $S3/P003_refs.md | grep -q "A work only the supplement cites" && grep -q "the supplement's own list, S1 onwards" r3.txt && pass "refs writes a supplement's own reference list as S1 onwards (issue #28)" || { cat r3.txt; grep "^## " $S3/P003_refs.md; fail "SI refs block"; }
+grep -A12 "^## 1$" $S3/P003_refs.md | grep -q "The main list only work" && ! grep -A12 "^## 1$" $S3/P003_refs.md | grep -q "s0400" && pass "a supplement paragraph's number is not read against the main text's list" || { grep -A12 "^## 1$" $S3/P003_refs.md; fail "SI refs not crossed"; }
+python3 tools/mesh.py cite P003 > r4.txt 2>&1
+grep -q "cited_by:: \[\[P003\]\] ref S1" references/R*-supp-2002-*.md && pass "cite makes a card for an S entry like any other" || { cat r4.txt; ls references; fail "cite S entry"; }
+python3 tools/mesh.py build > b.txt 2>&1; grep -q "check: 0 errors" b.txt && pass "the vault builds clean with a supplement's own references" || { grep -E "^ERROR" b.txt | head -3; fail "build after SI refs"; }
+# 34. square-bracket citations and PLOS-style entries (issues #44, #45)
+cp -r "$ROOT/demo-vault" "$T/pl"; cd "$T/pl"; cp "$MESH" tools/mesh.py; S1=$(ls -d sources/P001*)
+rm -f $S1/P001_refs.md
+printf '\nEarlier work found this [2], and two groups disagreed [4,5]. A count of (13) animals is not a citation. ^b0500\n' >> $S1/P001_text.md
+printf '\nReferences ^b0501\n' >> $S1/P001_text.md
+printf '\n1. Alpha A (1990) First work. J One 1: 1-9. 2. Beta B, Gamma C, et al. (1991) Second work. J Two 2: 10-19. 3. Delta D (1992) Third work. J Three 3: 20-29. 4. Epsilon E (1993) Fourth work. J Four 4: 30-39. 5. Zeta Z (1994) Fifth work. J Five 5: 40-49. ^b0502\n' >> $S1/P001_text.md
+python3 tools/mesh.py refs P001 --force > p1.txt 2>&1
+grep -q "P001: 5 references (numbered list)" p1.txt && pass "refs reads a PLOS-style numbered list" || { cat p1.txt; fail "plos list"; }
+grep -A12 "^## 2$" $S1/P001_refs.md | grep -q "^- authors:: Beta, B.; Gamma, C.; others$" && grep -A12 "^## 1$" $S1/P001_refs.md | grep -q "^- journal:: J One$" && grep -A12 "^## 1$" $S1/P001_refs.md | grep -q "^- pages:: 1--9$" && pass "a PLOS entry gives authors with et al., year, title, journal, volume and pages (issue #45)" || { grep -A12 "^## 1$" $S1/P001_refs.md; grep -A12 "^## 2$" $S1/P001_refs.md; fail "plos fields"; }
+grep -A12 "^## 2$" $S1/P001_refs.md | grep -q "cited_at:: b0500" && grep -A12 "^## 4$" $S1/P001_refs.md | grep -q "cited_at:: b0500" && grep -A12 "^## 5$" $S1/P001_refs.md | grep -q "cited_at:: b0500" && pass "square-bracket citations [2] and [4,5] are traced to their paragraph (issue #44)" || { grep -E "^## |cited_at" $S1/P001_refs.md; fail "square brackets"; }
+! grep -A12 "^## 3$" $S1/P001_refs.md | grep -q "cited_at:: b0500" && pass "a reference the paragraph does not cite is left alone" || { grep -A12 "^## 3$" $S1/P001_refs.md; fail "square brackets overreach"; }
+# 35. an eLife-style list: the heading run on, a bare year, and soft hyphens inside names (issue #45)
+cp -r "$ROOT/demo-vault" "$T/el"; cd "$T/el"; cp "$MESH" tools/mesh.py; S1=$(ls -d sources/P001*)
+rm -f $S1/P001_refs.md
+printf '\nThe map was built earlier (Lee et al., 2023) and the distance measure before that (Alvarez-Melis and Fusi, 2020). ^b0600\n' >> $S1/P001_text.md
+printf '\nReferences Alvarez-\xc2\xadMelis D, Fusi N. 2020. Geometric dataset distances via optimal transport. arXiv 2002.02923. Lee BK, Mayhew EJ, Sanchez-Lengeling B. 2023. A principal odor map unifies diverse tasks. Science 381:999-1006. ^b0601\n' >> $S1/P001_text.md
+python3 tools/mesh.py refs P001 --force > e1.txt 2>&1
+grep -q "P001: 2 references (author-year list)" e1.txt && pass "refs reads an eLife-style list whose heading runs on into the first entry" || { cat e1.txt; fail "elife list"; }
+grep -A12 "^## 1$" $S1/P001_refs.md | grep -q "^- authors:: Alvarez-Melis, D.; Fusi, N.$" && grep -A12 "^## 2$" $S1/P001_refs.md | grep -q "^- authors:: Lee, B. K.; Mayhew, E. J.; Sanchez-Lengeling, B.$" && pass "a bare year and a soft hyphen inside a surname do not stop the authors parsing" || { grep -A12 "^## 1$" $S1/P001_refs.md; fail "elife authors"; }
+grep -A12 "^## 1$" $S1/P001_refs.md | grep -q "cited_at:: b0600" && grep -A12 "^## 2$" $S1/P001_refs.md | grep -q "cited_at:: b0600" && pass "both are traced to the paragraph that cites them" || { grep -E "^## |cited_at" $S1/P001_refs.md; fail "elife tracing"; }
+
+# 36. what the review of pull requests #41 and #43 found (1.23.6)
+cp -r "$ROOT/demo-vault" "$T/rv"; cd "$T/rv"; cp "$MESH" tools/mesh.py; S2=$(ls -d sources/P002*); S3=$(ls -d sources/P003*)
+rm -f $S3/P003_refs.md
+printf '\nREFERENCES ^b0400\n' >> $S3/P003_text.md; printf '\n1. Main, A. The main list only work. J. Main 1, 1-9 (2001). ^b0401\n' >> $S3/P003_text.md
+printf '\nThe supplementary method follows earlier work1. ^s0400\n' >> $S3/P003_SI_text.md; printf '\nReferences 1. Supp, B. A work only the supplement cites. J. Supp 2, 10-19 (2002). 2. Extra, C. Another work of the supplement. J. Supp 3, 20-29 (2003). ^s0401\n' >> $S3/P003_SI_text.md
+python3 tools/mesh.py refs P003 --force > /dev/null; python3 tools/mesh.py cite P003 > /dev/null; python3 tools/mesh.py build > /dev/null
+SC=$(ls $S3/P003-own-*.md | grep -v "P003-0" | head -1); R=$(grep -l "ref S1" references/R*.md | head -1)
+[ -n "$R" ] && grep -q "$(basename "$R" .md | cut -c1-5)" "$SC" && pass "a work cited only by the supplement's list (ref S1) is read back as cited, and the paper's card lists it" || { grep -n "R000" "$SC"; ls references; fail "ref S1 read back"; }
+python3 - > rc.txt 2>&1 <<'PY'
+import importlib.util
+spec = importlib.util.spec_from_file_location("mesh", "tools/mesh.py"); mesh = importlib.util.module_from_spec(spec); spec.loader.exec_module(mesh)
+m = mesh.Mesh(".")
+got = sorted(n for r in m.cards.values() if r.fam == "reference" for p, n, _b in mesh.ref_cites(r) if p == "P003")
+assert got == ["1", "S1", "S2"], got
+# an author-year list in APA style: a publisher's place is not an author, and 'Journal, 30(5), 342–361' gives its fields
+text = ("Arctander, S. (1969). Perfume and flavor chemicals (aroma chemicals). Montclair, NJ: Author. "
+        "Bushdid, C., Magnasco, M. O., & Keller, A. (2014). Humans can discriminate more than 1 trillion olfactory stimuli. Science, 343(6177), 1370–1372. https://doi.org/10.1126/science.1249168 "
+        "Keller, A., & Vosshall, L. B. (2016). Olfactory perception of chemically diverse molecules. BMC Neuroscience, 17, 55.")
+refs = mesh.split_refs_author_year(text)
+assert len(refs) == 3 and refs[1][1].startswith("Bushdid, C.") and refs[0][1].endswith("Montclair, NJ: Author."), refs
+f = mesh.parse_entry(refs[1][1], "author-year"); assert (f.get("journal"), f.get("volume"), f.get("pages"), f.get("year")) == ("Science", "343", "1370--1372", "2014"), f
+f = mesh.parse_entry(refs[2][1], "author-year"); assert (f.get("journal"), f.get("volume"), f.get("pages")) == ("BMC Neuroscience", "17", "55"), f
+# a number is looked up in sorted lists as it was by scanning
+assert mesh.close_in(([1.0, 4.2, 100.0],), 4.2000001) and not mesh.close_in(([1.0, 4.2, 100.0],), 4.21) and mesh.close_in(([], [0.5]), 0.5) and not mesh.close_in(([],), 1.0)
+assert mesh.within_in(([0.8349, 12.0],), 0.83, 0.005) and not mesh.within_in(([0.8349, 12.0],), 0.82, 0.005) and not mesh.within_in(([],), 1.0, 0.5)
+print("review fixes ok")
+PY
+grep -q "^review fixes ok$" rc.txt && pass "author-year entries: a publisher's place starts no entry and APA volume(issue), pages are read; sorted number lookup agrees with a scan" || { cat rc.txt; fail "review fixes"; }
+cp -r "$ROOT/demo-vault" "$T/rw"; cd "$T/rw"; cp "$MESH" tools/mesh.py; S3=$(ls -d sources/P003*); rm -f $S3/P003_refs.md
+printf '\nREFERENCES ^b0400\n' >> $S3/P003_text.md; printf '\n1. Main, A. The main list only work. J. Main 1, 1-9 (2001). ^b0401\n' >> $S3/P003_text.md
+printf '\nSupplementary protocol for the wash. ^s0500\n' >> $S3/P003_SI_text.md
+printf '\nReferences 1. Weigh the dry film on the balance. 2. Rinse the film in water for ten minutes. 3. Dry the film at room temperature. 4. Weigh it again and record the loss. ^s0501\n' >> $S3/P003_SI_text.md
+python3 tools/mesh.py refs P003 --force > r2.txt 2>&1 || true
+grep -q "a numbered list of 4 entries in the supplement was not taken for references" r2.txt && grep -q "P003: 1 references (numbered list) ->" r2.txt && ! grep -q "^## S1$" $S3/P003_refs.md && pass "a numbered protocol in a supplement is not taken for a reference list, and refs says so" || { cat r2.txt; fail "protocol taken for references"; }
+if python3 -c "import openpyxl" 2>/dev/null; then
+python3 - > bk.txt 2>&1 <<'PY'
+import importlib.util, openpyxl
+spec = importlib.util.spec_from_file_location("mesh", "tools/mesh.py"); mesh = importlib.util.module_from_spec(spec); spec.loader.exec_module(mesh)
+wb = openpyxl.Workbook(); ws = wb.active; ws.title = "Fig 1"; ws.append(["group", "value"]); ws.append(["a", 0.8349]); ws.append(["a", 0.9]); wb.save("book.xlsx")
+calls = []; real = openpyxl.load_workbook
+openpyxl.load_workbook = lambda *a, **k: (calls.append(1), real(*a, **k))[1]
+text, nums = mesh.sheet_cells("book.xlsx"); tabs = mesh.data_tables("book.xlsx"); mesh.sheet_cells("book.xlsx")
+assert len(calls) == 1, calls
+assert sorted(nums) == [0.8349, 0.9] and "group" in text and tabs[0][0] == "Fig 1" and tabs[0][1] == ["group", "value"] and len(tabs[0][2]) == 2, (text, nums, tabs)
+assert mesh.computed_value(tabs, "mean of value where group = a") is not None
+print("one load ok")
+PY
+grep -q "^one load ok$" bk.txt && pass "a workbook is opened once for both the cell check and the recomputation" || { cat bk.txt; fail "workbook loads"; }
+else echo "skip a workbook is opened once (no openpyxl)"; fi
+
+# 37. a miner's scores do not depend on which miners ran before it, and pair scoring keeps its values (1.23.7)
+cd "$T/rt"
+python3 - > sc.txt 2>&1 <<'PY'
+import importlib.util, math
+spec = importlib.util.spec_from_file_location("mesh", "tools/mesh.py"); mesh = importlib.util.module_from_spec(spec); spec.loader.exec_module(mesh)
+bad = []
+for x in mesh.MINERS:
+    if x == "links": continue
+    a = mesh.mine(mesh.Mesh("."), {x})[0].get(x, []); b = mesh.mine(mesh.Mesh("."), {"links", x})[0].get(x, [])
+    if [(round(r[0], 9), r[1]) for r in a] != [(round(r[0], 9), r[1]) for r in b]: bad.append(x)
+assert not bad, bad
+import inspect
+src = inspect.getsource(mesh.mine); head = src.index("w = lambda t:")
+assert "\n        df = " not in src[head:] and "; df = " not in src[head:] and "n_ = " not in src[head + 40:], "mine() reassigns a variable the shared weighting reads"
+m = mesh.Mesh("."); w = mesh.rarity(m); ev = sorted(m.evidence(), key=lambda c: c.id)[:12]
+def plain_score(a, b):
+    sa, sb = m.terms(a), m.terms(b); den = math.sqrt(sum(w(t) for t in sa) * sum(w(t) for t in sb)) or 1.0
+    return 0.75 * sum(w(t) for t in sa & sb) / den + 0.25 * mesh.jac(mesh.toks(a.title) - mesh.STOP, mesh.toks(b.title) - mesh.STOP)
+for a in ev:
+    for b in ev: assert abs(mesh.relevance(m, a, b, w) - plain_score(a, b)) < 1e-12, (a.id, b.id)
+print("scores ok")
+PY
+grep -q "^scores ok$" sc.txt && pass "every miner scores the same whether or not links ran first; the cached pair score equals the plain one" || { cat sc.txt; fail "miner scores depend on order"; }
+python3 tools/mesh.py routes > ra.txt 2>&1; PYTHONHASHSEED=7 python3 tools/mesh.py routes > rb.txt 2>&1; PYTHONHASHSEED=99 python3 tools/mesh.py routes > rc2.txt 2>&1; cmp -s rb.txt rc2.txt && cmp -s ra.txt rb.txt && pass "routes prints the same lines on every run" || { diff rb.txt rc2.txt | head -4; fail "routes varies between runs"; }
+
+# 38. lists that grow with the vault are capped, and nothing is lost (1.24.0)
+cp -r "$ROOT/demo-vault" "$T/cap"; cd "$T/cap"; cp "$MESH" tools/mesh.py; S1=$(ls -d sources/P001*)
+for i in $(seq 100 159); do printf -- '---\ntype: observation\nstatus: measured\nupdated: 2026-11-23\n---\n# Capacity %s at %s degrees in a test of long lists\n\nThe [[binding-capacity]] was %s at %s C. **Source:** p. 1, [[P001.pdf#page=1|open page]].\n\n## Codes\n- id:: P001-%s\n- value:: [[binding-capacity]] = %s\n- when:: [[temperature]] = %s degC\n- anchor:: [[P001_text#^b0004]]\n- loc:: "binding capacity was 4.2"\n- concepts:: [[binding-capacity]]\n- missing:: method — a test card with no method card\n' "$((i * 7))" "$i" "$((i * 7))" "$i" "$i" "$((i * 7))" "$i" > "$S1/P001-$i-capacity-at-$i-degrees.md"; done
+python3 tools/mesh.py build > b1.txt 2>&1 || true
+HUB=concepts/binding-capacity.md; PG=index/hubs/binding-capacity--all.md
+grep -q "^- … and [0-9]* more (P001 [0-9]*.*): \[\[binding-capacity--all|every card that names Binding capacity\]\]$" $HUB && [ -f $PG ] && pass "a hub whose list has outgrown it links a generated page of every card, with a count for each source" || { grep -n "more" $HUB | cut -c1-200; ls index/hubs; fail "hub page"; }
+python3 - > hp.txt 2>&1 <<'PY'
+import re, glob, os
+hub, page = open("concepts/binding-capacity.md", encoding="utf-8").read(), open("index/hubs/binding-capacity--all.md", encoding="utf-8").read()
+cards = {os.path.basename(f)[:8] for f in glob.glob("sources/P00*/P00?-[0-9][0-9][0-9]-*.md") if "[[binding-capacity]]" in open(f, encoding="utf-8").read()}
+on_page = set(re.findall(r"\|(P\d{3}-\d{3})\]\]", page))
+assert len(cards) >= 60 and cards <= on_page, (len(cards), sorted(cards - on_page)[:5])
+assert "when_of::" not in hub and "value_of::" not in hub and len(hub) < 12000, len(hub)
+assert "**P001**" in page and "- observation: " in page and "[[binding-capacity]]" in page
+print("hub page ok", len(cards), len(hub))
+PY
+grep -q "^hub page ok" hp.txt && pass "every card that names the concept is on the page, and the hub carries no second copy of the list" || { cat hp.txt; fail "hub page content"; }
+! grep -q "broken link \[\[binding-capacity--all\]\]" b1.txt && cp $HUB hub1.md && cp $PG pg1.md && (python3 tools/mesh.py build > b2.txt 2>&1 || true) && cmp -s $HUB hub1.md && cmp -s $PG pg1.md && pass "the link to the page is no broken link, and a second build changes neither the hub nor the page" || { grep "broken" b1.txt | head -3; fail "hub page settles"; }
+grep -q "^warn  [0-9]* warnings of [0-9]* kinds, counted here with an example of each. Every line: index/check.txt" b1.txt && grep -q "^warn  *6[0-9] x value … not found in the anchored source · e.g. P001-1[0-9][0-9]: value" b1.txt && [ "$(grep -c '^warn ' b1.txt)" -lt 20 ] && pass "past forty warnings, build counts them by kind with an example of each" || { grep "^warn" b1.txt | head -5 | cut -c1-160; fail "check summary"; }
+[ "$(grep -c 'not found in the anchored source' index/check.txt)" -ge 60 ] && (python3 tools/mesh.py check --all > ca.txt 2>&1 || true) && [ "$(grep -c '^warn  P001-1[0-9][0-9]: value' ca.txt)" -ge 60 ] && (python3 tools/mesh.py check P002 > cp2.txt 2>&1 || true) && ! grep -q "kinds, counted here" cp2.txt && pass "every warning is in index/check.txt and under check --all; a short list is printed as before" || { wc -l index/check.txt ca.txt; fail "check full list"; }
+python3 tools/mesh.py gaps > g1.txt; python3 tools/mesh.py gaps --all > g2.txt
+grep -q "… [0-9]* more (.mesh.py gaps --all.)" g1.txt && ! grep -q "more (.mesh.py gaps --all.)" g2.txt && [ "$(wc -l < g2.txt)" -gt "$(( $(wc -l < g1.txt) + 40 ))" ] && pass "gaps shows the head of each section; --all shows every row" || { wc -l g1.txt g2.txt; fail "gaps cap"; }
+python3 tools/mesh.py discover > d1.txt 2>&1; python3 tools/mesh.py discover --full > d2.txt 2>&1
+grep -q "^This is the overview: the head of every miner" d1.txt && ! grep -q "stamp: " d1.txt && grep -q " · key [a-z]*:" d1.txt && grep -q "stamp: " d2.txt && ! grep -q "^This is the overview" d2.txt && [ "$(wc -c < d1.txt)" -lt "$(wc -c < d2.txt)" ] && pass "discover with no miner named is an overview; --full and a named miner give the details" || { head -12 d1.txt; fail "discover overview"; }
+python3 tools/mesh.py discover moderators | grep -q "This is the overview" && fail "a named miner printed the overview" || pass "a named miner prints its details as before"
+rm $S1/P001-1[0-9][0-9]-capacity-at-*.md; python3 tools/mesh.py build > b3.txt 2>&1 || true
+[ ! -f $PG ] && ! grep -q "binding-capacity--all" $HUB && pass "when the list fits the hub again, the page is removed and the hub lists its cards itself" || { ls index/hubs; fail "hub page removed"; }
+# 39. figure and equation crops are WebP, and a vault's PNG crops convert together with their embeds (1.24.1)
+cp -r "$ROOT/demo-vault" "$T/cr"; cd "$T/cr"; cp "$MESH" tools/mesh.py; S1=$(ls -d sources/P001*)
+mkdir -p nopil/PIL; echo 'raise ImportError("no Pillow here")' > nopil/PIL/__init__.py
+PYTHONPATH=nopil python3 tools/mesh.py figure P001 1 60,60,300,160 eq5 > f0.txt 2>&1
+[ -f $S1/P001-eq5.png ] && [ ! -f $S1/P001-eq5.webp ] && grep -q '!\[\[P001-eq5.png\]\]' f0.txt && pass "without Pillow a crop is a PNG, as before" || { cat f0.txt; fail "png fallback"; }
+(PYTHONPATH=nopil python3 tools/mesh.py crops 2>&1 || true) | grep -q "crops needs Pillow" && pass "crops says what it needs when Pillow is missing" || fail "crops without Pillow"
+rm -f $S1/P001-eq5.png
+if python3 -c "import PIL" 2>/dev/null; then
+python3 tools/mesh.py figure P001 1 60,60,300,160 eq3 > f1.txt 2>&1
+[ -f $S1/P001-eq3.webp ] && [ ! -f $S1/P001-eq3.png ] && grep -q '!\[\[P001-eq3.webp\]\]' f1.txt && pass "a new crop is written as WebP, and figure names that file for the embed" || { cat f1.txt; fail "webp crop"; }
+python3 - <<'PY'
+import glob
+from PIL import Image, ImageDraw
+try: import pymupdf as fitz
+except ImportError: import fitz
+d = glob.glob("sources/P001*")[0]
+for n in ("F2a", "F3"): fitz.open(d + "/P001.pdf")[0].get_pixmap(dpi=300, clip=fitz.Rect(60, 60, 400, 300)).save(d + f"/P001-{n}.png")
+im = Image.new("RGB", (600, 400), "white"); dr = ImageDraw.Draw(im)  # thin saturated lines, which lossy WebP fades
+for k, col in enumerate([(255, 255, 0), (0, 255, 0), (255, 0, 0), (0, 0, 255), (0, 255, 255), (255, 0, 255)] * 8): dr.line([(10, 8 + 8 * k), (590, 12 + 8 * k)], fill=col, width=1)
+im.save(d + "/P001-F2b-lines.png")
+PY
+python3 tools/mesh.py figure P001 1 60,60,300,160 F3 --force > f3.txt 2>&1 || true
+[ -f $S1/P001-F3.png ] && [ ! -f $S1/P001-F3.webp ] && pass "a panel the vault holds as PNG is cut again as PNG, so its embeds stay right" || { cat f3.txt; fail "re-crop keeps the format"; }
+rm $S1/P001-F3.png $S1/P001-F3.csv 2>/dev/null; cp $S1/P001-F2a.png ka.png; cp $S1/P001-F2b-lines.png kb.png; cp $S1/P001_text.md text.bak
+sed -i 's/^## Where it appears$/## Key equations and figures\n- Panel A: ![[P001-F2a.png|400]] and [[P001-F2b-lines.png]]\n\n## Where it appears/' concepts/swelling.md
+mkdir -p notes; printf 'My note embeds ![[P001-F2a.png|300]], and names P009-F1.png and xP001-F2a.png, which are not crops here.\n' > notes/mine.md
+printf -- '- not_key:: [[temperature]] P001-F2a.png — a schematic\n' >> $S1/P001_scan.md
+python3 tools/mesh.py crops > c0.txt 2>&1
+grep -q "^crops: 2 PNG" c0.txt && grep -q "Nothing was changed" c0.txt && [ -f $S1/P001-F2a.png ] && [ ! -f $S1/P001-F2a.webp ] && grep -q "P001-F2a.png|400" concepts/swelling.md && pass "crops alone reports what converting would save and changes nothing" || { cat c0.txt; fail "crops dry run"; }
+python3 tools/mesh.py crops --convert > c1.txt 2>&1
+[ ! -f $S1/P001-F2a.png ] && [ ! -f $S1/P001-F2b-lines.png ] && [ -f $S1/P001-F2a.webp ] && [ -f $S1/P001-F2b-lines.webp ] && grep -q "^converted 2 crops" c1.txt && pass "crops --convert replaces each PNG crop with a WebP" || { cat c1.txt; fail "crops convert"; }
+grep -q '!\[\[P001-F2a.webp|400\]\] and \[\[P001-F2b-lines.webp\]\]' concepts/swelling.md && grep -q '!\[\[P001-F2a.webp|300\]\], and names P009-F1.png and xP001-F2a.png' notes/mine.md && grep -q "^- not_key:: \[\[temperature\]\] P001-F2a.webp — a schematic" $S1/P001_scan.md && cmp -s $S1/P001_text.md text.bak && pass "every embed and mention of a converted crop is rewritten, in hubs, notes and the scan file, and nothing else is touched" || { cat concepts/swelling.md notes/mine.md; fail "embeds rewritten"; }
+python3 - > cv.txt 2>&1 <<'PY'
+import glob, os
+from PIL import Image
+d = glob.glob("sources/P001*")[0]
+a, b = open(d + "/P001-F2a.webp", "rb").read(), open(d + "/P001-F2b-lines.webp", "rb").read()
+ok = a[12:16] == b"VP8 " and Image.open(d + "/P001-F2a.webp").size == Image.open("ka.png").size and len(a) < os.path.getsize("ka.png")
+same = b[12:16] == b"VP8L" and Image.open(d + "/P001-F2b-lines.webp").convert("RGB").tobytes() == Image.open("kb.png").convert("RGB").tobytes()
+print("lossy ok" if ok else "lossy BAD", a[12:16], len(a), os.path.getsize("ka.png")); print("lossless ok" if same else "lossless BAD", b[12:16])
+PY
+grep -q "^lossy ok" cv.txt && grep -q "^lossless ok" cv.txt && grep -q "1 kept lossless" c1.txt && pass "a crop keeps its pixel size, and one whose thin coloured lines would fade is kept lossless, pixel for pixel" || { cat cv.txt c1.txt; fail "crop fidelity"; }
+tail -1 ledger/CHANGELOG.md | grep -q "crops: 2 PNG crops converted to WebP" && (python3 tools/mesh.py build > b1.txt 2>&1 || true) && ! grep -q "broken link \[\[P001-F2" b1.txt && python3 tools/mesh.py crops --convert | grep -q "nothing to convert" && pass "the conversion is logged, the build finds every embed, and a second run has nothing to do" || { tail -5 b1.txt; fail "after converting"; }
+python3 - <<'PY'
+import json
+c = json.load(open("MESH.json")); c["crop_quality"] = "lossless"; json.dump(c, open("MESH.json", "w"), indent=1)
+PY
+python3 tools/mesh.py figure P001 1 60,60,300,160 eq4 > /dev/null 2>&1; [ "$(head -c 16 $S1/P001-eq4.webp | tail -c 4)" = "VP8L" ] && pass 'MESH.json "crop_quality": "lossless" writes every new crop lossless' || fail "crop_quality lossless"
+grep -q "^\*.webp binary" .gitattributes && pass "WebP files are binary to git" || fail "gitattributes webp"
+else pass "(Pillow is not installed here, so the WebP checks are skipped)"; fi
+# 40. marked PDFs are built on each computer, not kept in git; card links land on their highlights; the user's own annotations travel in a side file (1.25.0)
+if python3 -c "import fitz" 2>/dev/null; then
+cp -r "$ROOT/demo-vault" "$T/mk"; cd "$T/mk"; cp "$MESH" tools/mesh.py; rm -f sources/*/P*_marked.pdf; S1=$(ls -d sources/P001*)
+cat > "$T/land.py" <<'PY'
+import glob, re, os, sys, fitz
+root, ok, bad, user = sys.argv[1], 0, 0, []
+docs = {}
+for f in sorted(glob.glob(root + "/sources/P*/P*_marked.pdf")):
+    d = fitz.open(f); docs[os.path.basename(f)[:-11]] = {a.xref: (pno, a.info.get("subject")) for pno, pg in enumerate(d, 1) for a in pg.annots()}
+    user += sorted((os.path.basename(f)[:4], pno, a.type[1], [round(v) for v in a.rect], a.info.get("content", ""), [round(c, 2) for c in (a.colors.get("stroke") or [])], a.info.get("title")) for pno, pg in enumerate(d, 1) for a in pg.annots() if a.info.get("title") != "brain-mesh")
+for f in glob.glob(root + "/sources/P*/P*-[0-9][0-9][0-9]-*.md"):
+    mo = re.search(r"\[\[(P\d{3}(?:_SI|_correction)?)_marked\.pdf#page=(\d+)&annotation=(\d+)R", open(f, encoding="utf-8").read())
+    if not mo: continue
+    hit = docs.get(mo.group(1), {}).get(int(mo.group(3)))
+    if hit == (int(mo.group(2)), os.path.basename(f)[:8]): ok += 1
+    else: bad += 1
+print(f"land {ok} miss {bad}")
+for u in user: print("user", u)
+PY
+cat > "$T/annot.py" <<'PY'
+import glob, sys, fitz
+d = fitz.open(glob.glob(sys.argv[1] + "/sources/P001*/P001_marked.pdf")[0]); p = d[0]
+if sys.argv[2] == "add":
+    a = p.add_highlight_annot(p.search_for("the", quads=True)[:2]); a.set_colors(stroke=(0, 1, 0)); a.set_info(title="Reader", content="my highlight"); a.set_opacity(0.6); a.update()
+    a = p.add_text_annot((300, 100), "a sticky note", icon="Comment"); a.set_info(title="Reader"); a.update()
+    a = p.add_freetext_annot(fitz.Rect(300, 150, 420, 180), "typed text", fontsize=9, text_color=(1, 0, 0), fill_color=(1, 1, 0.8)); a.set_info(title="Reader"); a.update()
+    a = p.add_ink_annot([[(100, 300), (120, 310), (140, 300)]]); a.set_colors(stroke=(0, 0, 1)); a.set_border(width=2); a.set_info(title="Reader"); a.update()
+    a = p.add_rect_annot(fitz.Rect(200, 300, 260, 340)); a.set_colors(stroke=(1, 0, 0), fill=(1, 0.9, 0.9)); a.set_info(title="Reader"); a.update()
+    a = p.add_underline_annot(p.search_for("and", quads=True)[:1]); a.set_info(title="Reader"); a.update()
+    a = p.add_line_annot((100, 400), (200, 420)); a.set_info(title="Reader"); a.update()
+elif sys.argv[2] == "change":  # the sticky note goes, a new highlight comes
+    for a in list(p.annots()):
+        if a.type[1] == "Text": p.delete_annot(a)
+    a = p.add_highlight_annot(p.search_for("was", quads=True)[:1]); a.set_info(title="Reader", content="added on the second computer"); a.update()
+elif sys.argv[2] == "stamp": a = p.add_stamp_annot(fitz.Rect(400, 400, 480, 430), stamp=0); a.set_info(title="Reader"); a.update()
+d.saveIncr()
+PY
+python3 tools/mesh.py build > b1.txt 2>&1 || true
+python3 "$T/land.py" . > l1.txt; n=$(sed -n 's/^land \([0-9]*\) .*/\1/p' l1.txt)
+[ "$n" -ge 18 ] && grep -q "^land $n miss 0$" l1.txt && pass "every card's link opens its own highlight: the annotation number in the link is the one in the marked copy" || { cat l1.txt; fail "card links land"; }
+cp -r sources "$T/mk-src1"; cp index/marks.json "$T/mk-marks1.json"; rm -rf index/.scratch sources/*/P*_marked.pdf; python3 tools/mesh.py build > b2.txt 2>&1 || true
+[ -z "$(diff -rq "$T/mk-src1" sources | grep -v '_marked.pdf')" ] && cmp -s index/marks.json "$T/mk-marks1.json" && ! grep -q '"sig"' index/marks.json && python3 "$T/land.py" . | grep -q "^land $n miss 0$" && pass "a copy of the vault with no marked PDFs builds its own, and no card or index file changes" || { diff -rq "$T/mk-src1" sources; fail "marked copies rebuilt elsewhere"; }
+python3 tools/mesh.py build | grep -q "marked PDFs rewritten for: none" && pass "a marked copy that is current is left alone" || fail "marked copy rebuilt needlessly"
+python3 "$T/annot.py" . add; python3 "$T/land.py" . | grep "^user" > u0.txt; python3 tools/mesh.py build > b3.txt 2>&1 || true; python3 "$T/land.py" . > l3.txt
+[ "$(wc -l < u0.txt)" = 7 ] && [ -f $S1/P001_annotations.json ] && [ "$(grep -c '"id"' $S1/P001_annotations.json)" = 7 ] && grep "^user" l3.txt | cmp -s - u0.txt && grep -q "^land $n miss 0$" l3.txt && pass "annotations a reader adds to a marked copy are saved to P001_annotations.json and drawn again on the rebuilt copy: kind, place, colour, text and author" || { cat b3.txt l3.txt; fail "user annotations kept"; }
+cp $S1/P001_annotations.json side1.json; python3 tools/mesh.py build | grep -q "marked PDFs rewritten for: none" && cmp -s $S1/P001_annotations.json side1.json && pass "the next build changes neither the marked copy nor the side file" || fail "annotations stable"
+rm -rf "$T/mk2"; cp -r "$T/mk" "$T/mk2"; rm -rf "$T/mk2/index/.scratch" "$T"/mk2/sources/*/P*_marked.pdf; (cd "$T/mk2" && python3 tools/mesh.py build > b.txt 2>&1 || true)
+python3 "$T/land.py" "$T/mk2" | grep "^user" | cmp -s - u0.txt && cmp -s "$T"/mk2/$S1/P001_annotations.json side1.json && pass "a second computer draws the same annotations from the side file" || { python3 "$T/land.py" "$T/mk2"; fail "annotations on a second computer"; }
+python3 "$T/annot.py" "$T/mk2" change; (cd "$T/mk2" && python3 tools/mesh.py build > b.txt 2>&1 || true); cp "$T"/mk2/$S1/P001_annotations.json $S1/; python3 tools/mesh.py build > b4.txt 2>&1 || true
+python3 "$T/land.py" . | grep "^user" > u4.txt; python3 "$T/land.py" "$T/mk2" | grep "^user" | cmp -s - u4.txt && [ "$(wc -l < u4.txt)" = 7 ] && ! grep -q "sticky note" u4.txt && grep -q "added on the second computer" u4.txt && pass "an annotation removed on one computer goes from the other, and one added there arrives, through the side file" || { cat u4.txt; fail "annotation changes travel"; }
+python3 "$T/annot.py" . stamp; python3 tools/mesh.py build | grep -q "marked PDFs rewritten for: none" && python3 "$T/land.py" . | grep -q "^user.*'Stamp'" && pass "an annotation of a kind that cannot be redrawn stays in the marked copy while the copy is current" || fail "stamp kept in a current copy"
+python3 tools/mesh.py mark --force > b5.txt 2>&1 || true
+grep -q "^note: P001_marked.pdf holds 1 annotation(s) of a kind that cannot be drawn again on a rebuilt copy (Stamp x1); the copy with them is kept at index/.scratch/kept/P001_marked-" b5.txt && ls index/.scratch/kept/P001_marked-*.pdf > /dev/null && [ "$(python3 "$T/land.py" . | grep -c '^user')" = 7 ] && pass "when that copy is rebuilt, the one holding the annotation is kept and the build says where" || { cat b5.txt; fail "unsupported annotation"; }
+python3 - > own.txt 2>&1 <<'PY'
+import sys, fitz; sys.path.insert(0, "tools"); import mesh
+d = fitz.open(); p = d.new_page(); p.insert_text((72, 100), "A publisher's page with a note of its own.", fontsize=11)
+a = p.add_text_annot((300, 100), "the publisher's own note"); a.set_info(title="Publisher"); a.update(); d.save("own.pdf")
+d = fitz.open("own.pdf"); pg = d[0]; a = pg.add_highlight_annot(pg.search_for("publisher", quads=True)[:1]); a.set_info(title="Reader", content="mine"); a.update(); d.save("own_marked.pdf")
+notes, odd, stamp = mesh.merge_notes(fitz, "own.pdf", "own_marked.pdf", {}, None)
+print("own ok" if [r.get("content") for r in notes.values()] == ["mine"] else f"own BAD {notes}")
+PY
+grep -q "^own ok" own.txt && pass "an annotation the publisher's PDF already carries is not taken for the reader's" || { cat own.txt; fail "publisher annotation"; }
+BRAIN_MESH_NO_MARK=1 python3 tools/mesh.py build | grep -q "^marked PDFs not built (BRAIN_MESH_NO_MARK is set)" && pass "BRAIN_MESH_NO_MARK skips the marked copies, for a session that opens no PDF" || fail "no-mark"
+if command -v git > /dev/null; then
+  cp -r "$ROOT/demo-vault" "$T/mg"; cd "$T/mg"; cp "$MESH" tools/mesh.py; printf '__pycache__/\nindex/.scratch/\n' > .gitignore; S1=$(ls -d sources/P001*)
+  git init -q --bare "$T/mg.git"; git init -q -b main .; git config user.email t@t; git config user.name t; git remote add origin "$T/mg.git"
+  git add -A > /dev/null; git commit -qm "a vault that versions its marked PDFs"; git push -q -u origin main 2> /dev/null
+  git clone -q -b main "$T/mg.git" "$T/mg2"; git -C "$T/mg2" config user.email u@u; git -C "$T/mg2" config user.name u
+  [ -n "$(git ls-files 'sources/*/P*_marked.pdf')" ] && python3 tools/mesh.py sync "tooling 1.25" > "$T/mg-s.txt" 2>&1
+  [ -z "$(git ls-files 'sources/*/P*_marked.pdf')" ] && [ -z "$(git -C "$T/mg.git" ls-tree -r --name-only main | grep '_marked.pdf$')" ] && [ -f $S1/P001_marked.pdf ] && grep -q "^sources/\*/P\*_marked.pdf$" .gitignore && grep -q "^sync: 2 marked PDFs are no longer kept in git" "$T/mg-s.txt" && [ -z "$(git status --porcelain)" ] && pass "sync stops versioning the marked copies of an older vault and leaves them on disk" || { cat "$T/mg-s.txt"; git status --porcelain; fail "marked untracked"; }
+  python3 "$T/annot.py" . add; python3 tools/mesh.py sync "my highlights" > "$T/mg-s.txt" 2>&1; git ls-files | grep -q "P001_annotations.json" && [ -z "$(git ls-files 'sources/*/P*_marked.pdf')" ] && pass "sync commits the side file with the reader's annotations, not the marked copy" || { cat "$T/mg-s.txt"; fail "side file committed"; }
+  (cd "$T/mg2" && python3 tools/mesh.py sync > "$T/mg2-s.txt" 2>&1); python3 "$T/land.py" . | grep "^user" > "$T/mg-u1.txt"
+  [ -f "$T"/mg2/$S1/P001_marked.pdf ] && python3 "$T/land.py" "$T/mg2" | grep "^user" | cmp -s - "$T/mg-u1.txt" && [ "$(wc -l < "$T/mg-u1.txt")" = 7 ] && python3 "$T/land.py" "$T/mg2" | grep -q "^land [0-9]* miss 0$" && [ -z "$(git -C "$T/mg2" status --porcelain)" ] && pass "another copy pulls, builds its own marked copies with the reader's annotations, and has nothing to commit" || { cat "$T/mg2-s.txt"; git -C "$T/mg2" status --porcelain; fail "marked copies after a pull"; }
+fi
+else pass "(PyMuPDF is not installed here, so the marked-copy checks are skipped)"; fi
+# 41. build and check do each piece of work once, keep what they work out from unchanged files, and give the same results (1.26.0)
+cp -r "$ROOT/demo-vault" "$T/inc"; cd "$T/inc"; cp "$MESH" tools/mesh.py; rm -rf index/.scratch
+python3 - > k.txt 2>&1 <<'PY'
+import sys, os, json; sys.path.insert(0, "tools"); import mesh
+m = mesh.Mesh("."); calls = []
+open("data.csv", "w").write("a,b\n1.5,2.25\n3,1000\n")
+make = lambda: (calls.append(1), sorted(mesh.csv_numbers("data.csv")))[1]
+a = list(mesh.kept("data.csv", "t-numbers", make, floats=True)); mesh._KEPT["mem"].clear()
+b = list(mesh.kept("data.csv", "t-numbers", make, floats=True)); mesh._KEPT["mem"].clear()
+print("kept ok" if a == b == [1.5, 2.25, 3.0, 1000.0] and len(calls) == 1 else f"kept BAD {a} {b} {calls}")
+open("data.csv", "w").write("a,b\n1.5,2.25\n3,1000\n7,8\n"); mesh._KEPT["mem"].clear(); mesh._CSVNUMS.clear()
+c = list(mesh.kept("data.csv", "t-numbers", make, floats=True)); mesh._KEPT["mem"].clear()
+print("changed ok" if c == [1.5, 2.25, 3.0, 7.0, 8.0, 1000.0] and len(calls) == 2 else f"changed BAD {c} {calls}")
+mesh.VERSION = "0.0.0-other"; d = list(mesh.kept("data.csv", "t-numbers", make, floats=True))
+print("version ok" if len(calls) == 3 and d == c else f"version BAD {calls}")
+t = mesh.kept("data.csv", "t-text", lambda: ["x", [1, 2]]); mesh._KEPT["mem"].clear(); print("json ok" if mesh.kept("data.csv", "t-text", lambda: 1 / 0) == ["x", [1, 2]] else "json BAD")
+PY
+grep -q "^kept ok" k.txt && grep -q "^changed ok" k.txt && grep -q "^version ok" k.txt && grep -q "^json ok" k.txt && pass "what is worked out from a file is kept between runs, and worked out again when the file or the tooling version changes" || { cat k.txt; fail "kept values"; }
+python3 - > h.txt 2>&1 <<'PY'
+import sys, re; sys.path.insert(0, "tools"); import mesh
+def hits(cache=True):
+    m = mesh.Mesh(".")
+    if not cache: mesh._KEPT["dir"] = None
+    return {p: mesh.concept_hits(m, p) for p in ("P001", "P002")}
+plain = hits(False); cold = hits(); warm = hits()
+same = lambda a, b: a == b and all(list(a[p]) == list(b[p]) and all(type(x) is tuple for h in b[p].values() for v in h.values() for x in v) for p in a)
+print("hits ok" if same(plain, cold) and same(plain, warm) and plain["P001"] else "hits BAD")
+f = "concepts/water.md"; t = open(f, encoding="utf-8").read(); t2 = re.sub(r"^aliases: \[(.*)\]$", lambda mo: f'aliases: [{mo.group(1)}, "solvent"]', t, count=1, flags=re.M); assert t2 != t; open(f, "w", encoding="utf-8").write(t2)
+after, afterplain = hits(), hits(False)
+print("alias ok" if same(after, afterplain) and after != warm else f"alias BAD {after == warm}")
+PY
+grep -q "^hits ok" h.txt && grep -q "^alias ok" h.txt && pass "where concepts are named in a source is kept between runs, matches a search from scratch, and is searched again for a concept whose names change" || { cat h.txt; fail "concept hits kept"; }
+cp "$ROOT/demo-vault/concepts/water.md" concepts/water.md; rm -rf index/.scratch; (python3 tools/mesh.py check --all > c1.txt 2>&1 || true); (python3 tools/mesh.py check --all > c2.txt 2>&1 || true); ls index/.scratch/cache/hits-P001.json.gz > /dev/null && cmp -s c1.txt c2.txt && pass "check prints the same from kept values as from scratch" || { diff c1.txt c2.txt; fail "check with kept values"; }
+for seed in 1 2 3 4; do PYTHONHASHSEED=$seed python3 tools/mesh.py zoom binding-capacity > z$seed.txt 2>&1; done
+cmp -s z1.txt z2.txt && cmp -s z1.txt z3.txt && cmp -s z1.txt z4.txt && pass "zoom prints the same on every run: ties between concepts are settled by name, not by chance" || { diff z1.txt z2.txt; fail "zoom repeatable"; }
+# 42. the citation index: a cited work indexed from its abstract reaches the hubs and the literature view
 cp -r "$ROOT/demo-vault" "$T/ci"; cd "$T/ci"; cp "$MESH" tools/mesh.py; mkdir -p references
 cat > references/R0900-doe-2020-rebinding-in-acetonitrile.md <<'REF'
 ---
@@ -1703,7 +2109,7 @@ sed -i 's/^- id:: R0900$/- id:: R0900\n- indexed:: 2026-11-23 — from the publi
 sed -i 's/^- The films swell by 12 per cent over the same range (\[\[swelling\]\])$/- The films swell by 12 per cent over the same range/' references/R0900-*.md
 python3 tools/mesh.py build > b.txt 2>&1
 grep -q "R0900: 1 of 2 claims from the abstract name no concept" b.txt && pass "claims that name no concept are flagged, counted, one line a card" || { grep "R0900" b.txt; fail "claim no concept"; }
-# 35. the citation index feeds discovery: abstracts raise terms the brain cannot name, and a high-priority work heads the reading list
+# 43. the citation index feeds discovery: abstracts raise terms the brain cannot name, and a high-priority work heads the reading list
 cp -r "$ROOT/demo-vault" "$T/cid"; cd "$T/cid"; cp "$MESH" tools/mesh.py; mkdir -p references
 cat > references/R0901-doe-2019-capacity-of-imprinted-films.md <<'REF'
 ---
@@ -1833,4 +2239,131 @@ python3 tools/mesh.py literature --unindexed > lu.txt 2>&1
 ! grep -q "R0904" lu.txt && pass "a 'concepts:: none' work does not count as still to index" || { cat lu.txt; fail "concepts none unindexed"; }
 sed -i 's/^- concepts:: none .*$/- concepts:: none/' references/R0904-*.md; python3 tools/mesh.py build > b.txt 2>&1
 grep -q "R0904: '- concepts:: none' needs a reason" b.txt && pass "'none' with no reason is sent back for one" || { grep "R0904" b.txt; fail "concepts none reason"; }
+# 44. the thin concepts a gap card does not cover yet (the citation index, section 5a)
+cp -r "$ROOT/demo-vault" "$T/gc"; cd "$T/gc"; cp "$MESH" tools/mesh.py; mkdir -p references
+python3 - <<'PY'
+import json
+c = json.load(open("MESH.json", encoding="utf-8"))
+c["literature_gap_min"], c["literature_gap_ratio"] = 2, 1
+json.dump(c, open("MESH.json", "w", encoding="utf-8"), indent=1)
+PY
+cat > references/R0911-roe-2016-how-long-to-equilibrate.md <<'REF'
+---
+type: reference
+status: not-held
+updated: 2026-11-24
+---
+# Roe (2016) How long to equilibrate
+
+## Abstract
+
+Films were followed to equilibrium over four days.
+
+## What it claims
+- Equilibrium takes four days ([[equilibration-time]])
+
+## Notes
+
+## Codes
+- id:: R0911
+- authors:: Roe, R.
+- year:: 2016
+- title:: How long to equilibrate
+- journal:: J. Test
+- kind:: article
+- concepts:: [[equilibration-time]]
+- indexed:: 2026-11-24 — abstract from the publisher's page
+- cited_by:: [[P001]] ref 11 — b0004
+REF
+cat > references/R0912-roe-2017-equilibrium-in-thin-films.md <<'REF'
+---
+type: reference
+status: not-held
+updated: 2026-11-24
+---
+# Roe (2017) Equilibrium in thin films
+
+## Abstract
+
+Thin films reached equilibrium sooner than thick ones.
+
+## What it claims
+- Thinner films equilibrate sooner ([[equilibration-time]])
+
+## Notes
+
+## Codes
+- id:: R0912
+- authors:: Roe, R.
+- year:: 2017
+- title:: Equilibrium in thin films
+- journal:: J. Test
+- kind:: article
+- concepts:: [[equilibration-time]]
+- indexed:: 2026-11-24 — abstract from the publisher's page
+- cited_by:: [[P001]] ref 12 — b0004
+REF
+cat > references/R0913-roe-2018-a-faster-equilibration-protocol.md <<'REF'
+---
+type: reference
+status: not-held
+updated: 2026-11-24
+---
+# Roe (2018) A faster equilibration protocol
+
+## Abstract
+
+Stirring shortened the time to equilibrium by half.
+
+## What it claims
+- Stirring halves the time to equilibrium ([[equilibration-time]])
+
+## Notes
+
+## Codes
+- id:: R0913
+- authors:: Roe, R.
+- year:: 2018
+- title:: A faster equilibration protocol
+- journal:: J. Test
+- kind:: article
+- concepts:: [[equilibration-time]]
+- indexed:: 2026-11-24 — abstract from the publisher's page
+- cited_by:: [[P001]] ref 13 — b0004
+REF
+cat > references/R0914-roe-2019-capacity-of-a-washed-film.md <<'REF'
+---
+type: reference
+status: not-held
+updated: 2026-11-24
+---
+# Roe (2019) Capacity of a washed film
+
+## Abstract
+
+Washing lowered the capacity of every film tried.
+
+## What it claims
+- Washing lowers capacity ([[binding-capacity]])
+
+## Notes
+
+## Codes
+- id:: R0914
+- authors:: Roe, R.
+- year:: 2019
+- title:: Capacity of a washed film
+- journal:: J. Test
+- kind:: article
+- concepts:: [[binding-capacity]]
+- indexed:: 2026-11-24 — abstract from the publisher's page
+- cited_by:: [[P001]] ref 14 — b0004
+REF
+python3 tools/mesh.py build > b.txt 2>&1; grep -q "check: 0 errors" b.txt && pass "a vault whose cited works outrun its reading builds clean" || { grep -E "^ERROR|^warn  R091" b.txt | head -4; fail "gap candidates build"; }
+python3 tools/mesh.py literature --gaps > lg.txt 2>&1
+grep -q "equilibration-time: 3 cited works against" lg.txt && pass "a concept the cited works cover and no gap card names is raised as a gap candidate" || { cat lg.txt; fail "gap candidate not raised"; }
+grep -A3 "equilibration-time: 3 cited works" lg.txt | grep -q "R0911" && pass "the works that carry the weight are named, to argue the candidate from" || { cat lg.txt; fail "gap candidate works"; }
+! grep -q "^  binding-capacity:" lg.txt && pass "a concept a gap card already covers is not raised again" || { cat lg.txt; fail "gap candidate duplicates a gap card"; }
+python3 tools/mesh.py literature > lit.txt 2>&1
+! grep -q "cited works against" lit.txt && pass "the gap candidates stay behind --gaps, off the plain literature view" || { cat lit.txt; fail "gaps leaked into literature"; }
 echo "ALL TESTS PASSED"

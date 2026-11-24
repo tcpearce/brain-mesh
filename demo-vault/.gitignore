@@ -1,0 +1,7 @@
+# marked copies (P###_marked.pdf) are rebuilt by `mesh.py build` from the originals and the cards, so git does not keep them;
+# your own highlights and notes on them travel in sources/*/P*_annotations.json
+sources/*/P*_marked.pdf
+index/.scratch/
+index/.new*.md
+# a drop folder for papers and supplementary files waiting to be anchored; the anchored copies live in sources/
+ingest/

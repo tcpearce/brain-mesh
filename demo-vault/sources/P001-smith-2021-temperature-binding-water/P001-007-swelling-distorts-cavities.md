@@ -8,7 +8,7 @@ updated: 2026-11-20
 The authors propose that [[swelling]] of the polymer network distorts the imprinted cavities and so lowers [[binding-capacity|binding capacity]] at higher [[temperature]]. The claim rests on the fall in capacity and the rise in thickness occurring together; swelling was not varied independently.
 
 **Basis:** capacity at [[P001-003-capacity-4-2-at-25c-water|25 °C]] and [[P001-004-capacity-1-3-at-45c-water|45 °C]], and the [[P001-005-film-thickens-18-percent|18% thickening]].
-**Source:** Smith & Jones 2021, Discussion, p. 2 · [[P001_marked.pdf#page=2&annotation=100R|open page]]
+**Source:** Smith & Jones 2021, Discussion, p. 2 · [[P001_marked.pdf#page=2&annotation=18R|open page]]
 
 ## Codes
 - id:: P001-007

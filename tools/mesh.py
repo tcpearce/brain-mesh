@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, bisect, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.26.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.27.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -95,6 +95,22 @@ def wr(p, t):  # always LF line endings: a build on Windows must produce the sam
     os.makedirs(os.path.dirname(p), exist_ok=True)
     with open(p, "w", encoding="utf-8", newline="\n") as f: f.write(t)
 def squeeze(s): return re.sub(r"[^a-z0-9]+", "", unicodedata.normalize("NFKC", str(s)).lower())
+def concepts_none(r):
+    """A cited work the vault has no concept for, and should not grow one for: '- concepts:: none \u2014 <why>'. True
+    when the line says 'none' with no reason given, the reason when it has one, False when the card names concepts.
+    A generic method, or a work from another field, is indexed for the record and reaches no hub; that is not a fault."""
+    for v in r.all("concepts"):
+        mo = re.match(r"\s*none\b\s*[\u2014\-:]?\s*(.*)$", str(v), re.I)
+        if mo: return mo.group(1).strip() or True
+    return False
+
+
+def section_bullets(raw, head):
+    """The '- ' lines of a card's '## <head>' section, [] when there is none."""
+    mo = re.search(r"(?m)^## " + re.escape(head) + r"\s*$(.*?)(?=^## |\Z)", raw, re.S)
+    return [l.rstrip() for l in (mo.group(1).split("\n") if mo else []) if l.startswith("- ")]
+
+
 _BOOKS, _SHEETS, _TABLES, _CSVNUMS = {}, {}, {}, {}
 _KEPT = {"dir": None, "mem": {}}  # "dir" is set to <vault>/index/.scratch/cache when a vault is opened
 def kept(path, kind, make, floats=False):
@@ -1221,6 +1237,21 @@ class Mesh:
                 if c.get("doi") and not re.fullmatch(r"10\.\d{4,9}/\S+", c.get("doi")): W.append(f"{i}: doi '{c.get('doi')}' does not look like a DOI")
                 if not c.all("cited_by") and c.status != "held": W.append(f"{i}: cited by no source; retire it or add its cited_by:: line")
                 if c.status == "held" and not c.get("held"): W.append(f"{i}: status held needs '- held:: [[P###]]', the source in the brain")
+                # The citation index: the abstract read and meshed, so the work can be cross-referenced before it is read in full
+                cons = [t for v in c.all("concepts") for t in s.ids(v)[0]]
+                bad = [t for t in cons if s.cards[t].fam != "concept"]
+                if bad: E.append(f"{i}: 'concepts::' must link concept cards (got {', '.join(bad)})")
+                has_abs = bool(re.search(r"(?m)^## Abstract\s*$", c.raw))
+                claims = section_bullets(c.raw, "What it claims")
+                nocon = concepts_none(c)
+                if c.get("indexed"):
+                    if not has_abs: W.append(f"{i}: indexed but has no '## Abstract' section; paste the abstract, or say under it why there is none")
+                    if nocon is True: W.append(f"{i}: '- concepts:: none' needs a reason: 'none \u2014 <why the work bears on no concept here>'")
+                    elif not cons and not nocon: W.append(f"{i}: indexed but names no concept; add '- concepts:: [[a]], [[b]]' for what the work is about, so it reaches the hubs, or '- concepts:: none \u2014 <why>' if it bears on none")
+                    mute = [l for l in claims if not WIKI.search(l)]
+                    if mute and not nocon:
+                        W.append(f"{i}: {len(mute)} of {len(claims)} claims from the abstract name no concept, so they reach no hub: {one(mute[0], 60)}")
+                elif has_abs: W.append(f"{i}: has an abstract but no '- indexed:: <date> <where the abstract came from>' line")
             elif c.fam == "concept":
                 if c.type != "concept": E.append(f"{i}: type must be 'concept'")
                 if c.priority == "high" and not c.get("retired") and not c.all("cites"): W.append(f"{i}: a high-priority hub cites no work in its text: cite the closely relevant key references (and add cites:: lines)")
@@ -2848,6 +2879,10 @@ def cmd_build(root):
                     L.append("")
             else: L += [f"- {lk(c, c.get('name') or one(c.title, 100))} · {c.status}" for c in cards] + [""]
         return "\n".join(L).rstrip("\n") + "\n"
+    refcon = defaultdict(list)  # a cited work whose own abstract was indexed against this concept (the citation index)
+    for r in m.cards.values():
+        if r.fam == "reference" and not r.get("retired") and r.status != "held":
+            for t in {x for v in r.all("concepts") for x in m.ids(v)[0]}: refcon[t].append(r)
     cooc = {con.id: Counter(t for c in use.get(con.id, []) for t in m.terms(c) if t != con.id) for con in m.cards.values() if con.fam == "concept"}
     top15 = {k: [t for t, _n in ranked(v, 15)] for k, v in cooc.items()}
     for con in [c for c in m.cards.values() if c.fam == "concept"]:  # each concept card lists what uses it
@@ -2876,6 +2911,15 @@ def cmd_build(root):
         if keyrefs:
             L += ["**Key references** (works cited where this concept's cards are anchored; cite the closely relevant ones in the text above, linking the reference card with the author and year as its label, and add a cites:: line)"]
             L += [f"- {lk(r, one(r.title, 100))}" + (f" · [doi](https://doi.org/{r.get('doi')})" if r.get("doi") else "") + f" — cited beside {', '.join(sorted(cs)[:4])}" + (" · **cited in this card**" if r.id in {t for v in con.all('cites') for t in m.ids(v)[0]} else "") for r, cs in keyrefs] + [""]
+        idx = sorted(refcon.get(con.id, []), key=lambda r: (-len(r.all("cited_by")), r.id))
+        if idx:
+            L += [f"**Cited works about this, read only as abstracts ({len(idx)})** — indexed, not read: what the surrounding literature says, and what to read next to fill this concept"]
+            for r in idx[:20]:
+                who = sorted({p for p, _n, _b in ref_cites(r)})
+                claim = next((re.sub(r"\s*\(\[\[.*$", "", l[2:]) for l in section_bullets(r.raw, "What it claims")), "")
+                L.append(f"- {lk(r, one(r.title, 95))} · {r.status}" + (f" · cited by {', '.join(who[:4])}" if who else " · cited by none")
+                         + (f" — {one(claim, 110)}" if claim else ""))
+            L += more(idx[20:], con, "Cited works about this, read only as abstracts", idx, spill) + [""]
         fill(con, L)
         if spill: hub_pages[con.id] = hub_page(con, spill)
     hubdir = J(root, "index", "hubs")  # one page for each concept whose list outgrew its hub; a page nothing needs any more is removed
@@ -4916,6 +4960,67 @@ def lookup_note(m, pids=None):
         us = sorted({t[:4] for v in d.all("used_by") for t in m.ids(v)[0] if re.match(r"P\d{3}", t)} & (set(pids) if pids is not None else set(m.cards)))
         if len(us) >= 2: out.append(f"{d.id} ({d.get('name') or one(d.title, 40)}; used by {', '.join(us)})")
     return ("not counted, lookup resources: " + "; ".join(out)) if out else ""
+
+
+def cmd_literature(m, args):
+    """Where the brain's own evidence is thin against the literature it already cites. For each concept: the sources
+    read, the cited works indexed from their abstracts, and those still unindexed. A concept carried by many cited
+    works and few read sources is where reading would pay most (the citation index)."""
+    only = [a for a in args if not a.startswith("--")]
+    cons = [c for c in m.cards.values() if c.fam == "concept" and not c.get("retired")]
+    if only:
+        want = {m.resolve(a) or a for a in only}
+        cons = [c for c in cons if c.id in want]
+        if not cons: sys.exit(f"literature: no concept matching {', '.join(only)}")
+    held, idx, unidx = defaultdict(set), defaultdict(list), defaultdict(list)
+    for c in m.cards.values():
+        if c.fam == "evidence" and not c.get("retired"):
+            for t in m.terms(c): held[t].add(c.id[:4])
+    for r in m.cards.values():
+        if r.fam != "reference" or r.get("retired") or r.status == "held": continue
+        ts = {x for v in r.all("concepts") for x in m.ids(v)[0]}
+        for t in ts: idx[t].append(r)
+        if not ts and not concepts_none(r):
+            for p, _n, _b in ref_cites(r): unidx[p].append(r)
+    rows = []
+    for con in cons:
+        nh, ni = len(held.get(con.id, ())), len(idx.get(con.id, []))
+        queued = sum(1 for r in idx.get(con.id, []) if r.status == "queued")
+        rows.append((ni - 2 * nh + (3 if con.priority == "high" else 0), con, nh, ni, queued))
+    rows.sort(key=lambda r: (-r[0], r[1].id))
+    nidx = sum(1 for r in m.cards.values() if r.fam == "reference" and r.get("indexed"))
+    nref = sum(1 for r in m.cards.values() if r.fam == "reference" and not r.get("retired") and r.status != "held")
+    print(f"Citation index: {nidx} of {nref} cited works indexed from their abstracts"
+          + (f"; {nref - nidx} still unindexed (`mesh.py literature --unindexed` lists them by source)" if nref > nidx else "") + "\n")
+    print(f"{'concept':34} {'read':>5} {'cited':>6} {'queued':>7}  thinnest first")
+    for _s, con, nh, ni, q in rows[:30]:
+        if not ni and not nh: continue
+        print(f"{con.id[:34]:34} {nh:5d} {ni:6d} {q:7d}" + ("  ← high priority" if con.priority == "high" else ""))
+    hot = sorted((r for r in m.cards.values() if r.fam == "reference" and not r.get("retired") and r.status != "held" and r.priority == "high"),
+                 key=lambda r: (-len(r.all("cited_by")), r.id))
+    if hot:
+        print(f"\nCited works set high priority while indexing ({len(hot)}): read these first")
+        for r in hot[:15]:
+            why = (r.all("prioritised") or [""])[-1]
+            tail = one(why.split("—", 1)[-1].strip(), 110) if "—" in why else ""
+            print(f"  {r.id} {one(r.title, 76)}" + (f"\n      {tail}" if tail else ""))
+    if "--gaps" in args:
+        covered = {x for g in m.pages("G") if not g.get("retired") for x in m.terms(g)}
+        gmin, grat = int(m.cfg.get("literature_gap_min", 8)), float(m.cfg.get("literature_gap_ratio", 3))
+        thin = [(con, nh, ni) for _s, con, nh, ni, _q in rows if ni >= gmin and ni >= grat * max(nh, 1) and con.id not in covered]
+        print(f"\n{len(thin)} concepts where the cited literature outweighs the brain's reading and no gap card covers it")
+        print("A gap only where the brain cannot state something it needs to: ask it first (`ask`, `concept <slug>`).")
+        for con, nh, ni in thin[:20]:
+            top = sorted(idx.get(con.id, []), key=lambda r: (-len(r.all("cited_by")), r.id))[:4]
+            print(f"  {con.id}: {ni} cited works against {nh} source{'' if nh == 1 else 's'} read")
+            for r in top: print(f"      {r.id} {one(r.title, 86)}")
+        if not thin: print("  none: every thin concept already has a gap card.")
+    if "--unindexed" in args:
+        print("\nCited works with no concepts yet, by the source that cites them:")
+        for p in sorted(unidx, key=lambda p: -len(unidx[p]))[:8]:
+            print(f"  {p}: {len(unidx[p])} — " + ", ".join(r.id for r in sorted(unidx[p], key=lambda r: r.id)[:10]) + (" …" if len(unidx[p]) > 10 else ""))
+    print("\n'read' counts the sources in the brain whose evidence names the concept; 'cited' the works indexed from their abstracts that are about it.\n"
+          "A concept with many cited works and few read sources is where the brain rests on literature it has not read: read those next.")
 
 
 def cmd_independence(m, args):
@@ -8226,6 +8331,17 @@ def corpus(m):
     return m._corpus
 
 
+def ref_text(r):
+    """What a cited work says about itself: its title, and, once indexed, its abstract and the claims drawn from it.
+    An abstract carries far more of a field's vocabulary than a title, so it is where a concept the brain lacks shows
+    up first, long before the brain reads the work."""
+    parts = [r.get("title") or r.title]
+    mo = re.search(r"(?m)^## Abstract\s*$(.*?)(?=^## |\Z)", r.raw, re.S)
+    if mo: parts.append(mo.group(1))
+    parts += [re.sub(r"\(\[\[.*?\]\].*?\)\s*$", "", l[2:]) for l in section_bullets(r.raw, "What it claims")]
+    return " ".join(parts)
+
+
 def ref_titles(m):
     """The titles of the works the sources cite: [(reference id, normalised title, sources citing it, card)]."""
     if getattr(m, "_reftitles", None) is None:
@@ -8406,10 +8522,13 @@ def shared_terms(m, scope=None):
 
 
 def cited_terms(m):
-    """Phrases in the titles of three or more works the sources cite, cited by two or more sources, that the brain has no concept for."""
+    """Phrases the works a vault cites keep using, that the brain has no concept for: in three or more works, cited by
+    two or more sources. Once a work is indexed its abstract and the claims drawn from it are read as well as its
+    title, which is where a term the field takes for granted usually shows up first (the citation index)."""
     cnt, who, ids = Counter(), defaultdict(set), defaultdict(list); judged_ = beyond_log(m)[0]
-    for rid, t, srcs, _r in sorted(ref_titles(m), key=lambda r: r[0]):
-        for key in set(grams(t.split())): cnt[key] += 1; who[key] |= srcs; ids[key].append(rid)
+    for rid, t, srcs, r_ in sorted(ref_titles(m), key=lambda r: r[0]):
+        text = " " + nrm(ref_text(r_)) + " " if r_.get("indexed") else t
+        for key in set(grams(text.split())): cnt[key] += 1; who[key] |= srcs; ids[key].append(rid)
     keep = nested({k: n for k, n in cnt.items() if n >= 3 and len(who[k]) >= 2})
     frag, stop = name_fragments(m), {nrm(x) for x in (m.cfg.get("beyond_stop") or [])}
     out = [(n + len(who[k]), k, n, sorted(who[k]), ids[k][:4]) for k, n in keep.items() if nrm(k) not in judged_ and k not in frag and nrm(k) not in stop and not concept_named(m, k)]
@@ -8682,14 +8801,14 @@ def cmd_beyond(m, args):
             elif concept_arg(m, a): scope = (scope or set()) | {concept_arg(m, a)}
             else: sys.exit(f"beyond terms: '{a}' is neither a concept nor topic:<slug>")
         rows = shared_terms(m, scope); cited = cited_terms(m) if not scope else []
-        head = [f"Terms the sources share that the ontology has no concept for" + (f", in paragraphs that name {', '.join(rest)}" if scope else "") + f": {len(rows)} in the text" + (f", {len(cited)} in the titles of cited works." if not scope else "."),
+        head = [f"Terms the sources share that the ontology has no concept for" + (f", in paragraphs that name {', '.join(rest)}" if scope else "") + f": {len(rows)} in the text" + (f", {len(cited)} in what they cite (titles, and the abstracts of those indexed)." if not scope else "."),
                 "A term the field uses and the brain cannot name is invisible to every miner. Each line is a prompt: a concept to propose, an alias to add, or nothing."]
         tl = []
         for _sc, k, kind_, wh, ext, (s_, a) in rows[:top]:
             nr = [c for c in near_concepts(m, s_, a) if c not in ext]
             tl.append(f"{k}" + (" [acronym]" if kind_ == "acronym" else "") + f" — {mentions(wh)}" + (f" · extends: {', '.join(ext[:3])}" if ext else "") + (f" · beside: {', '.join(nr)}" if nr else "") + f" · e.g. {s_} ^{a}")
-        cl = [f"{k} — in {n} cited titles, cited by {', '.join(who[:5])} ({', '.join(ids)})" for _sc, k, n, who, ids in cited[:top]]
-        emit(head, [("In the sources' text", tl, 0.65), ("In the titles of the works they cite", cl, 0.35)],
+        cl = [f"{k} — in {n} cited works, cited by {', '.join(who[:5])} ({', '.join(ids)})" for _sc, k, n, who, ids in cited[:top]]
+        emit(head, [("In the sources' text", tl, 0.65), ("In the works they cite: titles, and abstracts where indexed", cl, 0.35)],
              ["Judge each: `mesh.py propose <slug> \"<definition>\" --from <source>` for a concept the user should adopt, an alias on a concept card, or `mesh.py beyond judge \"<term>\" skip \"<why>\"`. `--top n` shows more."], budget)
         return
     if sub == "pointers":
@@ -8993,6 +9112,7 @@ matrix <var> [<var>] [--all]  cross-tab observations by condition (also: type, s
 table <concept ...|K###|X###|V###|G###> [evidence|relations|definitions] [--type t] [--source P###] [--all] [--limit n] [--out file]
                               evidence table (one row per card: study, design, sample, result, conditions, limits, page); the relations a concept has, with basis; how each source defines and measures it
 independence [K###|P### P### ...]  the independent groups of sources behind each finding (shared data sets or authors count once)
+literature [<concept> ...] [--gaps] [--unindexed]   where the brain is thin against the literature it cites: sources read against cited works indexed from their abstracts; --gaps names the thin concepts no gap card covers
 draft <file> [--out file]     worklist for auditing a draft against the brain: per sentence, the works cited, concepts, numbers, likeliest cards and what to check
 sample <P###> [n]             random cards beside their source text, for spot checks
 unread <P###> [min chars]     paragraphs of a source that no card is anchored to, for finding missed cards
@@ -9067,6 +9187,7 @@ def main():
     elif c == "facts": cmd_facts(m, a)
     elif c == "table": cmd_table(m, a)
     elif c == "report": cmd_report(m, a)
+    elif c == "literature": cmd_literature(m, a)
     elif c == "independence": cmd_independence(m, a)
     elif c == "draft": cmd_draft(m, a)
     elif c == "reject": cmd_reject(m, a)

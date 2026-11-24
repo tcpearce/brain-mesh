@@ -2,6 +2,24 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.27.0 (2026-11-24)
+
+**The citation index: the works a vault cites but has not read, indexed from their abstracts.**
+
+A brain mesh holds a few papers in full and cites hundreds it has never read. Those citations are the field around the vault, already filtered by the papers the user chose. A reference card may now be indexed from its abstract, which turns that list into a map of the surrounding literature. (Branched at 1.22.2 and merged after main reached 1.26.0, so it is numbered above it.)
+
+- **Reference cards** may carry `## Abstract` (verbatim, or a line saying why there is none), `## What it claims` (two to eight statements, each naming the concepts it bears on as links), and Codes `- concepts:: [[a]], [[b]]` and `- indexed:: <date> — <where the abstract came from>`.
+- **An indexed claim is never evidence.** It comes from an abstract, not from text the brain has read and anchored: nothing may rest on it, and no finding may cite it. `FORMATS.md` states the rule.
+- **Every concept hub lists the cited works about it**, with what each claims and who cites it, beside the evidence the brain has read. A work reaches a hub through its own `concepts::` line, so the hub shows the literature on that concept, not only the papers read.
+- **`mesh.py literature`** ranks concepts by the cited works that bear on them against the sources actually read, so the thinnest coverage comes first; `literature <concept>` asks about one, and `literature --unindexed` lists the works still to index, by the source that cites them.
+- **`beyond terms` reads the abstracts.** It mines the works a vault cites for phrases the ontology has no concept for, and read only their titles. For an indexed card it now reads the abstract and the claims drawn from it as well: a title is a few words, an abstract is where a term the field takes for granted actually appears, long before the brain reads the work. Unindexed works still contribute their title alone.
+- **Priority on a cited work is the indexer's to set**, unlike a concept's, which stays the user's. The agent reading the abstract is the one who can see that a work is significant in its field, central to the vault's subject, or would fill a hole the brain plainly has. `mesh.py literature` heads its output with those works, most-cited first, each with the reason given: the reading list the index exists to produce.
+- **`- concepts:: none — <why it bears on none>`** for a work the vault has no concept for and should not grow one for: a generic method, a tool, a study from another field. It is indexed for the record, reaches no hub, and `check` leaves it alone; the reason is required. A claim from an abstract that names no concept is now reported once a card, with a count, instead of once a claim.
+- **A new skill, `brain-mesh-citation-index`**: where to find an abstract (held source → DOI/Crossref → PubMed/arXiv → search → say there is none), never to invent one, how to write claims from it, how to judge priority, and how to split a large run between agents that write only in `references/`.
+- **`mesh.py literature --gaps`** names the concepts the cited literature covers and the brain has not read, leaving out those a gap card already names. That is the step that makes the index pay: section 5a of the skill says how to judge each one, and the distinction the index is uniquely able to settle — a concept a dozen indexed works bear on is a reading list; one they circle without answering is a research gap. The thresholds are `literature_gap_min` and `literature_gap_ratio` in MESH.json.
+- A gap's priority stays the user's, like a concept's, even though a cited work's is now the indexer's.
+- Tests sections 42, 43 and 44.
+
 ## 1.26.0 — 2026-11-23
 
 `build` and `check` do each piece of work once and keep what they work out from unchanged files. On a twelve-source vault `build` falls from 34 s to 4 s and `check` from 13 s to 1.6 s (5.6 s the first time); at 36 sources, 91 s to 10 s and 47 s to 5 s. Every file `build` writes and every line `check`, `gaps`, `discover`, `scan`, `health`, `routes`, `facts`, `contradictions` and `independence` print is the same as before, compared on both vaults.

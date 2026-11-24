@@ -1514,7 +1514,7 @@ B="python3 tools/mesh.py beyond"
 $B > by.txt; grep -q "^Beyond the ontology: 0 comparisons recorded, 0 terms judged" by.txt && grep -q "^Topics never compared with an outside map (2 of 2)" by.txt && grep -q "Start with .mesh.py beyond terms." by.txt && pass "beyond with no record says where to start and which topics were never compared" || { cat by.txt; fail "beyond empty"; }
 $B terms > bt.txt; grep -q "^surface plasmon resonance — 5 mentions in 2 sources (P004, P005) .* e.g. P004 ^b0001" bt.txt && grep -q "^SPR \[acronym\] — 5 mentions in 2 sources" bt.txt && pass "terms: a phrase and an acronym two sources share with no concept are raised, with a paragraph to read" || { cat bt.txt; fail "beyond terms"; }
 ! grep -q "^polymer film\|^competing interest\|^imprinted polymer" bt.txt && pass "terms: a piece of a concept's name and the words of a paper's furniture are not raised" || { cat bt.txt; fail "beyond terms noise"; }
-grep -q "^molecular imprinting — in 3 cited titles, cited by P001, P002 (R0001, R0002, R0003)" bt.txt && pass "terms: a phrase in the titles of works two sources cite is raised" || { cat bt.txt; fail "beyond cited terms"; }
+grep -q "^molecular imprinting — in 3 cited works, cited by P001, P002 (R0001, R0002, R0003)" bt.txt && pass "terms: a phrase in the works two sources cite is raised" || { cat bt.txt; fail "beyond cited terms"; }
 $B terms binding-capacity | grep -q "^SPR \[acronym\] — 2 mentions in 2 sources" && ($B terms topic:nosuch 2>&1 || true) | grep -q "no topic 'nosuch'" && pass "terms: a concept or topic narrows it to the paragraphs that name it" || fail "beyond terms scope"
 $B pointers > bp.txt; grep -q "^P004 ^b0003 — By analogy with vision" bp.txt && grep -q "^P004 ^b0004 — Future work could use neutron reflectometry" bp.txt && grep -q "^## Points to another field" bp.txt && grep -q "^## Says what it would take" bp.txt && pass "pointers: a paragraph that points to another field, and one that says what a question would take" || { cat bp.txt; fail "beyond pointers"; }
 $B probe "Quartz crystal microbalance" "Swelling" "binding capacities" "Isothermal titration calorimetry" "Ellipsometry" "Atomic force microscopy" --frame "Claude's map of film sensing" --scope binding-capacity > pr.txt
@@ -2064,4 +2064,306 @@ grep -q "^hits ok" h.txt && grep -q "^alias ok" h.txt && pass "where concepts ar
 cp "$ROOT/demo-vault/concepts/water.md" concepts/water.md; rm -rf index/.scratch; (python3 tools/mesh.py check --all > c1.txt 2>&1 || true); (python3 tools/mesh.py check --all > c2.txt 2>&1 || true); ls index/.scratch/cache/hits-P001.json.gz > /dev/null && cmp -s c1.txt c2.txt && pass "check prints the same from kept values as from scratch" || { diff c1.txt c2.txt; fail "check with kept values"; }
 for seed in 1 2 3 4; do PYTHONHASHSEED=$seed python3 tools/mesh.py zoom binding-capacity > z$seed.txt 2>&1; done
 cmp -s z1.txt z2.txt && cmp -s z1.txt z3.txt && cmp -s z1.txt z4.txt && pass "zoom prints the same on every run: ties between concepts are settled by name, not by chance" || { diff z1.txt z2.txt; fail "zoom repeatable"; }
+# 42. the citation index: a cited work indexed from its abstract reaches the hubs and the literature view
+cp -r "$ROOT/demo-vault" "$T/ci"; cd "$T/ci"; cp "$MESH" tools/mesh.py; mkdir -p references
+cat > references/R0900-doe-2020-rebinding-in-acetonitrile.md <<'REF'
+---
+type: reference
+status: not-held
+updated: 2026-11-23
+---
+# Doe & Roe (2020) Rebinding of analyte X in acetonitrile
+
+## Abstract
+
+Imprinted polymer films were rebound in acetonitrile over a range of temperatures. Capacity fell by a third between 25 and 45 degrees, and the films swelled by 12 per cent.
+
+## What it claims
+- Binding capacity falls with temperature in acetonitrile as it does in water ([[binding-capacity]], [[acetonitrile]], [[temperature]])
+- The films swell by 12 per cent over the same range ([[swelling]])
+
+## Notes
+
+## Codes
+- id:: R0900
+- authors:: Doe, J.; Roe, R.
+- year:: 2020
+- title:: Rebinding of analyte X in acetonitrile
+- journal:: J. Test
+- kind:: article
+- concepts:: [[binding-capacity]], [[acetonitrile]], [[swelling]]
+- indexed:: 2026-11-23 — abstract from the publisher's page
+- cited_by:: [[P001]] ref 1 — b0004
+REF
+python3 tools/mesh.py build > b.txt 2>&1; grep -q "check: 0 errors" b.txt && pass "a vault with an indexed citation builds clean" || { grep -E "^ERROR|^warn  R0900" b.txt | head -4; fail "indexed build"; }
+grep -q "Cited works about this, read only as abstracts (1)" concepts/acetonitrile.md && grep -q "R0900-doe-2020-rebinding-in-acetonitrile" concepts/acetonitrile.md && grep -q "Binding capacity falls with temperature in acetonitrile" concepts/acetonitrile.md && pass "the concept hub lists the indexed work, with what it claims" || { grep -A4 "Cited works" concepts/acetonitrile.md; fail "hub indexed works"; }
+! grep -q "Cited works about this" concepts/film-thickness.md && pass "a concept the work does not name gets no indexed-works section" || { grep -A3 "Cited works about this" concepts/film-thickness.md; fail "hub indexed overreach"; }
+python3 tools/mesh.py literature > lit.txt 2>&1
+grep -q "Citation index: 1 of 1 cited works indexed from their abstracts" lit.txt && grep -qE "^acetonitrile +[0-9]+ +1 " lit.txt && pass "literature counts sources read against cited works indexed" || { cat lit.txt; fail "literature view"; }
+python3 tools/mesh.py literature binding-capacity | grep -qE "^binding-capacity " && pass "literature can be asked about one concept" || { python3 tools/mesh.py literature binding-capacity; fail "literature one concept"; }
+sed -i 's/^- concepts:: \[\[binding-capacity\]\].*$//' references/R0900-*.md; python3 tools/mesh.py build > b.txt 2>&1
+grep -q "R0900: indexed but names no concept" b.txt && pass "an indexed card with no concepts is flagged" || { grep "R0900" b.txt; fail "indexed no concepts"; }
+sed -i 's/^- indexed:: .*$//' references/R0900-*.md; python3 tools/mesh.py build > b.txt 2>&1
+grep -q "R0900: has an abstract but no '- indexed::" b.txt && pass "an abstract with no provenance line is flagged" || { grep "R0900" b.txt; fail "abstract no provenance"; }
+sed -i 's/^- id:: R0900$/- id:: R0900\n- indexed:: 2026-11-23 — from the publisher/' references/R0900-*.md
+sed -i 's/^- The films swell by 12 per cent over the same range (\[\[swelling\]\])$/- The films swell by 12 per cent over the same range/' references/R0900-*.md
+python3 tools/mesh.py build > b.txt 2>&1
+grep -q "R0900: 1 of 2 claims from the abstract name no concept" b.txt && pass "claims that name no concept are flagged, counted, one line a card" || { grep "R0900" b.txt; fail "claim no concept"; }
+# 43. the citation index feeds discovery: abstracts raise terms the brain cannot name, and a high-priority work heads the reading list
+cp -r "$ROOT/demo-vault" "$T/cid"; cd "$T/cid"; cp "$MESH" tools/mesh.py; mkdir -p references
+cat > references/R0901-doe-2019-capacity-of-imprinted-films.md <<'REF'
+---
+type: reference
+status: not-held
+updated: 2026-11-23
+---
+# Doe & Roe (2019) Capacity of imprinted films
+
+## Abstract
+
+Rebinding was measured against cavity rigidity in a series of films. Stiffer cavities held more analyte.
+
+## What it claims
+- Capacity rises with stiffer cavities ([[binding-capacity]])
+
+## Notes
+
+## Codes
+- id:: R0901
+- authors:: Doe, J.; Roe, R.
+- year:: 2019
+- title:: Capacity of imprinted films
+- journal:: J. Test
+- kind:: article
+- concepts:: [[binding-capacity]]
+- indexed:: 2026-11-23 — abstract from the publisher's page
+- cited_by:: [[P001]] ref 1 — b0004
+REF
+cat > references/R0902-doe-2020-films-cast-from-toluene.md <<'REF'
+---
+type: reference
+status: not-held
+updated: 2026-11-23
+---
+# Doe & Roe (2020) Films cast from toluene
+
+## Abstract
+
+Casting solvent set the cavity rigidity of the finished film, and with it the capacity.
+
+## What it claims
+- Casting solvent sets capacity ([[binding-capacity]])
+
+## Notes
+
+## Codes
+- id:: R0902
+- authors:: Doe, J.; Roe, R.
+- year:: 2020
+- title:: Films cast from toluene
+- journal:: J. Test
+- kind:: article
+- concepts:: [[binding-capacity]]
+- indexed:: 2026-11-23 — abstract from the publisher's page
+- cited_by:: [[P002]] ref 2 — b0004
+REF
+cat > references/R0903-doe-2021-a-model-of-rebinding.md <<'REF'
+---
+type: reference
+status: not-held
+updated: 2026-11-23
+---
+# Doe & Roe (2021) A model of rebinding
+
+## Abstract
+
+A two-parameter model in which cavity rigidity and swelling together set the capacity.
+
+## What it claims
+- Two parameters account for capacity ([[binding-capacity]])
+
+## Notes
+
+## Codes
+- id:: R0903
+- authors:: Doe, J.; Roe, R.
+- year:: 2021
+- title:: A model of rebinding
+- journal:: J. Test
+- kind:: article
+- concepts:: [[binding-capacity]]
+- indexed:: 2026-11-23 — abstract from the publisher's page
+- cited_by:: [[P001]] ref 3 — b0004
+REF
+python3 tools/mesh.py build > b.txt 2>&1; grep -q "check: 0 errors" b.txt && pass "three indexed citations build clean" || { grep -E "^ERROR|^warn  R090" b.txt | head -4; fail "indexed trio build"; }
+python3 tools/mesh.py beyond terms > bt.txt 2>&1
+grep -q "cavity rigidity — in 3 cited works" bt.txt && pass "a term only the abstracts use is raised for the user to judge" || { grep -i "cavity\|cited works" bt.txt | head -5; fail "abstract term not raised"; }
+grep -q "titles, and abstracts where indexed" bt.txt && pass "the cited section says it reads abstracts too" || { grep -n "they cite" bt.txt; fail "cited section heading"; }
+sed -i 's/^- indexed:: .*$//' references/R090*.md; python3 tools/mesh.py beyond terms > bt2.txt 2>&1
+! grep -q "cavity rigidity" bt2.txt && pass "with the cards unindexed the same term stays invisible: it comes from the abstracts" || { grep -i "cavity" bt2.txt; fail "term raised without the index"; }
+sed -i 's/^- concepts:: /- indexed:: 2026-11-23 — from the publisher\n- concepts:: /' references/R090*.md
+python3 tools/mesh.py priority R0901 high "the measurement every card here assumes and none rests on" > /dev/null 2>&1
+python3 tools/mesh.py build > b.txt 2>&1; python3 tools/mesh.py literature > lit.txt 2>&1
+grep -q "Cited works set high priority while indexing (1)" lit.txt && grep -q "R0901" lit.txt && grep -q "the measurement every card here assumes" lit.txt && pass "a cited work set high while indexing heads the reading list, with its reason" || { cat lit.txt; fail "high-priority reading list"; }
+cat > references/R0904-ruiz-2018-a-gradient-optimiser.md <<'REF'
+---
+type: reference
+status: not-held
+updated: 2026-11-23
+---
+# Ruiz (2018) A gradient optimiser
+
+## Abstract
+
+A first-order optimiser with per-parameter step sizes. It converges faster than plain gradient descent on the benchmarks tried.
+
+## What it claims
+- The optimiser converges faster than plain gradient descent
+
+## Notes
+
+## Codes
+- id:: R0904
+- authors:: Ruiz, A.
+- year:: 2018
+- title:: A gradient optimiser
+- journal:: J. Test
+- kind:: article
+- concepts:: none — generic machine-learning method, outside what this vault is about
+- indexed:: 2026-11-23 — abstract from the publisher's page
+- cited_by:: [[P001]] ref 4 — b0004
+REF
+python3 tools/mesh.py build > b.txt 2>&1
+! grep -qE "R0904: (indexed but names no concept|[0-9]+ of [0-9]+ claims)" b.txt && grep -q "check: 0 errors" b.txt && pass "a work the vault has no concept for is indexed for the record, with no complaint" || { grep "R0904" b.txt; fail "concepts none"; }
+python3 tools/mesh.py literature --unindexed > lu.txt 2>&1
+! grep -q "R0904" lu.txt && pass "a 'concepts:: none' work does not count as still to index" || { cat lu.txt; fail "concepts none unindexed"; }
+sed -i 's/^- concepts:: none .*$/- concepts:: none/' references/R0904-*.md; python3 tools/mesh.py build > b.txt 2>&1
+grep -q "R0904: '- concepts:: none' needs a reason" b.txt && pass "'none' with no reason is sent back for one" || { grep "R0904" b.txt; fail "concepts none reason"; }
+# 44. the thin concepts a gap card does not cover yet (the citation index, section 5a)
+cp -r "$ROOT/demo-vault" "$T/gc"; cd "$T/gc"; cp "$MESH" tools/mesh.py; mkdir -p references
+python3 - <<'PY'
+import json
+c = json.load(open("MESH.json", encoding="utf-8"))
+c["literature_gap_min"], c["literature_gap_ratio"] = 2, 1
+json.dump(c, open("MESH.json", "w", encoding="utf-8"), indent=1)
+PY
+cat > references/R0911-roe-2016-how-long-to-equilibrate.md <<'REF'
+---
+type: reference
+status: not-held
+updated: 2026-11-24
+---
+# Roe (2016) How long to equilibrate
+
+## Abstract
+
+Films were followed to equilibrium over four days.
+
+## What it claims
+- Equilibrium takes four days ([[equilibration-time]])
+
+## Notes
+
+## Codes
+- id:: R0911
+- authors:: Roe, R.
+- year:: 2016
+- title:: How long to equilibrate
+- journal:: J. Test
+- kind:: article
+- concepts:: [[equilibration-time]]
+- indexed:: 2026-11-24 — abstract from the publisher's page
+- cited_by:: [[P001]] ref 11 — b0004
+REF
+cat > references/R0912-roe-2017-equilibrium-in-thin-films.md <<'REF'
+---
+type: reference
+status: not-held
+updated: 2026-11-24
+---
+# Roe (2017) Equilibrium in thin films
+
+## Abstract
+
+Thin films reached equilibrium sooner than thick ones.
+
+## What it claims
+- Thinner films equilibrate sooner ([[equilibration-time]])
+
+## Notes
+
+## Codes
+- id:: R0912
+- authors:: Roe, R.
+- year:: 2017
+- title:: Equilibrium in thin films
+- journal:: J. Test
+- kind:: article
+- concepts:: [[equilibration-time]]
+- indexed:: 2026-11-24 — abstract from the publisher's page
+- cited_by:: [[P001]] ref 12 — b0004
+REF
+cat > references/R0913-roe-2018-a-faster-equilibration-protocol.md <<'REF'
+---
+type: reference
+status: not-held
+updated: 2026-11-24
+---
+# Roe (2018) A faster equilibration protocol
+
+## Abstract
+
+Stirring shortened the time to equilibrium by half.
+
+## What it claims
+- Stirring halves the time to equilibrium ([[equilibration-time]])
+
+## Notes
+
+## Codes
+- id:: R0913
+- authors:: Roe, R.
+- year:: 2018
+- title:: A faster equilibration protocol
+- journal:: J. Test
+- kind:: article
+- concepts:: [[equilibration-time]]
+- indexed:: 2026-11-24 — abstract from the publisher's page
+- cited_by:: [[P001]] ref 13 — b0004
+REF
+cat > references/R0914-roe-2019-capacity-of-a-washed-film.md <<'REF'
+---
+type: reference
+status: not-held
+updated: 2026-11-24
+---
+# Roe (2019) Capacity of a washed film
+
+## Abstract
+
+Washing lowered the capacity of every film tried.
+
+## What it claims
+- Washing lowers capacity ([[binding-capacity]])
+
+## Notes
+
+## Codes
+- id:: R0914
+- authors:: Roe, R.
+- year:: 2019
+- title:: Capacity of a washed film
+- journal:: J. Test
+- kind:: article
+- concepts:: [[binding-capacity]]
+- indexed:: 2026-11-24 — abstract from the publisher's page
+- cited_by:: [[P001]] ref 14 — b0004
+REF
+python3 tools/mesh.py build > b.txt 2>&1; grep -q "check: 0 errors" b.txt && pass "a vault whose cited works outrun its reading builds clean" || { grep -E "^ERROR|^warn  R091" b.txt | head -4; fail "gap candidates build"; }
+python3 tools/mesh.py literature --gaps > lg.txt 2>&1
+grep -q "equilibration-time: 3 cited works against" lg.txt && pass "a concept the cited works cover and no gap card names is raised as a gap candidate" || { cat lg.txt; fail "gap candidate not raised"; }
+grep -A3 "equilibration-time: 3 cited works" lg.txt | grep -q "R0911" && pass "the works that carry the weight are named, to argue the candidate from" || { cat lg.txt; fail "gap candidate works"; }
+! grep -q "^  binding-capacity:" lg.txt && pass "a concept a gap card already covers is not raised again" || { cat lg.txt; fail "gap candidate duplicates a gap card"; }
+python3 tools/mesh.py literature > lit.txt 2>&1
+! grep -q "cited works against" lit.txt && pass "the gap candidates stay behind --gaps, off the plain literature view" || { cat lit.txt; fail "gaps leaked into literature"; }
 echo "ALL TESTS PASSED"

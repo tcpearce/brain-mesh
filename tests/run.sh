@@ -2366,4 +2366,56 @@ grep -A3 "equilibration-time: 3 cited works" lg.txt | grep -q "R0911" && pass "t
 ! grep -q "^  binding-capacity:" lg.txt && pass "a concept a gap card already covers is not raised again" || { cat lg.txt; fail "gap candidate duplicates a gap card"; }
 python3 tools/mesh.py literature > lit.txt 2>&1
 ! grep -q "cited works against" lit.txt && pass "the gap candidates stay behind --gaps, off the plain literature view" || { cat lit.txt; fail "gaps leaked into literature"; }
+# 45. chronology: a claim with a shelf life, the sources read since, and progress that is not a contradiction
+cp -r "$ROOT/demo-vault" "$T/ch"; cd "$T/ch"; cp "$MESH" tools/mesh.py
+S1=$(ls -d sources/P001*); S2=$(ls -d sources/P002*)
+cat > $S1/P001-900-no-film-has-been-imaged-in-acetonitrile.md <<'CARD'
+---
+type: claim
+status: asserted
+updated: 2026-11-24
+---
+# No film has been imaged in acetonitrile, so the swelling is inferred rather than seen
+
+No measurement of film swelling in acetonitrile has been reported, and the authors say the figure is inferred from capacity alone. ^b0004
+
+## Codes
+- id:: P001-900
+- concepts:: [[swelling]], [[acetonitrile]]
+- anchor:: [[P001_text#^b0004]]
+- loc:: "imprinted polymer films"
+CARD
+cat > $S2/P002-900-films-imaged-in-acetonitrile.md <<'CARD'
+---
+type: observation
+status: measured
+updated: 2026-11-24
+---
+# Films were imaged in acetonitrile and swelled by 12 per cent
+
+Direct imaging gave a swelling of 12 per cent in acetonitrile. ^b0004
+
+## Codes
+- id:: P002-900
+- concepts:: [[swelling]], [[acetonitrile]]
+- value:: [[swelling]] = 12 per cent in acetonitrile
+- anchor:: [[P002_text#^b0004]]
+- loc:: "imprinted polymer films"
+CARD
+python3 - <<'PY'
+import json
+c = json.load(open("MESH.json", encoding="utf-8")); c["chronology_stale_years"] = 1
+json.dump(c, open("MESH.json", "w", encoding="utf-8"), indent=1)
+PY
+python3 tools/mesh.py build > b.txt 2>&1; grep -q "check: 0 errors" b.txt && pass "a vault with a dated claim builds clean" || { grep -E "^ERROR" b.txt | head -3; fail "chronology build"; }
+python3 tools/mesh.py chronology > ch.txt 2>&1
+grep -q "P001-900" ch.txt && pass "a claim that no measurement exists is raised as having a shelf life" || { cat ch.txt; fail "perishable not raised"; }
+grep -A1 "P001-900" ch.txt | grep -q "P002" && pass "the source read since, on the same concepts, is named beside it" || { cat ch.txt; fail "later source not named"; }
+! grep -q "P002-900" ch.txt && pass "a measurement is not a dated claim: only the types that carry one are read" || { cat ch.txt; fail "observation raised"; }
+sed -i 's|^- loc:: "imprinted polymer films"$|- loc:: "imprinted polymer films"\n- superseded_by:: [[P002-900]] — imaged directly in 2023|' $S1/P001-900-*.md
+python3 tools/mesh.py build > b2.txt 2>&1; grep -q "check: 0 errors" b2.txt && pass "superseded_by is a link the tooling knows" || { grep -E "^ERROR|superseded" b2.txt | head -3; fail "superseded_by unknown"; }
+python3 tools/mesh.py chronology > ch2.txt 2>&1
+! grep -qE "P001-900 \([0-9]{4}, (absence|first)" ch2.txt && grep -q "Already settled as superseded" ch2.txt && pass "once settled, the claim leaves the list and is counted as superseded" || { cat ch2.txt; fail "superseded not settled"; }
+grep -q "supersedes" $S2/P002-900-*.md && pass "the newer card gains the inverse link" || { grep -n "" $S2/P002-900-*.md | tail -5; fail "inverse link"; }
+grep -q "Evidence published" concepts/swelling.md && pass "the hub says across what years its evidence was published" || { grep -A2 "Evidence:" concepts/swelling.md; fail "hub span"; }
 echo "ALL TESTS PASSED"

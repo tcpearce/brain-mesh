@@ -2,6 +2,20 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.28.0 (2026-11-24)
+
+**Knowledge has a date: the brain stops asserting what was only true when it was written.**
+
+A claim that no structure exists, that something has never been measured, or that a paper is the first of its kind is true as of its source's year and no later. The brain stored all of it flatly, so it went on asserting absences the field had since filled. Three of the vault this was built for turned out to be answered already, two of them by papers published within three years of the question.
+
+- **`mesh.py chronology`** lists the claims with a shelf life, oldest first, read from the cards' own words: absences, firsts, limits of the day and counts of the day. Beside each it names the sources the brain has read **since**, that share most of what the claim is about. It also lists open contradictions whose two sides are years apart, which are progress before they are disputes, and the concepts whose evidence stops long ago. Only `claim`, `question`, `limitation`, `assumption` and `cited` cards are read: a method or an observation records what was done and does not expire.
+- **`- superseded_by:: [[card]] — <what changed>`** settles one: the claim was right when written and later work overtook it. Not a contradiction, and it must not go on that register — nobody was wrong, the field moved. The inverse is `supersedes`, and the claim stays on its card, readable, no longer asserted.
+- **`- asof:: <year>`** where a claim is older than the paper reporting it, so a review giving the state of play of an earlier year does not backdate everything it repeats to its own.
+- **Every concept hub's generated block now gives the span of years its evidence covers and the newest source bearing on it**, so a hub reads as an arc rather than a heap.
+- `chronology_stale_years` in MESH.json, 8 by default: five years is a long time in receptor structures and nothing at all in psychophysics.
+- Hooked into the pipeline: `brain-mesh-add-paper` marks a shelf life as it cards one, `brain-mesh-gaps` dates a gap's framing before carding it, and `brain-mesh-housekeeping` runs `chronology` in the health check.
+- Tests section 45.
+
 ## 1.27.0 (2026-11-24)
 
 **The citation index: the works a vault cites but has not read, indexed from their abstracts.**

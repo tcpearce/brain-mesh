@@ -5,6 +5,12 @@ description: "Find the key knowledge gaps in a brain mesh, search for papers tha
 
 # Brain mesh: gaps
 
+> **Date the gap before you card it.** A paper's open question is open as of that paper's year. Check it against the
+> sources the brain has read since (`mesh.py chronology`, which lists the later sources bearing on the same concepts)
+> and then against the literature. A 2007 review's unanswered question may have been answered in 2010. Carding it as a
+> gap makes the brain assert that something is unknown when it is not, which misdirects reading and can stand for
+> years. Where the answer exists and the brain has not read it, that is a reading list, not a research gap.
+
 Read `brain-mesh` first, and its FORMATS.md before writing or changing a card. Find the vault and run `python3 tools/mesh.py build`.
 
 ## The ladder

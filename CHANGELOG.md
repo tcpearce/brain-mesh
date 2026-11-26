@@ -2,6 +2,18 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.29.0 (2026-11-26)
+
+**Follow-on campaigns, the list of what is already obvious, credibility checks, and ranking by impact with what would unlock the rest.**
+
+- **`mesh.py obvious <topic:slug | sources:P004,P005 | concept | id>`** lists what any competent reader would propose next, from the brain itself: the questions and limitations the papers state, the open questions several independent groups already share (axes such as species and preparation left out), what would settle the open gaps, contradictions and tensions, the findings resting on one group, and the standard moves. `campaign init` writes it as `OBVIOUS.md`; proposals name their nearest entry and must differ in kind, not degree.
+- **Follow-on campaigns**: `campaign init <name> --sources P004,P005` scopes a campaign to named papers, with the rest of the brain as their literature; every proposal names the result it follows on from (`follows_on::`). Default lenses for a follow-on: sceptic, instrumentalist and transferer.
+- **New lens `instrumentalist`** (the field measures the wrong quantity); lenses are marked adjacent or distant.
+- **Scoring**: an originality axis (`campaign score --originality`); campaigns rank by impact by default among the proposals that pass the gates, with cogency below 2.5 and originality below 2 as gates; realism is reported, not ranked; `--rank composite` keeps the 1.28 ranking. Existing campaigns keep their ranking.
+- **Proposal format 2**: **Prior and outcomes.**, **Nearest obvious entry.**, **Credibility checks.** (circularity and pipeline artefacts, with a pipeline null among a proof of concept's controls), `first_result::`, `paper_months::`, `needs::`.
+- **What would unlock most**: the capabilities live proposals need that the research profile does not mark as had, with the impact they hold back, in `status`, meetings and the report. The report also gives independent convergence, the user's steers (`decisions.md`) and a Recommendation for the chair to write; meetings count survivors and suggest stopping when a round adds fewer than two.
+- `campaign briefs` rewrites briefs from the current templates; with several campaigns running, `--campaign` is required. Discovery's proposal format (brain-mesh-discover section 5) gains the prior, nearest obvious entry, credibility and time-to-first-result lines.
+
 ## 1.28.0 (2026-11-26)
 
 **Discovery campaigns: competing agents, hourly meetings, blind referees, registered proofs of concept.**

@@ -1,6 +1,6 @@
 ---
 name: "brain-mesh-campaign"
-description: "Run a discovery campaign on a brain mesh: several discovery agents, one lens each, compete for the proposals that score highest on impact, cogency and realism, meet every hour to compare notes, run registered proofs of concept of under an hour on open data, search outside the brain for novelty, and ask for downloads only with the case for them; blind referees and a verifier score; the user gets one slate at the end. Use when the user asks for a campaign, competing or coordinated discovery agents, or a long unattended discovery run."
+description: "Run a discovery campaign on a brain mesh, on a topic or as a follow-on from named papers: several discovery agents, one lens each, compete for the proposals that score highest on impact, cogency, realism and originality against the list of what is already obvious, meet every hour to compare notes, run registered proofs of concept of under an hour on open data, search outside the brain for novelty, and ask for downloads only with the case for them; blind referees and a verifier score; the user gets one slate at the end. Use when the user asks for a campaign, competing or coordinated discovery agents, a long unattended discovery run, or the next study or follow-on experiments from a paper or set of papers in the brain."
 ---
 
 # Brain mesh: discovery campaigns
@@ -44,6 +44,12 @@ The lenses (`mesh.py campaign init --agents`):
 | `sceptic` | load-bearing assumptions, single-group cornerstones, oddities, much-cited unread claims | assumptions, cornerstones, oddities, genealogy, limits | overturn-assumption, replication, new-phenomenon, existence-proof |
 | `transferer` | untried species, preparations and levels; tools from other fields | transfer, tools, analogies, bottlenecks | extension, tool-transfer, concept-transfer, new-method |
 | `datascout` | what open data can answer now | data, constraints, ceilings, recognised | scale, new-resource, new-model, pooling |
+| `instrumentalist` | the field measures the wrong quantity: build or validate the right one (a horizon, a ceiling, a coefficient, a missing control) | bottlenecks, ceilings, definitions, limits | new-method, new-model, framework, existence-proof |
+
+**Adjacent and distant lenses.** Recombining what is published and reanalysing open data (`recombiner`, `datascout`) stay close
+to the papers' own neighbourhood and reliably produce the obvious; attacking a premise (`sceptic`), building the right
+instrument (`instrumentalist`), importing from another field (`transferer`) and mechanisms (`mechanist`) are distant. Put most
+agents on distant lenses. A follow-on campaign defaults to `sceptic`, `instrumentalist` and `transferer`.
 
 **Size and cost.** A pilot is three agents, three rounds of about 50 minutes, two referees and a verifier at each
 meeting: about 18 agent runs over three hours. A standard campaign is five agents and four rounds. Every agent starts cold
@@ -53,12 +59,18 @@ and reads the brain, so a campaign uses a great deal of the user's allowance; sa
 
 **Set up**
 
-1. Sync and upgrade the vault (`brain-mesh-access`). Run `zoom` and `routes` to choose the scope: the user's choice, else
-   the hottest topic that is rich in open data and is not a catch-all (a topic of species or preparations is too broad).
+1. Sync and upgrade the vault (`brain-mesh-access`). Choose the scope: a topic (`--scope topic:<slug>`; the user's choice,
+   else the hottest topic that is rich in open data and is not a catch-all), or, for a **follow-on campaign**, the papers the
+   next study should follow from (`--sources P004,P005`). A follow-on campaign uses the rest of the brain as the literature
+   around those papers: every proposal names the result in them it builds on.
 2. Read `PROFILE.md`. If there is none, the campaign runs on the constraints the user has stated; offer to build the profile
    (`brain-mesh-discover`, **The research profile**).
 3. `python3 tools/mesh.py campaign init <name> --scope topic:<slug> --agents recombiner,mechanist,sceptic --rounds 3 --minutes 50 --constraint "<each limit the user stated>"`.
-   It writes `CAMPAIGN.md`, one `agents/<lens>/BRIEF.md` per agent, `referee-brief.md` and `verifier-brief.md`.
+   It writes `CAMPAIGN.md`, one `agents/<lens>/BRIEF.md` per agent, `referee-brief.md`, `verifier-brief.md`, `decisions.md` and
+   `OBVIOUS.md`, the list of what is already obvious (below). Read OBVIOUS.md before the agents start: if an entry is wrong or a
+   standard move is missing, edit it; it is the bar every proposal must clear. Campaigns rank by impact unless `--rank composite`
+   is given. `campaign briefs` rewrites the briefs from the current templates. With more than one campaign running, every
+   `campaign` command takes `--campaign <name>`.
 4. Commit the campaign folder (`sync "campaign <name>: started"`) so that it can be resumed from anywhere.
 
 **Each round**
@@ -89,12 +101,18 @@ and reads the brain, so a campaign uses a great deal of the user's allowance; sa
 5. Record the outside searches worth keeping with `outside add` (the agents do not write the shared ledger).
 6. `sync "campaign <name>: meeting <n>"`, then resume the agents for the next round.
 
-**Stop** after the last round, or earlier when the top five have not changed for two meetings, or when the budget is spent.
+Record every steer the user gives during the campaign in `decisions.md`, with what it changed.
+
+**Stop** after the last round, or earlier when a round adds fewer than two survivors (the meeting says so), when the top five
+have not changed for two meetings, or when the budget is spent.
 
 **Close**
 
-1. `python3 tools/mesh.py campaign close` writes `REPORT.md`: the slate (the top live proposals by composite, then pairwise
-   rating), informative nulls, the download requests by value over effort, the scoreboard and the credit.
+1. `python3 tools/mesh.py campaign close` writes `REPORT.md`: the slate (the top live proposals that pass the gates, by impact
+   or composite as the campaign ranks, then pairwise rating), informative nulls, the download requests by value over effort,
+   **what would unlock most**, where agents converged independently, the user's steers, the scoreboard and the credit. Write
+   its **Recommendation** yourself: which study to do next and why, including whether the highest-impact study is the right one
+   to start, given the time to its first result.
 2. Put the slate to the user, three to seven proposals, in the format of `brain-mesh-discover` section 5, adding each
    proposal's scores, its proof of concept and replication, and its novelty verdict. Put the download requests to them
    separately, each with what it would settle.
@@ -120,6 +138,11 @@ Your brief names your lens, your files and your deadline. These are the formats 
 **Decisive experiment.** The cheapest experiment whose outcome would settle it either way: design, n, cost, time, who could run it.
 **Impact if true.** Which findings, contradictions, gaps or theories it would change, and what follows outside the brain.
 **How it could be killed.** The observation that would refute it.
+**Prior and outcomes.** What you expect to find and how sure you are; what each outcome would change; would an expert be
+surprised by either? A first measurement of what the field already assumes is the prior dressed as a result.
+**Nearest obvious entry.** The entry of OBVIOUS.md closest to this proposal (O-NN) and why this differs from it in kind, not degree.
+**Credibility checks.** Each form of circularity and pipeline artefact that could apply (below), and the control that severs it.
+**Follows on from.** In a follow-on campaign: the result of the named papers it builds on, with its card.
 
 ## Codes
 - id:: REC-01
@@ -133,7 +156,15 @@ Your brief names your lens, your files and your deadline. These are the formats 
 - novelty:: open — PubMed, bioRxiv and web, 2026-11-26
 - poc:: passed
 - reach:: in
+- needs:: [[calcium-imaging]] — what the decisive experiment needs that may be out of reach
+- first_result:: two weeks
+- paper_months:: 9
+- follows_on:: [[P004-056]] — in a follow-on campaign
 ```
+
+`first_result::` is how soon the first informative result could come, and `paper_months::` how long to a submittable paper:
+they often differ tenfold, and the first decides what to start on Monday. `needs::` names each technique, system or resource
+the decisive experiment needs (concept links), so the unlock table can count what a partner would make possible.
 
 `novelty::` is `open` (searched, nothing found), `partly`, `answered` (published already: withdraw it and request the paper)
 or `unchecked`. `poc::` is `none`, `planned`, `registered`, `passed`, `failed` or `inconclusive`. `reach::` is `in`,
@@ -185,15 +216,62 @@ that depend on it; what would be different in the brain once it is carded.
 **Notes and reports.** Everything worth sharing goes in `agents/<lens>/notes.md` under `## Round <n>`. Your round report
 to the chair is at most 300 words.
 
+## The obvious list
+
+`python3 tools/mesh.py obvious <scope>` (written to `OBVIOUS.md` at init) lists what any competent reader of the papers would
+propose next, from the brain itself: every question and limitation the papers state, the open questions several independent
+groups already share, what would settle the open gaps, contradictions and tensions, the findings resting on one group, and the
+standard moves (test the prediction, another data set, a newer model, scale up, a second target, prospective validation, another
+species or level, make and test). Agents read it first; a proposal on it must differ in kind, not degree; referees score
+**originality** against it. Without such a list, "be original" is an exhortation; with it, originality can be checked.
+
+Originality is a gate, never a goal: striking the obvious must not reward the merely exotic. Impact stays the ranking axis.
+
+## Credibility checks
+
+Every proposal works through these, and every referee checks them whether or not the proposal raised them. Named and
+controlled is a strength; uncontrolled is a failed gate.
+
+| Circularity | The question |
+|---|---|
+| Train/test overlap | was the model or representation fitted on any data now used to evaluate it? Count it. |
+| Label downstream of the ground truth | is the predicted quantity a coarsening of the target? |
+| Model-scored evaluation | is the "ground truth" itself a model's output? |
+| Shared upstream data | do predictor and outcome come from a common source (the brain's data-set cards and `independence` show it)? |
+| Selection on the outcome | was the test set chosen by criteria related to the outcome? |
+| Definitional | is the measured thing defined by its instrument? |
+| Filter validated by itself | does it select on a criterion and then demonstrate that criterion? |
+
+| Pipeline artefact | Where it bites |
+|---|---|
+| Dimensionality | distances concentrate as dimensions grow: decaying curves are the default, not a finding |
+| Compression | performance against number of components has a generic shape whatever the features mean |
+| Capacity | more parameters fit better in sample |
+| Double dipping | features or thresholds selected by their association with the outcome, then tested on the same data |
+| Best of many | sweeping a parameter and reporting the best value |
+| Base rates | accuracy driven by class priors |
+| Preprocessing leakage | normalisation, imputation or selection before the split |
+| Unmatched freedom | a learned or weighted metric compared with a fixed one without matching their freedom |
+
+The general test: would the effect appear if the real structure were destroyed and the pipeline left identical? The control is
+the **pipeline null**: the whole analysis rerun on permuted labels, shuffled correspondences or phase-randomised data. Every
+proof of concept in a format-2 campaign registers one among its controls.
+
 ## Scoring
 
-Each referee scores each live proposal on three axes, 1 to 5.
+Each referee scores each live proposal on four axes, 1 to 5: impact, cogency, realism and, where the campaign has an
+OBVIOUS.md, originality.
 
 | | 1 | 3 | 5 |
 |---|---|---|---|
 | **Impact** | touches one card; nothing builds on it | settles an open contradiction or gap, or re-grades a finding others rest on | separates rival theories or overturns a cornerstone; changes what the field would do next |
 | **Cogency** | asserted; a mechanism is missing or it strains a fact | a plausible mechanism, consistent with every fact that bears on it, rivals named | a mechanism with independent support, rivals addressed, a proof of concept pointing its way |
 | **Realism** | needs what the user cannot reach, years or a new field | a partner's technique or months of work; the decisive experiment is specified | in reach with the user's means, weeks, every outcome informative |
+| **Originality** | an OBVIOUS.md entry, or the papers' own future work | a real idea, visibly adjacent to an entry but asking a different question | nobody reading the papers would have proposed it: it reframes, attacks an unquestioned premise, or imports from a field that does not cite this one |
+
+Impact weighs **surprise** (would an expert be surprised by either outcome?), **knowledge over capability** (a property of the
+system, such as a horizon, a ceiling or a coefficient, outlives one of an artefact, such as a hit rate for one library),
+reach, durability and what it leaves for others to reuse.
 
 **Gates.** A proposal fails a gate, and scores 0 however good it looks, when: a claim traces to no card and no cited source;
 it clashes with a fact or piece of evidence no logged contradiction frees; it has no way to be killed; or its proof of concept
@@ -202,8 +280,12 @@ was reported without registration, the registration was changed afterwards, or t
 **Novelty** multiplies: open 1, unchecked 0.8, partly 0.6, answered 0. The verifier's verdict counts; without one, the most
 cautious referee's.
 
-**Composite** = the cube root of impact × cogency × realism (each the median of the round's referees) × novelty, × 0.9 while a
-reported proof of concept awaits replication. The geometric mean keeps a brilliant but unworkable idea from winning.
+**Ranking.** A campaign ranks by **impact** (the default) among the proposals that pass the gates: in such a campaign
+cogency below 2.5 (it cannot answer its own question) and originality below 2 (an OBVIOUS.md entry in disguise) are gates too.
+Realism is reported, never used to rank: low realism is a finding, and **what would unlock most** (from each proposal's
+`needs::` and the research profile) says which partner or resource opens the best ideas. A campaign started with
+`--rank composite` ranks instead by the cube root of impact × cogency × realism × novelty, × 0.9 while a reported proof of
+concept awaits replication.
 
 **Pairwise.** Referees also say which of two live proposals they would rather the user pursued, up to ten pairs each. A
 Bradley-Terry fit turns these into a rating (1000 is average), shown beside the composite: it is the steadier of the two
@@ -215,7 +297,8 @@ evidence. Withdrawing a weak proposal costs nothing. Credit is reported, not rew
 and keeps sharing worth an agent's while.
 
 **Successive halving.** Each meeting but the last cuts the bottom half of the live, scored proposals, so the later rounds
-spend their time on the proofs of concept and experiment designs of the best.
+spend their time on the proofs of concept and experiment designs of the best. The meeting also counts the **survivors**
+(gates passed, impact at least 4) and how many are new this round.
 
 ## After the campaign
 

@@ -1040,7 +1040,7 @@ class Mesh:
 
     def check(s, only=None):
         E, W, notes = s.err, s.warn, Counter()
-        plinks = defaultdict(set)
+        plinks, pending = defaultdict(set), defaultdict(list)
         for c in s.cards.values():
             i, pid = c.id, c.id[:4]
             if only and not (c.fam in ("evidence", "source", "claims") and pid == only): continue
@@ -1070,6 +1070,9 @@ class Mesh:
                     if t.strip() in s.proposed(): plinks[t.strip()].add(i)
                     else: E.append(f"{i}: broken link [[{t.strip()}]]")
             for k, v in c.codes:
+                if k == "cites" and not s.ids(v)[0] and re.match(r"ref\s+S?\d+\b", v):  # `- cites:: ref 12 — why`, waiting for `cite` to link it (issue #48)
+                    if i not in pending[pid]: pending[pid].append(i)
+                    continue
                 if k in LINK_KEYS and not s.ids(v)[0] and v and not (k == "cites" and re.match(r"none\b", v, re.I)) and not any(t.strip() in s.proposed() for t, _a, _d in WIKI.findall(v)): E.append(f"{i}: '{k}::' has no card link")
             prose_terms = {r for t, _a, _d in WIKI.findall(c.human) for r in [s.resolve(t)] if r and s.cards[r].fam == "concept"}
             if c.fam in ("evidence", "page") and prose_terms - s.terms(c): W.append(f"{i}: concepts linked in the prose but absent from Codes: {' '.join(sorted(prose_terms - s.terms(c)))}")
@@ -1412,6 +1415,9 @@ class Mesh:
             lk_ = {c.id: set(s.ids(c.raw)[0]) - {c.id} for c in s.cards.values()}
             oneway = sorted((a, b) for a, ts in lk_.items() if not s.cards[a].get("retired") for b in ts if a not in lk_[b])
             if oneway: W.append(f"{len(oneway)} link{'s have' if len(oneway) > 1 else ' has'} no link back, e.g. " + ", ".join(f"{a} → {b}" for a, b in oneway[:5]) + ": `mesh.py build` writes the missing back-links")
+        for pid_, ids_ in sorted(pending.items()):  # pending, not broken: the form brain-mesh-batch prescribes until the merge runs `cite` (issue #48)
+            n_ = sum(1 for x in ids_ for v in s.cards[x].all("cites") if not s.ids(v)[0] and re.match(r"ref\s+S?\d+\b", v))
+            W.append(f"{pid_}: {n_} 'cites:: ref N' line{'s are' if n_ != 1 else ' is'} not linked yet ({', '.join(ids_[:6])}{' …' if len(ids_) > 6 else ''}); run `mesh.py cite {pid_}` at the merge")
         for nm, ids_ in sorted(plinks.items()):
             W.append(f"[[{nm}]] is a proposed concept ({', '.join(s.staged()[nm])}), not yet a card, linked by {len(ids_)} card{'s' * (len(ids_) > 1)} ({', '.join(sorted(ids_)[:4])}{' …' if len(ids_) > 4 else ''}): the user makes it a card (`adopt {nm}`), or fold it into a concept (`adopt {nm} into <concept>`), or turn it down (`reject {nm} \"<why>\"`)")
         return notes

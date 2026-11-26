@@ -2598,4 +2598,30 @@ grep -q "| SCE-01 .* | 5 | 4 | 2 | 4 | open |" st.txt && grep -q "| INS-01 .* | 
 [ "$(grep -n '| SCE-01 ' st.txt | cut -d: -f1)" -lt "$(grep -n '| INS-01 ' st.txt | cut -d: -f1)" ] && pass "ranked by impact: low realism does not sink a high-impact idea" || { cat st.txt; fail "impact ranking"; }
 grep -q "quartz-crystal-microbalance (.*): would unlock 1 proposal with impact 5 in all: SCE-01" st.txt && pass "what would unlock most: a needed capability the profile lacks, with the impact it holds back" || { cat st.txt; fail "unlocks"; }
 python3 tools/mesh.py campaign close $C2 > /dev/null; grep -q "^## What would unlock most" $FD/REPORT.md && grep -q "^## Recommendation" $FD/REPORT.md && grep -q "^- \*\*Prior and outcomes.\*\*" $FD/REPORT.md && grep -q "^- \*\*Follows on from.\*\*" $FD/REPORT.md && ! grep -q "INS-01 .*###" $FD/REPORT.md && pass "the report: the slate with prior and follow-on lines, what would unlock most, and a recommendation to write" || { cat $FD/REPORT.md; fail "report 1.29"; }
+# 48. a citation by number waiting for cite is pending, not broken (issue #48)
+cp -r "$ROOT/demo-vault" "$T/pc"; cd "$T/pc"; cp "$MESH" tools/mesh.py; S1=$(ls -d sources/P001*)
+E=$(ls $S1/P001-003-*.md); sed -i 's/^- id:: P001-003$/- id:: P001-003\n- cites:: ref 12 — the capacity method/' $E
+E2=$(ls $S1/P001-004-*.md); sed -i 's/^- id:: P001-004$/- id:: P001-004\n- cites:: ref 12 — the same method/' $E2
+ok=0; python3 tools/mesh.py check P001 > k.txt 2>&1 || ok=$?
+[ $ok = 0 ] && ! grep -q "'cites::' has no card link" k.txt && pass "check passes a source whose cards cite by number before cite has run" || { cat k.txt; fail "pending cites:: ref N is an error"; }
+grep -q "P001: 2 'cites:: ref N' lines are not linked yet (P001-003, P001-004); run \`mesh.py cite P001\` at the merge" k.txt && pass "the pending citations are named, with the remedy" || { cat k.txt; fail "pending citations not named"; }
+E3=$(ls $S1/P001-005-*.md); sed -i 's/^- id:: P001-005$/- id:: P001-005\n- cites:: Smith said so/' $E3
+python3 tools/mesh.py check P001 > k.txt 2>&1 && fail "a malformed cites:: line passed check" || { grep -q "ERROR P001-005: 'cites::' has no card link" k.txt && pass "a cites:: line that is neither a link, ref N nor none is still an error" || { cat k.txt; fail "malformed cites"; }; }
+sed -i '/^- cites:: Smith said so$/d' $E3
+cat > $S1/P001_refs.md <<'REFS'
+# P001 reference list
+
+## 12
+- raw:: K. Lee, J. Park, J. Appl. Polym. Sci. 98, 101–109 (2015).
+- authors:: Lee, K.; Park, J.
+- year:: 2015
+- title:: Hydrogel swelling scales with temperature
+- journal:: J. Appl. Polym. Sci.
+- volume:: 98
+- pages:: 101--109
+- kind:: article
+- cited_at:: b0004
+REFS
+python3 tools/mesh.py cite P001 > c.txt 2>&1; python3 tools/mesh.py build > b.txt 2>&1
+grep -q "check: 0 errors" b.txt && ! grep -q "cites:: ref N" b.txt && grep -q "^- cites:: \[\[R0" $E && pass "after cite, neither warning nor error" || { cat c.txt; grep -E "ERROR|cites:: ref" b.txt; fail "after cite"; }
 echo "ALL TESTS PASSED"

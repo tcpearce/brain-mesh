@@ -56,7 +56,7 @@ Give each agent, in its prompt:
 - **Contradictions.** Where a card of the paper cannot hold together with a card of a paper already integrated, or with a hub's facts, link it `contradicts::` with the reason and list it in the progress note. The merging session logs it on the register (`ledger/` is shared).
 - **Links to other papers.** Typed links with reasons are welcome from its own cards to cards of papers already integrated. Never edit another paper's cards. Candidate links to papers in the same batch go in the progress note.
 - **Progress note.** After each section of the paper, append to `P012_progress.md`: the date, the section done, the last card id, and anything open (figures still to read, flags, questions for the user). A resumed agent starts with `python3 tools/mesh.py progress P012` and then reads the note.
-- **Finish** when `check P012` shows no errors and no warnings other than proposed concepts, and `scan P012` has nothing left to do. **Report back in at most ten lines:** cards by type, proposed concepts, flagged cards, `missing::` lines, figures read, and suggested links to other papers.
+- **Finish** when `check P012` shows no errors and no warnings other than proposed concepts and the `'cites:: ref N' lines are not linked yet` line (pending until the merge runs `cite`), and `scan P012` has nothing left to do. **Report back in at most ten lines:** cards by type, proposed concepts, flagged cards, `missing::` lines, figures read, and suggested links to other papers.
 
 ### While the agents run
 

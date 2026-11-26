@@ -2004,7 +2004,7 @@ rm -rf "$T/mk2"; cp -r "$T/mk" "$T/mk2"; rm -rf "$T/mk2/index/.scratch" "$T"/mk2
 python3 "$T/land.py" "$T/mk2" | grep "^user" | cmp -s - u0.txt && cmp -s "$T"/mk2/$S1/P001_annotations.json side1.json && pass "a second computer draws the same annotations from the side file" || { python3 "$T/land.py" "$T/mk2"; fail "annotations on a second computer"; }
 python3 "$T/annot.py" "$T/mk2" change; (cd "$T/mk2" && python3 tools/mesh.py build > b.txt 2>&1 || true); cp "$T"/mk2/$S1/P001_annotations.json $S1/; python3 tools/mesh.py build > b4.txt 2>&1 || true
 python3 "$T/land.py" . | grep "^user" > u4.txt; python3 "$T/land.py" "$T/mk2" | grep "^user" | cmp -s - u4.txt && [ "$(wc -l < u4.txt)" = 7 ] && ! grep -q "sticky note" u4.txt && grep -q "added on the second computer" u4.txt && pass "an annotation removed on one computer goes from the other, and one added there arrives, through the side file" || { cat u4.txt; fail "annotation changes travel"; }
-python3 "$T/annot.py" . stamp; python3 tools/mesh.py build | grep -q "marked PDFs rewritten for: none" && python3 "$T/land.py" . | grep -q "^user.*'Stamp'" && pass "an annotation of a kind that cannot be redrawn stays in the marked copy while the copy is current" || fail "stamp kept in a current copy"
+python3 "$T/annot.py" . stamp; python3 tools/mesh.py build > bst.txt; python3 "$T/land.py" . > lst.txt; grep -q "marked PDFs rewritten for: none" bst.txt && grep -q "^user.*'Stamp'" lst.txt && pass "an annotation of a kind that cannot be redrawn stays in the marked copy while the copy is current" || fail "stamp kept in a current copy"
 python3 tools/mesh.py mark --force > b5.txt 2>&1 || true
 grep -q "^note: P001_marked.pdf holds 1 annotation(s) of a kind that cannot be drawn again on a rebuilt copy (Stamp x1); the copy with them is kept at index/.scratch/kept/P001_marked-" b5.txt && ls index/.scratch/kept/P001_marked-*.pdf > /dev/null && [ "$(python3 "$T/land.py" . | grep -c '^user')" = 7 ] && pass "when that copy is rebuilt, the one holding the annotation is kept and the build says where" || { cat b5.txt; fail "unsupported annotation"; }
 python3 - > own.txt 2>&1 <<'PY'
@@ -2418,4 +2418,128 @@ python3 tools/mesh.py chronology > ch2.txt 2>&1
 ! grep -qE "P001-900 \([0-9]{4}, (absence|first)" ch2.txt && grep -q "Already settled as superseded" ch2.txt && pass "once settled, the claim leaves the list and is counted as superseded" || { cat ch2.txt; fail "superseded not settled"; }
 grep -q "supersedes" $S2/P002-900-*.md && pass "the newer card gains the inverse link" || { grep -n "" $S2/P002-900-*.md | tail -5; fail "inverse link"; }
 grep -q "Evidence published" concepts/swelling.md && pass "the hub says across what years its evidence was published" || { grep -A2 "Evidence:" concepts/swelling.md; fail "hub span"; }
+# 46. campaigns: competing discovery agents, blind scores, pairwise ranking, registered proofs of concept, meetings, the report (1.28.0)
+rm -rf "$T/cmp"; cp -r "$ROOT/demo-vault" "$T/cmp"; cd "$T/cmp"; python3 "$MESH" upgrade . > /dev/null; python3 tools/mesh.py build > /dev/null
+python3 tools/mesh.py campaign init "Heat and capacity" --scope topic:nonsense > out.txt 2>&1 && fail "campaign init took an unknown topic" || pass "campaign init refuses an unknown topic"
+python3 tools/mesh.py campaign init "Heat and capacity" --scope topic:binding-capacity --constraint "no field work" > out.txt
+CD=$(ls -d campaigns/*-heat-and-capacity); [ -f $CD/agents/sceptic/BRIEF.md ] && [ -f $CD/referee-brief.md ] && [ -f $CD/verifier-brief.md ] && grep -q "^- constraint:: no field work$" $CD/CAMPAIGN.md && grep -q "proposals/SCE-NN-<slug>.md" $CD/agents/sceptic/BRIEF.md && pass "campaign init writes the campaign, one brief per lens, and the referee and verifier briefs" || fail "campaign init"
+cat > $CD/proposals/REC-01-solvent-uptake-sets-the-loss.md <<'CARD'
+# Capacity loss on heating scales with solvent uptake, not temperature as such
+
+**Hypothesis.** The loss of [[binding-capacity]] on heating is proportional to the solvent the film takes up.
+**Mechanism.** Uptake swells the network and distorts the cavities.
+**Rests on.** [[K001]], [[X001]], [[P001-005]].
+**Novelty search.** PubMed and bioRxiv, 2026-11-26: three phrasings, nothing found.
+**Proof of concept.** Correlate capacity loss with reported uptake across the brain's films.
+**Decisive experiment.** Heat films in solvents of graded uptake at one temperature.
+**Impact if true.** Settles X001 and grades K001.
+**How it could be killed.** Equal loss in a solvent the film does not take up.
+
+## Codes
+- id:: REC-01
+- owner:: recombiner
+- round:: 1
+- status:: active
+- route:: resolve-contradiction
+- rests_on:: [[K001]], [[X001]], [[P001-005]]
+- novelty:: open — PubMed, bioRxiv, 2026-11-26
+- poc:: passed
+- reach:: in
+CARD
+cat > $CD/proposals/MEC-01-cavity-damage-needs-heat-alone.md <<'CARD'
+# Thermal cavity damage would show in acetonitrile too
+
+**Hypothesis.** If heat alone damages cavities, capacity falls in acetonitrile as in water.
+**Mechanism.** Chain mobility above a transition deforms cavities.
+**Rests on.** [[P002-005]].
+**Novelty search.** Not yet.
+**Proof of concept.** None yet.
+**Decisive experiment.** Heat in acetonitrile and measure capacity.
+**Impact if true.** Separates the two accounts of K001.
+**How it could be killed.** No loss in acetonitrile.
+
+## Codes
+- id:: MEC-01
+- owner:: mechanist
+- round:: 1
+- status:: active
+- route:: decisive-test
+- rests_on:: [[P002-005]]
+- builds_on:: REC-01 — uses its uptake framing
+- novelty:: unchecked
+- poc:: none
+- reach:: in
+CARD
+cat > $CD/proposals/SCE-01-equilibrium-assumption.md <<'CARD'
+# The 60-minute equilibrium assumption hides a slow binding phase
+
+**Hypothesis.** Binding is not at equilibrium at 60 minutes.
+**Mechanism.** Slow diffusion into thick films.
+**Rests on.** [[P001-009]].
+**Novelty search.** Not yet.
+**Proof of concept.** None.
+**Decisive experiment.** Time course to 24 hours.
+**Impact if true.** Every capacity value in the brain would be an underestimate.
+**How it could be killed.** A flat time course after 60 minutes.
+
+## Codes
+- id:: SCE-01
+- owner:: sceptic
+- round:: 1
+- status:: active
+- route:: overturn-assumption
+- rests_on:: [[P001-009]]
+- novelty:: unchecked
+- poc:: none
+- reach:: in
+CARD
+python3 tools/mesh.py campaign check > chk.txt; grep -q "REC-01: poc:: passed, but it was never registered" chk.txt && pass "check: a reported proof of concept must be registered" || { cat chk.txt; fail "poc unregistered"; }
+mkdir -p $CD/poc/REC-01; printf '**Prediction.** loss rises with uptake, r > 0.5.\n**Primary analysis.** Pearson r across films.\n**Threshold.** r > 0.5.\n' > $CD/poc/REC-01/PREREG.md
+python3 tools/mesh.py campaign poc register REC-01 > out.txt 2>&1 && fail "a preregistration without data and controls was sealed" || grep -q "lacks \*\*Data.\*\*, \*\*Controls.\*\*" out.txt && pass "a preregistration needs prediction, analysis, threshold, data and controls" || { cat out.txt; fail "prereg sections"; }
+printf '**Data.** the brain values.\n**Controls.** shuffled pairs.\n' >> $CD/poc/REC-01/PREREG.md
+python3 tools/mesh.py campaign poc register REC-01 | grep -q "preregistration sealed" && pass "poc register seals the preregistration" || fail "poc register"
+sleep 1; printf -- '- outcome:: passed\n\nr = 0.81 (n = 6), shuffled 95th percentile 0.42.\n' > $CD/poc/REC-01/result.md; printf 'From the cards P001-005 and P003-002.\n' > $CD/poc/REC-01/DATA.md
+python3 tools/mesh.py campaign poc verify REC-01 | grep -q "registered before the result, preregistration unchanged, outcome stated" && pass "poc verify: registered before the result" || fail "poc verify"
+python3 tools/mesh.py campaign check > chk.txt; grep -q "campaign check: 0 errors" chk.txt && pass "campaign check passes three well-formed proposals" || { cat chk.txt; fail "check clean"; }
+sed -i.bak 's/^\*\*Threshold.\*\* r > 0.5./**Threshold.** r > 0.3./' $CD/poc/REC-01/PREREG.md; rm $CD/poc/REC-01/PREREG.md.bak
+python3 tools/mesh.py campaign check | grep -q "REC-01: PREREG.md changed after registration" && pass "a preregistration edited after sealing is caught" || fail "prereg edit"
+sed -i.bak 's/^\*\*Threshold.\*\* r > 0.3./**Threshold.** r > 0.5./' $CD/poc/REC-01/PREREG.md; rm $CD/poc/REC-01/PREREG.md.bak
+python3 tools/mesh.py campaign score REC-01 --referee R1 --impact 6 --cogency 3 --realism 3 > out.txt 2>&1 && fail "a score of 6 was taken" || pass "scores run from 1 to 5"
+python3 tools/mesh.py campaign score REC-01 --referee R1 --impact 4 --cogency 4 --realism 4 --note "solid" > /dev/null
+python3 tools/mesh.py campaign score REC-01 --referee R2 --impact 5 --cogency 3 --realism 4 > /dev/null
+python3 tools/mesh.py campaign score REC-01 --referee verifier --impact 4 --cogency 4 --realism 5 --novelty open --note "searched" > /dev/null
+python3 tools/mesh.py campaign score MEC-01 --referee R1 --impact 3 --cogency 3 --realism 5 > /dev/null
+python3 tools/mesh.py campaign score MEC-01 --referee R2 --impact 3 --cogency 4 --realism 5 --novelty partly --note "close to P002" > /dev/null
+python3 tools/mesh.py campaign score SCE-01 --referee R1 --impact 2 --cogency 2 --realism 3 > /dev/null
+python3 tools/mesh.py campaign score SCE-01 --referee R2 --impact 2 --cogency 3 --realism 2 --gate "no stated mechanism evidence" > /dev/null
+python3 tools/mesh.py campaign compare REC-01 MEC-01 --winner REC-01 --referee R1 > /dev/null; python3 tools/mesh.py campaign compare REC-01 SCE-01 --winner REC-01 --referee R2 > /dev/null; python3 tools/mesh.py campaign compare MEC-01 SCE-01 --winner MEC-01 --referee R1 > /dev/null
+python3 tools/mesh.py campaign status > st.txt
+grep -q "| REC-01 .* | recombiner | active | 4 | 4 | 4 | open | passed | 1[0-9][0-9][0-9] | 3.6 | ok |" st.txt && pass "composite: medians, geometric mean, × 0.9 until the proof of concept is replicated" || { cat st.txt; fail "composite"; }
+grep -q "| MEC-01 .* | 3 | 3.5 | 5 | partly | none | .* | 2.25 | ok |" st.txt && pass "without a verifier the most cautious novelty verdict counts" || { cat st.txt; fail "novelty"; }
+grep -q "| SCE-01 .* | 0 | no stated mechanism evidence |" st.txt && pass "a failed gate makes the composite 0" || { cat st.txt; fail "gate"; }
+grep -q "recombiner: 3.6 · 0.56 · 0 · 4.16" st.txt && pass "credit: own composites plus a quarter of those that build on yours" || { cat st.txt; fail "credit"; }
+python3 tools/mesh.py campaign poc replicate REC-01 --ok --referee verifier --note "r = 0.80" > /dev/null; python3 tools/mesh.py campaign status | grep -q "| REC-01 .* | passed (replicated ok) | .* | 4 | ok |" && pass "a replicated proof of concept loses the 0.9" || fail "replicated"
+cat > $CD/downloads/REC-DL01-uptake-isotherms.md <<'CARD'
+# Swelling isotherms of the same film in five solvents
+
+**What it would settle.** Gives the uptake values REC-01 needs for its decisive test; bears on X001.
+
+## Codes
+- id:: REC-DL01
+- what:: doi:10.0000/example
+- kind:: paper
+- access:: open
+- licence:: CC BY
+- effort:: 2
+- solves:: [[X001]] — which solvent swells the film
+- for:: REC-01
+- by:: recombiner
+CARD
+python3 tools/mesh.py campaign check | grep -q "campaign check: 0 errors" && python3 tools/mesh.py campaign status | grep -q "REC-DL01 \[2.25\]" && pass "a download request is ranked by the value of the proposals it serves over its effort" || { python3 tools/mesh.py campaign status; fail "downloads"; }
+python3 tools/mesh.py campaign meeting 1 > mt.txt; grep -q "Cut: SCE-01. (proposed" mt.txt && [ -f $CD/meetings/round-1.md ] && pass "meeting 1 proposes cutting the bottom half" || { cat mt.txt; fail "meeting"; }
+python3 tools/mesh.py campaign meeting 1 --cut > /dev/null; grep -q "^- status:: cut$" $CD/proposals/SCE-01-*.md && grep -q "^- history:: .* round 1 cut — bottom half at meeting 1" $CD/proposals/SCE-01-*.md && grep -q "^## Assignments for round 2" $CD/meetings/round-1.md && pass "meeting --cut applies the cut and keeps the chair's sections" || fail "meeting cut"
+python3 tools/mesh.py campaign set MEC-01 killed --why "acetonitrile result already in P002" > /dev/null 2>&1 && fail "a kill without --by was taken" || pass "a kill must name the agent whose evidence killed it"
+python3 tools/mesh.py campaign set MEC-01 killed --why "acetonitrile result already in P002" --by sceptic > /dev/null && grep -q "^- killed_by:: sceptic" $CD/proposals/MEC-01-*.md && python3 tools/mesh.py campaign status | grep -q "sceptic: 0 · 0 · 1 · 1" && pass "a kill earns the killer a point" || fail "kill credit"
+python3 tools/mesh.py campaign close > out.txt; grep -q "^### 1. Capacity loss on heating scales with solvent uptake" $CD/REPORT.md && grep -q "REC-DL01" $CD/REPORT.md && grep -q "^- status:: closed$" $CD/CAMPAIGN.md && pass "close writes the slate with downloads and closes the campaign" || { cat $CD/REPORT.md; fail "close"; }
+python3 tools/mesh.py build > build.txt; grep -q "check: 0 errors" build.txt && pass "a vault with a campaign folder builds clean" || { cat build.txt; fail "build with campaign"; }
 echo "ALL TESTS PASSED"

@@ -2,9 +2,11 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
-## 1.28.0 (2026-11-24)
+## 1.29.0 (2026-11-26)
 
 **Knowledge has a date: the brain stops asserting what was only true when it was written.**
+
+(Branched at 1.27.0 as 1.28.0, and renumbered when discovery campaigns reached main first under that number. A vault upgraded to main's 1.28.0 lost the `chronology` command and the `superseded_by`, `supersedes`, `asof` and `chronology_checked` keys while its cards kept those lines; upgrading to 1.29.0 restores them.)
 
 A claim that no structure exists, that something has never been measured, or that a paper is the first of its kind is true as of its source's year and no later. The brain stored all of it flatly, so it went on asserting absences the field had since filled. Three of the vault this was built for turned out to be answered already, two of them by papers published within three years of the question.
 
@@ -17,6 +19,16 @@ A claim that no structure exists, that something has never been measured, or tha
 - **A card resting on a settled claim is warned about**, until `- chronology_checked:: <card> — <what changed>` records that it was reviewed. Settling a dated claim says the brain no longer asserts it; a finding that cites it as support does not stop resting on it by itself. This mirrors the retraction-dependants check, which exists for the same reason.
 - **The synthesis layer has a date too.** `chronology` lists the findings, tensions, gaps and hypotheses whose newest evidence predates a source since read that bears on the same concepts. Not stale by itself — the newer source may say nothing about it — but not yet read against it either.
 - Tests section 45.
+
+## 1.28.0 (2026-11-26)
+
+**Discovery campaigns: competing agents, hourly meetings, blind referees, registered proofs of concept.**
+
+- **New document `brain-mesh-campaign`.** Three to five discovery agents, one lens each (recombiner, mechanist, sceptic, transferer, datascout), compete for proposals that score highest on impact, cogency and realism, and share everything else. A chair runs rounds of about 50 minutes and a meeting after each: fresh blind referees and a verifier score, the bottom half is cut (successive halving), merges and kills are recorded, a digest of the shared notes and new assignments go back to the agents. Agents write only in the campaign folder; the user gets one slate at the end and decides what enters the brain (`- miner:: campaign`).
+- **`mesh.py campaign`**: `init` (campaign folder, one brief per lens, referee and verifier briefs, the user's constraints), `status`, `check` (proposal format, ids and owners, links to real cards, registrations, outcomes, download requests), `score` (1 to 5 on each axis, novelty, gates), `compare` (pairwise preferences, fitted by Bradley-Terry), `set` (merged, killed with the killer named, withdrawn, cut, final), `poc register|verify|replicate` (a preregistration sealed by its checksum before the code runs; result after registration; the verifier's rerun), `meeting <n> [--cut]` and `close` (REPORT.md: the slate, informative nulls, download requests by value over effort, scoreboard, credit).
+- **Scoring.** Composite = geometric mean of the three medians × novelty (open 1, unchecked 0.8, partly 0.6, answered 0) × 0.9 until a reported proof of concept is replicated; a failed gate gives 0. Credit: own live composites, a quarter of those that build on an agent's work, one per evidenced kill.
+- **Download requests** carry what they would settle, the brain needs they bear on and the proposals that need them, and are ranked by value over effort.
+- **Checksums ignore line endings for text data files.** A supplementary CSV registered with CRLF endings came back from a clone with LF (the vault's `.gitattributes` keeps text in LF), and `check` called it changed; the original bytes and the file with its line ends converted now both match.
 
 ## 1.27.0 (2026-11-24)
 

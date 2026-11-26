@@ -5,6 +5,12 @@ description: "Add a paper, PDF, preprint, thesis or own result to a brain mesh a
 
 # Brain mesh: add a source
 
+> **Mark what has a shelf life as you card it.** Where the paper says no structure exists, that something has never
+> been measured, that it is the first to do something, or what was then out of reach, that claim is true as of this
+> paper's year only. Card it in the paper's own terms, then check it against the sources already in the brain: where a
+> newer one has overtaken it, add `- superseded_by:: [[card]] — <what changed>`. Never log that as a contradiction.
+> Where the paper reports an earlier state of play rather than its own, add `- asof:: <year>`.
+
 Read `brain-mesh` and its FORMATS.md first; this skill assumes their card formats, ids and link types. Find the vault and run `python3 tools/mesh.py build` so the index is current. If there is no vault, use `brain-mesh-setup`.
 
 Work through the steps in order for one source at a time. With several papers, finish steps 1 to 7 for one and integrate it before starting the next, so that later papers link to earlier ones. With more than about five papers to add, read `brain-mesh-batch`: extraction then runs in parallel agents.

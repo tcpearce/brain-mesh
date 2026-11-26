@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, bisect, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.28.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.29.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -50,7 +50,7 @@ MINED = re.compile(r"([a-z]+:\S+) \| (\d{4}-\d\d-\d\d) \| ([-\d.]+) \| ?(.*)")  
 GRADED = "KXGHTAV"    # cards that keep a graded:: history of their status
 MINERS = ["contradictions", "bridges", "moderators", "definitions", "transfer", "implied", "constraints", "genealogy", "assumptions", "oddities", "theories", "analogies", "links",
           "unify", "tools", "mechanism", "recognised", "cornerstones", "bottlenecks", "ceilings", "data", "limits"]  # the last nine read the lens (1.21.0)
-SEED_ROUTES = MINERS + ["inversion", "red-team", "levels", "lens", "import", "application", "manual"]  # how a seed arose: a miner, or a pass Claude runs by reading
+SEED_ROUTES = MINERS + ["inversion", "red-team", "levels", "lens", "import", "application", "campaign", "manual"]  # how a seed arose: a miner, or a pass Claude runs by reading
 GAP_KINDS = ["untested-region", "unreplicated", "unresolved-tension", "unexplained", "untested-assumption", "unvalidated-model", "unmeasured", "open-question", "method", "scope"]
 CONCEPT_KINDS = ["entity", "variable", "count", "technique", "concept"]  # count: a variable that only counts items (sample-size), never compared across cards
 CONCEPT_RELS = ["broader", "part_of", "measured_by", "affects", "related"]
@@ -280,6 +280,16 @@ def sha(path):
     with open(path, "rb") as f:
         for chunk in iter(lambda: f.read(1 << 20), b""): h.update(chunk)
     return h.hexdigest()
+TEXT_DATA = (".csv", ".tsv", ".txt", ".json", ".xml", ".dat", ".tab", ".md", ".r", ".py", ".m")
+def sha_eol(path):
+    """The checksums a registered file may show and still be unchanged: as it is and, for a text data file, with its line
+    endings converted either way. The vault's .gitattributes keeps text in LF, so a file registered with CRLF endings comes
+    back from a clone differing only in its line ends."""
+    out = {sha(path)}
+    if path.lower().endswith(TEXT_DATA) and os.path.getsize(path) < 300 << 20:
+        with open(path, "rb") as f: b = f.read()
+        lf = b.replace(b"\r\n", b"\n"); out |= {hashlib.sha256(lf).hexdigest(), hashlib.sha256(lf.replace(b"\n", b"\r\n")).hexdigest()}
+    return out
 def checksums(root):  # ledger/checksums.txt: one "<file name> <sha256> <date>" line per registered source file
     p = J(root, "ledger", "checksums.txt")
     return {l.split()[0]: l.split()[1] for l in rd(p).splitlines() if len(l.split()) >= 2 and not l.startswith("#")} if os.path.exists(p) else {}
@@ -1203,7 +1213,7 @@ class Mesh:
                 for f in files:
                     rec = s.sums().get(os.path.basename(f))
                     if not rec: W.append(f"{i}: no checksum recorded for {os.path.basename(f)}; run `mesh.py seal {i}`")
-                    elif rec != sha(f): E.append(f"{i}: {os.path.basename(f)} has changed since it was registered. The source is the ground truth; restore the original file")
+                    elif rec not in sha_eol(f): E.append(f"{i}: {os.path.basename(f)} has changed since it was registered. The source is the ground truth; restore the original file")
                 if "<!--AUTO:START" not in c.raw: W.append(f"{i}: no AUTO block, so its card list cannot be maintained")
                 if not s.evidence(i): W.append(f"{i}: no evidence cards yet")
             elif c.fam == "claims":
@@ -9237,6 +9247,490 @@ def cmd_theories(m):
     print("A row of E's decides nothing; a row with E and C separates theories; a row of dots is a finding no theory has been judged against.")
 
 
+# ---------- discovery campaigns: competing agents, hourly meetings, blind referees (brain-mesh-campaign) ----------
+LENSES = {  # name: (id prefix, what it looks for, miners to start from, routes to start from)
+    "recombiner": ("REC", "what follows from recombining what is published: contradictions, hidden moderators, literatures that never meet, numbers that can be pooled",
+                   ["contradictions", "moderators", "bridges", "constraints", "definitions", "unify"], ["resolve-contradiction", "joining-literatures", "pooling", "framework", "unification"]),
+    "mechanist": ("MEC", "mechanisms and decisive tests: chains of effects nobody has tested, theories nothing separates, models that could be beaten",
+                  ["implied", "mechanism", "theories", "analogies", "ceilings"], ["mechanism", "decisive-test", "concept-transfer", "new-model"]),
+    "sceptic": ("SCE", "what the brain takes on trust: load-bearing assumptions, single-group cornerstones, unexplained oddities, much-cited claims never read",
+                ["assumptions", "cornerstones", "oddities", "genealogy", "limits"], ["overturn-assumption", "replication", "new-phenomenon", "existence-proof"]),
+    "transferer": ("TRA", "carrying results and tools across: untried species, preparations and levels; tools other fields use for the same problem",
+                   ["transfer", "tools", "analogies", "bottlenecks"], ["extension", "tool-transfer", "concept-transfer", "new-method"]),
+    "datascout": ("DAT", "what open data can answer today: data sets analysed once, pooled values, regularities that only show at scale",
+                  ["data", "constraints", "ceilings", "recognised"], ["scale", "new-resource", "new-model", "pooling"]),
+}
+NOVELTY_FACTOR = {"open": 1.0, "unchecked": 0.8, "partly": 0.6, "answered": 0.0}
+DP_STATUS = ["active", "final", "merged", "killed", "withdrawn", "cut"]
+DP_LIVE = ("active", "final")
+POC_STATUS = ["none", "planned", "registered", "passed", "failed", "inconclusive"]
+DP_SECTIONS = ["Hypothesis", "Mechanism", "Rests on", "Novelty search", "Proof of concept", "Decisive experiment", "Impact if true", "How it could be killed"]
+PREREG_SECTIONS = ["Prediction", "Primary analysis", "Threshold", "Data", "Controls"]
+DP_REACH = ["in", "partner", "unclear", "out"]  # reach:: on a campaign proposal
+
+
+def camp_codes(t):
+    """Codes of a campaign file: {key: [values]}, from the lines '- key:: value' below '## Codes' (or anywhere if there is none)."""
+    out, body = defaultdict(list), t.split("## Codes", 1)[1] if "## Codes" in t else t
+    for k, v in re.findall(r"^- ([a-z0-9_]+):: ?(.*)$", body, re.M): out[k].append(v.strip())
+    return out
+
+
+def camp_dir(m, name=None):
+    base = J(m.root, "campaigns")
+    if name:
+        d = J(base, name)
+        if os.path.isdir(d): return d
+        hit = sorted(x for x in glob.glob(J(base, "*" + name + "*")) if os.path.isdir(x))
+        if len(hit) == 1: return hit[0]
+        sys.exit(f"campaign: no single campaign matches '{name}'" + (f": {', '.join(os.path.basename(h) for h in hit)}" if hit else ""))
+    live = [d for d in sorted(glob.glob(J(base, "*"))) if os.path.exists(J(d, "CAMPAIGN.md")) and "running" in camp_codes(rd(J(d, "CAMPAIGN.md"))).get("status", [""])[0]]
+    if not live: sys.exit("campaign: no running campaign; start one with `mesh.py campaign init <name> --scope topic:<slug>`")
+    return live[-1]
+
+
+def camp_conf(cd):
+    c = camp_codes(rd(J(cd, "CAMPAIGN.md")))
+    return {"slug": os.path.basename(cd), "scope": (c.get("scope") or [""])[0], "agents": [a.strip() for a in (c.get("agents") or [""])[0].split(",") if a.strip()],
+            "rounds": int((c.get("rounds") or ["3"])[0]), "minutes": int((c.get("minutes") or ["50"])[0]), "status": (c.get("status") or [""])[0], "constraints": c.get("constraint", [])}
+
+
+def camp_tsv(p, cols):
+    if not os.path.exists(p): return []
+    rows = [l.split("\t") for l in rd(p).splitlines()[1:] if l.strip()]
+    return [dict(zip(cols, r + [""] * (len(cols) - len(r)))) for r in rows]
+
+
+def camp_append(p, cols, row):
+    new = not os.path.exists(p)
+    with open(p, "a", encoding="utf-8", newline="\n") as f:
+        if new: f.write("\t".join(cols) + "\n")
+        f.write("\t".join(str(row.get(c, "")).replace("\t", " ").replace("\n", " ") for c in cols) + "\n")
+
+
+SCORE_COLS = ["time", "round", "referee", "pid", "impact", "cogency", "realism", "novelty", "gate", "note"]
+PAIR_COLS = ["time", "round", "referee", "winner", "loser", "note"]
+REPL_COLS = ["time", "round", "referee", "pid", "result", "note"]
+
+
+def camp_props(cd):
+    """Every proposal in the campaign: id, file, title, owner, status, round, poc, novelty claim, reach, links, sections."""
+    out = {}
+    for f in sorted(glob.glob(J(cd, "proposals", "*.md"))):
+        t = rd(f); c = camp_codes(t); pid = (c.get("id") or [os.path.basename(f)[:6]])[0]
+        title = next((l[2:].strip() for l in t.splitlines() if l.startswith("# ")), pid)
+        g = lambda k, d="": (c.get(k) or [d])[0]
+        out[pid] = {"id": pid, "file": f, "title": title, "text": t, "codes": c, "owner": g("owner"), "status": g("status", "active").split()[0] if g("status", "active") else "active",
+                    "round": int(re.sub(r"\D", "", g("round", "1")) or 1), "poc": g("poc", "none").split()[0] if g("poc", "none") else "none",
+                    "novelty": g("novelty", "unchecked").split()[0] if g("novelty", "unchecked") else "unchecked", "reach": g("reach", "unclear").split()[0] if g("reach", "unclear") else "unclear",
+                    "sections": [s_ for s_ in DP_SECTIONS if re.search(r"^\*\*" + re.escape(s_) + r"\.\*\*", t, re.M)]}
+    return out
+
+
+def camp_round(cd): return len(glob.glob(J(cd, "meetings", "round-*.md"))) + 1
+
+
+def bradley_terry(pairs, iters=300):
+    """Ratings from pairwise verdicts [(winner, loser)], on an Elo-like scale (1000 = average), by the MM algorithm with half a win of prior."""
+    items = sorted({x for p in pairs for x in p})
+    if not items: return {}
+    wins, n, s = Counter(w_ for w_, _l in pairs), Counter(frozenset(p) for p in pairs if p[0] != p[1]), {i: 1.0 for i in items}
+    for _ in range(iters):
+        new = {}
+        for i in items:
+            den = sum(cnt / (s[i] + s[j]) for pr, cnt in n.items() if i in pr for j in pr if j != i)
+            new[i] = (wins[i] + 0.5) / den if den else s[i]
+        g = math.exp(sum(math.log(v) for v in new.values()) / len(new)); s = {i: v / g for i, v in new.items()}
+    return {i: round(1000 + 400 * math.log10(v)) for i, v in s.items()}
+
+
+def camp_board(cd):
+    """The scoreboard: for every proposal the medians of its latest round of referee scores, novelty, gates, replication and the composite."""
+    props, med = camp_props(cd), lambda xs: sorted(xs)[len(xs) // 2] if len(xs) % 2 else (sorted(xs)[len(xs) // 2 - 1] + sorted(xs)[len(xs) // 2]) / 2
+    scores, repl = camp_tsv(J(cd, "scores.tsv"), SCORE_COLS), camp_tsv(J(cd, "replications.tsv"), REPL_COLS)
+    bt = bradley_terry([(r["winner"], r["loser"]) for r in camp_tsv(J(cd, "pairs.tsv"), PAIR_COLS)])
+    board = {}
+    for pid, p in props.items():
+        rs = [r for r in scores if r["pid"] == pid]
+        b = {"scored": bool(rs), "I": None, "C": None, "R": None, "novelty": p["novelty"] if p["novelty"] in NOVELTY_FACTOR else "unchecked", "gates": [], "repl": None, "composite": 0.0, "bt": bt.get(pid), "referees": 0}
+        if rs:
+            last = max(int(r["round"] or 0) for r in rs); rs = [r for r in rs if int(r["round"] or 0) == last]
+            b.update(I=med([int(r["impact"]) for r in rs]), C=med([int(r["cogency"]) for r in rs]), R=med([int(r["realism"]) for r in rs]), referees=len({r["referee"] for r in rs}), round=last)
+            ver = [r["novelty"] for r in rs if r["referee"] == "verifier" and r["novelty"] in NOVELTY_FACTOR]
+            votes = Counter(r["novelty"] for r in rs if r["novelty"] in NOVELTY_FACTOR)
+            b["novelty"] = ver[-1] if ver else (min(votes, key=lambda k: (NOVELTY_FACTOR[k], k)) if votes else b["novelty"])  # without a verifier, the most cautious verdict
+            b["gates"] = sorted({r["gate"] for r in rs if r["gate"] and r["gate"] != "ok"})
+        rp = [r for r in repl if r["pid"] == pid]
+        if rp: b["repl"] = rp[-1]["result"]
+        if b["repl"] == "failed": b["gates"].append("proof of concept not reproduced")
+        if p["poc"] in ("passed", "failed", "inconclusive"):
+            reg, pre_ = J(cd, "poc", pid, "REGISTERED"), J(cd, "poc", pid, "PREREG.md")
+            if not os.path.exists(reg): b["gates"].append("proof of concept reported but never registered")
+            elif not os.path.exists(pre_) or camp_codes(rd(reg)).get("sha256", [""])[0] != sha(pre_): b["gates"].append("preregistration changed after registration")
+        if rs and not b["gates"]:
+            rep = 1.0 if b["repl"] == "ok" or p["poc"] in ("none", "planned", "registered") else 0.9
+            b["composite"] = round((max(b["I"], 0) * max(b["C"], 0) * max(b["R"], 0)) ** (1 / 3) * NOVELTY_FACTOR[b["novelty"]] * rep, 2)
+        board[pid] = b
+    return props, board
+
+
+def camp_credit(props, board):
+    """Credit by agent: its live proposals' composites, a quarter of the composite of others' live proposals that build on its work, one per kill."""
+    own, assist, kills = Counter(), Counter(), Counter()
+    owner_of = {pid: p["owner"] for pid, p in props.items()}
+    for pid, p in props.items():
+        live = p["status"] in DP_LIVE
+        if live: own[p["owner"]] += board[pid]["composite"]
+        for v in p["codes"].get("builds_on", []):
+            for t in re.findall(r"\b([A-Z]{3}-\d{2})\b|notes:([a-z]+)", v):
+                who = owner_of.get(t[0]) if t[0] else t[1]
+                if live and who and who != p["owner"]: assist[who] += 0.25 * board[pid]["composite"]
+        if p["status"] == "killed":
+            by = (p["codes"].get("killed_by") or [""])[0].split(" ")[0]
+            if by: kills[by] += 1
+    agents = sorted(set(own) | set(assist) | set(kills) | {p["owner"] for p in props.values()})
+    return {a: (round(own[a], 2), round(assist[a], 2), kills[a], round(own[a] + assist[a] + kills[a], 2)) for a in agents if a}
+
+
+def camp_downloads(cd, props, board):
+    """Download requests ranked by value of information over effort: the composites of the live proposals that need it, plus half a point per brain need it bears on."""
+    out = []
+    for f in sorted(glob.glob(J(cd, "downloads", "*.md"))):
+        t = rd(f); c = camp_codes(t); g = lambda k, d="": (c.get(k) or [d])[0]
+        fors = re.findall(r"\b[A-Z]{3}-\d{2}\b", " ".join(c.get("for", [])))
+        solves = re.findall(r"\[\[([^\]|#]+)", " ".join(c.get("solves", [])))
+        eff = int(re.sub(r"\D", "", g("effort", "3")) or 3)
+        val = sum(board[p]["composite"] for p in fors if p in board and props[p]["status"] in DP_LIVE) + 0.5 * len(solves)
+        out.append({"id": g("id", os.path.basename(f)[:9]), "file": f, "title": next((l[2:].strip() for l in t.splitlines() if l.startswith("# ")), ""), "what": g("what"), "kind": g("kind"),
+                    "access": g("access", "unknown"), "effort": eff, "for": fors, "solves": solves, "value": round(val, 2), "rank": round(val / max(eff, 1), 2), "by": g("by")})
+    return sorted(out, key=lambda d: (-d["rank"], d["id"]))
+
+
+def camp_board_lines(cd, props, board, live_only=False):
+    rows = sorted(props.values(), key=lambda p: (p["status"] not in DP_LIVE, -board[p["id"]]["composite"], -(board[p["id"]]["bt"] or 0), p["id"]))
+    L = ["| Proposal | Owner | Status | I | C | R | Novelty | PoC | Pairwise | Composite | Gates |", "|---|---|---|---|---|---|---|---|---|---|---|"]
+    for p in rows:
+        if live_only and p["status"] not in DP_LIVE: continue
+        b = board[p["id"]]; f = lambda x: "–" if x is None else f"{x:g}"
+        poc = p["poc"] + (f" (replicated {b['repl']})" if b["repl"] else "")
+        L.append(f"| [[{os.path.basename(p['file'])[:-3]}\\|{p['id']}]] {one(p['title'], 70)} | {p['owner']} | {p['status']} | {f(b['I'])} | {f(b['C'])} | {f(b['R'])} | {b['novelty']} | {poc} | {b['bt'] or '–'} | {b['composite']:g}{'' if b['scored'] else ' (unscored)'} | {'; '.join(b['gates']) or 'ok'} |")
+    return L
+
+
+def camp_brief(conf, lens, cd_rel):
+    pre, what, miners, routes = LENSES[lens]
+    scope, mins = conf["scope"], conf["minutes"]
+    return f"""# Brief: the {lens} agent
+
+You are one of {len(conf['agents'])} discovery agents in the campaign `{conf['slug']}` on this brain mesh vault, scope `{scope}`.
+Your lens: **{what}**. The other agents look elsewhere; stay on your lens unless a meeting reassigns you.
+
+Read first: `.brain-mesh/skills/brain-mesh-campaign/SKILL.md`, section **For discovery agents** (the rules, the proposal and
+preregistration formats, data access, novelty, download requests), and `.brain-mesh/skills/brain-mesh-discover/SKILL.md`
+rule 2 (every proposal must agree with every fact and piece of evidence that bears on it, unless a logged contradiction frees it).
+Campaign context, constraints and rubric: `{cd_rel}/CAMPAIGN.md`.
+
+## Where to start
+- `python3 tools/mesh.py zoom {scope}` and `python3 tools/mesh.py routes {scope} --route <route>` for: {', '.join(routes)}
+- `python3 tools/mesh.py discover {' '.join(miners)} --focus {scope}`
+- Then `zoom <id>`, `facts <concept>`, `outside <need>` (the brief only: never `outside add`), `ask "<question>"`, and the cards and pages themselves.
+
+## What you may write
+Only: `{cd_rel}/agents/{lens}/notes.md`, `{cd_rel}/proposals/{pre}-NN-<slug>.md`, `{cd_rel}/poc/{pre}-NN/` and
+`{cd_rel}/downloads/{pre}-DLNN-<slug>.md`. Nothing else in the vault: no cards, no `build`, `sync`, `outside add`, `report`,
+`propose`, `priority`, `profile`, `dismiss`, `--explored` or `--record`. Number your proposals {pre}-01, {pre}-02, … and never reuse a number.
+
+## Each round
+1. Your round lasts about {mins} minutes; the deadline is in the message that starts it. Run `date -u` between steps. Ten
+   minutes before the deadline, stop exploring and write up.
+2. Round 1: up to five proposals, each with its novelty search done. Later rounds: deepen your survivors (a registered
+   proof of concept under an hour, a sharper decisive experiment), answer the referees, merge or build on others' work,
+   attack proposals you think are wrong, or start a new one if the meeting asked you to.
+3. Register a proof of concept before running it: write `poc/<id>/PREREG.md`, then `python3 tools/mesh.py campaign poc register <id>`.
+4. Write everything worth sharing in `notes.md` under `## Round <n>`: searches run and what came back, data sets found and
+   how to reach them, dead ends, null results, facts found outside the brain. Information is shared; only proposals compete.
+   A proposal cannot score on anything you did not share at a meeting before it is scored.
+5. Run `python3 tools/mesh.py campaign check` and fix what it reports in your own files.
+6. Return a round report of at most 300 words: your live proposals and what changed in each, proofs of concept and their
+   outcomes, download requests, what you shared, and what you would do next round.
+"""
+
+
+def camp_referee_brief(conf, cd_rel):
+    return f"""# Brief: referee
+
+You score the proposals of campaign `{conf['slug']}` blind: judge the proposal file, not who wrote it, and ignore the
+`owner::` line. Read `.brain-mesh/skills/brain-mesh-campaign/SKILL.md`, section **Scoring** (the three axes with their
+anchors, the gates, novelty) and `{cd_rel}/CAMPAIGN.md` (scope, the user's constraints).
+
+For each proposal that is active and was changed or created since it was last scored (`python3 tools/mesh.py campaign status`):
+1. Open the proposal and the cards it rests on (`zoom <id>`, `facts <concept>`); open the PDF page for anything a score turns on.
+2. Check the gates: every claim traces to a card or a cited outside source; no clash with a fact or piece of evidence that no
+   logged contradiction frees; a stated way to kill it; a reported proof of concept that is registered.
+3. Score: `python3 tools/mesh.py campaign score <id> --referee <your name> --impact n --cogency n --realism n --gate ok|"<failed gate>" --note "<one line: the main reason>"`.
+   Leave `--novelty` to the verifier unless you found prior art yourself (then `--novelty partly|answered` and name it in the note).
+4. Then compare the live proposals in pairs, best guesses first, at most ten pairs:
+   `python3 tools/mesh.py campaign compare <A> <B> --winner <A|B> --referee <your name> --note "<why>"`: which would you rather the user pursued?
+5. Write nothing else. Return at most 200 words: the scores, and for the top three the one thing that would raise each.
+"""
+
+
+def camp_verifier_brief(conf, cd_rel):
+    return f"""# Brief: verifier (novelty auditor and replicator)
+
+You check the proposals of campaign `{conf['slug']}`; you do not compete. Read `.brain-mesh/skills/brain-mesh-campaign/SKILL.md`,
+sections **Novelty** and **Proofs of concept**.
+
+1. **Novelty.** For each active proposal not yet audited, or changed since: try to find prior art, adversarially. Search with
+   different phrasings from the agent's (at least three), PubMed and bioRxiv where the session has them, then the web, and the
+   papers citing its key sources. Record: `python3 tools/mesh.py campaign score <id> --referee verifier --impact n --cogency n --realism n --novelty open|partly|answered --gate ok --note "<where searched; what was found, with DOIs>"`
+   (give your own I, C and R too). Prior art goes in the note with its DOI.
+2. **Replication.** For each proof of concept reported passed, failed or inconclusive and not yet replicated: check
+   `python3 tools/mesh.py campaign poc verify <id>`, then rerun its code from a clean copy of `poc/<id>` (fetch the data afresh).
+   Record: `python3 tools/mesh.py campaign poc replicate <id> --ok|--failed --referee verifier --note "<numbers you got>"`.
+   Failed means the primary result does not come out within its stated tolerance, or the analysis departs from the preregistration.
+3. Write nothing else. Return at most 200 words.
+"""
+
+
+def cmd_campaign(m, args):
+    sub, rest = (args[0], args[1:]) if args else ("status", [])
+    opts, pos, it = {}, [], iter(rest)
+    for a in it:
+        if a.startswith("--"):
+            if a in ("--ok", "--failed", "--cut", "--force"): opts[a] = True
+            else: opts.setdefault(a, []).append(next(it, ""))
+        else: pos.append(a)
+    o = lambda k, d=None: (opts.get(k) or [d])[-1]
+    if sub == "init": return camp_init(m, pos, opts, o)
+    cd = camp_dir(m, o("--campaign"))
+    conf, rnd = camp_conf(cd), camp_round(cd)
+    if sub == "status": return camp_status(m, cd, conf)
+    if sub == "check": return camp_check(m, cd, conf)
+    if sub == "score":
+        if not pos: sys.exit("campaign score <id> --referee <name> --impact n --cogency n --realism n [--novelty v] [--gate ok|reason] [--note text]")
+        props = camp_props(cd)
+        if pos[0] not in props: sys.exit(f"campaign score: no proposal {pos[0]}")
+        row = {"time": datetime.datetime.now().isoformat(timespec="minutes"), "round": o("--round", str(rnd)), "referee": o("--referee"), "pid": pos[0], "note": o("--note", "")}
+        if not row["referee"]: sys.exit("campaign score: give --referee <name>")
+        for k in ("impact", "cogency", "realism"):
+            v = o("--" + k)
+            if not v or not v.isdigit() or not 1 <= int(v) <= 5: sys.exit(f"campaign score: --{k} must be a whole number from 1 to 5")
+            row[k] = v
+        row["novelty"] = o("--novelty", "")
+        if row["novelty"] and row["novelty"] not in NOVELTY_FACTOR: sys.exit(f"campaign score: --novelty is one of {', '.join(NOVELTY_FACTOR)}")
+        row["gate"] = o("--gate", "ok")
+        camp_append(J(cd, "scores.tsv"), SCORE_COLS, row); print(f"scored {pos[0]} for round {row['round']} by {row['referee']}")
+    elif sub == "compare":
+        if len(pos) < 2 or o("--winner") not in pos[:2] or not o("--referee"): sys.exit("campaign compare <A> <B> --winner <A|B> --referee <name> [--note why]")
+        props = camp_props(cd)
+        for x in pos[:2]:
+            if x not in props: sys.exit(f"campaign compare: no proposal {x}")
+        w_ = o("--winner"); l_ = pos[1] if w_ == pos[0] else pos[0]
+        camp_append(J(cd, "pairs.tsv"), PAIR_COLS, {"time": datetime.datetime.now().isoformat(timespec="minutes"), "round": str(rnd), "referee": o("--referee"), "winner": w_, "loser": l_, "note": o("--note", "")})
+        print(f"{w_} preferred to {l_}")
+    elif sub == "set":
+        if len(pos) < 2 or pos[1] not in DP_STATUS or not o("--why"): sys.exit(f"campaign set <id> <{'|'.join(DP_STATUS)}> --why \"<reason>\" [--by <agent>] [--into <id>]")
+        props = camp_props(cd)
+        if pos[0] not in props: sys.exit(f"campaign set: no proposal {pos[0]}")
+        if pos[1] == "killed" and not o("--by"): sys.exit("campaign set: a kill names the agent whose evidence killed it (--by)")
+        if pos[1] == "merged" and o("--into") not in props: sys.exit("campaign set: a merge names the proposal it went into (--into)")
+        camp_set(props[pos[0]], pos[1], o("--why"), o("--by"), o("--into"), rnd); print(f"{pos[0]}: {pos[1]}")
+    elif sub == "poc": return camp_poc(m, cd, pos, opts, o, rnd)
+    elif sub == "meeting": return camp_meeting(m, cd, conf, int(pos[0]) if pos and pos[0].isdigit() else rnd, opts)
+    elif sub == "close": return camp_close(m, cd, conf)
+    else: sys.exit("campaign: init | status | check | score | compare | set | poc register|verify|replicate | meeting [n] [--cut] | close")
+
+
+def camp_set(p, status, why, by=None, into=None, rnd=1):
+    t = rd(p["file"])
+    t = re.sub(r"^- status:: .*$", f"- status:: {status}", t, count=1, flags=re.M) if re.search(r"^- status:: ", t, re.M) else t.rstrip("\n") + f"\n- status:: {status}\n"
+    extra = ([f"- killed_by:: {by} — {why}"] if status == "killed" else []) + ([f"- merged_into:: {into} — {why}"] if status == "merged" else [])
+    wr(p["file"], t.rstrip("\n") + "\n" + "\n".join(extra + [f"- history:: {TODAY} round {rnd} {status} — {why}"]) + "\n")
+
+
+def camp_init(m, pos, opts, o):
+    if not pos or not o("--scope"): sys.exit("campaign init <name> --scope <topic:slug|concept|id> [--agents recombiner,mechanist,sceptic] [--rounds 3] [--minutes 50] [--constraint \"<what the user has ruled out>\"]")
+    scope = o("--scope")
+    if scope.startswith("topic:"):
+        if scope[6:] not in topics(m)[0]: sys.exit(f"campaign init: no topic '{scope}' (`mesh.py zoom` lists them)")
+    else: scope = need(m, scope).id
+    agents = [a.strip() for a in o("--agents", "recombiner,mechanist,sceptic").split(",") if a.strip()]
+    bad = [a for a in agents if a not in LENSES]
+    if bad or len(agents) < 2: sys.exit(f"campaign init: agents are two or more of {', '.join(LENSES)}")
+    slug_ = f"{TODAY}-" + (re.sub(r"[^a-z0-9]+", "-", pos[0].lower()).strip("-") or "campaign"); cd = J(m.root, "campaigns", slug_)
+    if os.path.exists(cd): sys.exit(f"campaign init: {slug_} exists")
+    rounds, mins = int(o("--rounds", "3")), int(o("--minutes", "50"))
+    for d in ["proposals", "poc", "downloads", "meetings"] + [J("agents", a) for a in agents]: os.makedirs(J(cd, d), exist_ok=True)
+    cons = opts.get("--constraint", [])
+    P = research_profile(m)
+    wr(J(cd, "CAMPAIGN.md"), f"""# Campaign: {pos[0]}
+
+**What it is.** {len(agents)} discovery agents compete, one lens each, for proposals that score highest on impact, cogency and
+realism; they meet every hour to compare notes and resume. Nothing here is evidence and nothing enters the brain until the user
+accepts it (brain-mesh-campaign).
+
+**Scope.** `{scope}`. The user's focus (MAP.md) ranks first inside it.
+
+**The user's constraints.** {'; '.join(cons) if cons else 'none stated beyond the research profile'}. {'The research profile (PROFILE.md) decides reach.' if P else 'There is no research profile yet: judge reach from these constraints, and mark it unclear where they do not decide.'}
+
+**Rubric.** Impact, cogency and realism, 1 to 5 each, with the anchors in brain-mesh-campaign **Scoring**. Composite = geometric
+mean of the three × novelty (open 1, unchecked 0.8, partly 0.6, answered 0) × 0.9 while a reported proof of concept is not yet
+replicated; any failed gate makes it 0. Three referees' medians; pairwise preferences give a second, steadier ranking.
+
+**Schedule.** {rounds} rounds of about {mins} minutes, a meeting after each; successive halving cuts the bottom half of the
+live proposals at every meeting but the last.
+
+## Codes
+- slug:: {slug_}
+- scope:: {scope}
+- agents:: {', '.join(agents)}
+- rounds:: {rounds}
+- minutes:: {mins}
+- started:: {datetime.datetime.now().isoformat(timespec='minutes')}
+- status:: running
+""" + "".join(f"- constraint:: {c}\n" for c in cons))
+    conf, rel = camp_conf(cd), f"campaigns/{slug_}"
+    for a in agents:
+        wr(J(cd, "agents", a, "BRIEF.md"), camp_brief(conf, a, rel))
+        wr(J(cd, "agents", a, "notes.md"), f"# Notes of the {a} agent\n\nShared with every agent at each meeting: searches and what came back, data sets and how to reach them, dead ends, null results, facts found outside the brain.\n")
+    wr(J(cd, "referee-brief.md"), camp_referee_brief(conf, rel)); wr(J(cd, "verifier-brief.md"), camp_verifier_brief(conf, rel))
+    wr(J(cd, ".gitignore"), "# raw data fetched for proofs of concept stays out of git; each poc/<id>/DATA.md says how to fetch it again\npoc/*/data/\npoc/*/*.parquet\npoc/*/*.h5\n__pycache__/\n")
+    print(f"campaign {slug_}: {', '.join(agents)}; {rounds} rounds of {mins} minutes; scope {scope}\n"
+          f"Briefs: {rel}/agents/<agent>/BRIEF.md, {rel}/referee-brief.md, {rel}/verifier-brief.md. Start round 1 (brain-mesh-campaign, The chair).")
+
+
+def camp_poc(m, cd, pos, opts, o, rnd):
+    if len(pos) < 2 or pos[0] not in ("register", "verify", "replicate"): sys.exit("campaign poc register|verify|replicate <id>")
+    act, pid = pos[0], pos[1]; d = J(cd, "poc", pid); pre, reg = J(d, "PREREG.md"), J(d, "REGISTERED")
+    if act == "register":
+        if not os.path.exists(pre): sys.exit(f"campaign poc: write {os.path.relpath(pre, m.root)} first")
+        t = rd(pre); miss = [s_ for s_ in PREREG_SECTIONS if not re.search(r"^\*\*" + s_ + r"\.\*\*", t, re.M)]
+        if miss: sys.exit(f"campaign poc register: PREREG.md lacks {', '.join('**' + s_ + '.**' for s_ in miss)}")
+        if os.path.exists(reg) and "--force" not in opts: sys.exit(f"campaign poc register: {pid} is registered already; a change is an amendment: add it under **Amendments.** in result.md, never in PREREG.md")
+        wr(reg, f"- sha256:: {sha(pre)}\n- registered:: {datetime.datetime.now().isoformat(timespec='seconds')}\n- round:: {rnd}\n"); print(f"{pid}: preregistration sealed ({sha(pre)[:12]})")
+    elif act == "verify":
+        out = []
+        if not os.path.exists(reg): out.append("not registered")
+        else:
+            c = camp_codes(rd(reg))
+            if c.get("sha256", [""])[0] != (sha(pre) if os.path.exists(pre) else ""): out.append("PREREG.md changed after registration")
+            res = J(d, "result.md")
+            if os.path.exists(res):
+                rc = camp_codes(rd(res)); oc = (rc.get("outcome") or [""])[0].split(" ")[0]
+                if oc not in ("passed", "failed", "inconclusive"): out.append("result.md has no '- outcome:: passed|failed|inconclusive' line")
+                when = c.get("registered", [""])[0]
+                if when and datetime.datetime.fromtimestamp(os.path.getmtime(res)).isoformat(timespec="seconds") < when: out.append("result.md is older than the registration")
+            else: out.append("no result.md yet")
+        print(f"{pid}: " + ("; ".join(out) if out else "registered before the result, preregistration unchanged, outcome stated"))
+    else:
+        if not o("--referee") or ("--ok" in opts) == ("--failed" in opts): sys.exit("campaign poc replicate <id> --ok|--failed --referee <name> --note \"<numbers>\"")
+        camp_append(J(cd, "replications.tsv"), REPL_COLS, {"time": datetime.datetime.now().isoformat(timespec="minutes"), "round": str(rnd), "referee": o("--referee"), "pid": pid, "result": "ok" if "--ok" in opts else "failed", "note": o("--note", "")})
+        print(f"{pid}: replication {'ok' if '--ok' in opts else 'failed'} recorded")
+
+
+def camp_check(m, cd, conf):
+    props, E, W = camp_props(cd), [], []
+    pre = {LENSES[a][0]: a for a in conf["agents"] if a in LENSES}
+    for pid, p in sorted(props.items()):
+        if not re.fullmatch(r"[A-Z]{3}-\d{2}", pid): E.append(f"{pid}: an id reads like REC-01"); continue
+        if not os.path.basename(p["file"]).startswith(pid + "-"): E.append(f"{pid}: the file name must start with its id ({os.path.basename(p['file'])})")
+        if pre.get(pid[:3]) != p["owner"]: E.append(f"{pid}: owner:: must be the agent whose prefix it bears ({pre.get(pid[:3], 'none')})")
+        if p["status"] not in DP_STATUS: E.append(f"{pid}: status is one of {', '.join(DP_STATUS)}")
+        if p["poc"] not in POC_STATUS: E.append(f"{pid}: poc is one of {', '.join(POC_STATUS)}")
+        if p["novelty"] not in NOVELTY_FACTOR: E.append(f"{pid}: novelty is one of {', '.join(NOVELTY_FACTOR)}, then ' — where searched'")
+        if p["reach"] not in DP_REACH: W.append(f"{pid}: reach is one of {', '.join(DP_REACH)}")
+        miss = [s_ for s_ in DP_SECTIONS if s_ not in p["sections"]]
+        if miss: E.append(f"{pid}: missing {', '.join('**' + s_ + '.**' for s_ in miss)}")
+        rests = " ".join(p["codes"].get("rests_on", []))
+        good, bad = m.ids(rests)
+        if not good: E.append(f"{pid}: rests_on:: links no card of the brain")
+        if bad: E.append(f"{pid}: rests_on:: links what is not a card: {', '.join(bad[:5])}")
+        if p["novelty"] in ("open", "partly", "answered") and len(re.findall(r"\S+", (p["codes"].get("novelty") or [""])[0])) < 4: W.append(f"{pid}: novelty:: should say where and when it was searched")
+        if p["poc"] in ("registered", "passed", "failed", "inconclusive"):
+            if not os.path.exists(J(cd, "poc", pid, "REGISTERED")): E.append(f"{pid}: poc:: {p['poc']}, but it was never registered (`campaign poc register {pid}`)")
+            elif camp_codes(rd(J(cd, "poc", pid, "REGISTERED"))).get("sha256", [""])[0] != (sha(J(cd, "poc", pid, "PREREG.md")) if os.path.exists(J(cd, "poc", pid, "PREREG.md")) else ""): E.append(f"{pid}: PREREG.md changed after registration")
+        if p["poc"] in ("passed", "failed", "inconclusive"):
+            res = J(cd, "poc", pid, "result.md")
+            oc = (camp_codes(rd(res)).get("outcome") or [""])[0].split(" ")[0] if os.path.exists(res) else ""
+            if oc != p["poc"]: E.append(f"{pid}: poc:: {p['poc']}, but poc/{pid}/result.md says '{oc or 'nothing'}'")
+            if not os.path.exists(J(cd, "poc", pid, "DATA.md")): W.append(f"{pid}: poc/{pid}/DATA.md should say where the data came from and how to fetch them again")
+        for v in p["codes"].get("builds_on", []):
+            for t in re.findall(r"\b([A-Z]{3}-\d{2})\b", v):
+                if t not in props: E.append(f"{pid}: builds_on:: {t}, which is not a proposal")
+        if p["status"] == "killed" and not p["codes"].get("killed_by"): E.append(f"{pid}: killed, but no killed_by:: (use `campaign set`)")
+        if p["status"] == "merged" and not p["codes"].get("merged_into"): E.append(f"{pid}: merged, but no merged_into::")
+    for dl in camp_downloads(cd, props, {k: {"composite": 0} for k in props}):
+        c = camp_codes(rd(dl["file"]))
+        for k in ("what", "kind", "access", "effort", "solves", "for", "by"):
+            if not c.get(k): E.append(f"{dl['id']}: download request lacks '- {k}::'")
+        for p_ in dl["for"]:
+            if p_ not in props: E.append(f"{dl['id']}: for:: {p_}, which is not a proposal")
+        if not re.search(r"^\*\*What it would settle\.\*\*", rd(dl["file"]), re.M): E.append(f"{dl['id']}: a download request says **What it would settle.**")
+    for x in E: print("ERROR " + x)
+    for x in W: print("warn  " + x)
+    print(f"campaign check: {len(E)} errors, {len(W)} warnings; {len(props)} proposals")
+    return not E
+
+
+def camp_status(m, cd, conf):
+    props, board = camp_board(cd)
+    print(f"Campaign {conf['slug']} [{conf['status']}] · scope {conf['scope']} · agents {', '.join(conf['agents'])} · round {min(camp_round(cd), conf['rounds'])} of {conf['rounds']}\n")
+    for l in camp_board_lines(cd, props, board): print(plain(l))
+    print("\nCredit (own · assists · kills · total):")
+    for a, (ow, asx, k, tot) in sorted(camp_credit(props, board).items(), key=lambda kv: -kv[1][3]): print(f"  {a}: {ow:g} · {asx:g} · {k} · {tot:g}")
+    dls = camp_downloads(cd, props, board)
+    if dls:
+        print("\nDownload requests, by value over effort:")
+        for d_ in dls: print(f"  {d_['id']} [{d_['rank']:g}] {one(d_['title'], 70)} · {d_['access']} · effort {d_['effort']} · for {' '.join(d_['for']) or '–'}")
+    unscored = [pid for pid, p in props.items() if p["status"] in DP_LIVE and not board[pid]["scored"]]
+    if unscored: print(f"\nLive and not yet scored: {' '.join(unscored)}")
+
+
+def camp_meeting(m, cd, conf, n, opts):
+    props, board = camp_board(cd)
+    live = [p for p in props.values() if p["status"] in DP_LIVE]
+    ranked = sorted(live, key=lambda p: (-board[p["id"]]["composite"], -(board[p["id"]]["bt"] or 0), p["id"]))
+    last = n >= conf["rounds"]
+    cut = [] if last or len(ranked) < 3 else ranked[(len(ranked) + 1) // 2:]
+    cut = [p for p in cut if board[p["id"]]["scored"]]
+    if "--cut" in opts:
+        for p in cut: camp_set(p, "cut", f"bottom half at meeting {n} (composite {board[p['id']]['composite']:g})", rnd=n)
+        props, board = camp_board(cd)
+    cr = camp_credit(props, board)
+    dls = camp_downloads(cd, props, board)
+    auto = [f"Scoreboard after round {n} of {conf['rounds']} ({datetime.datetime.now().isoformat(timespec='minutes')}).", ""] + camp_board_lines(cd, props, board) + ["",
+            "**Successive halving.** " + ("Last meeting: nothing is cut." if last else (f"Cut: {', '.join(p['id'] for p in cut)}." + ("" if "--cut" in opts else " (proposed; `campaign meeting " + str(n) + " --cut` applies it)") if cut else "Nothing to cut yet.")), "",
+            "**Credit** (own · assists · kills · total): " + "; ".join(f"{a} {v[0]:g} · {v[1]:g} · {v[2]} · {v[3]:g}" for a, v in sorted(cr.items(), key=lambda kv: -kv[1][3])), ""]
+    if dls: auto += ["**Download requests, by value over effort.**"] + [f"- {d_['id']} [{d_['rank']:g}] {one(d_['title'], 80)} · {d_['access']} · effort {d_['effort']} · for {' '.join(d_['for']) or '–'}" for d_ in dls] + [""]
+    p_ = J(cd, "meetings", f"round-{n}.md")
+    block = "<!--AUTO:START-->\n" + "\n".join(auto) + "\n<!--AUTO:END-->"
+    if os.path.exists(p_): t = re.sub(r"<!--AUTO:START-->.*?<!--AUTO:END-->", lambda _m: block, rd(p_), flags=re.S)
+    else: t = f"# Meeting {n}\n\n{block}\n\n## Merges and kills\n\n## Digest of the shared notes\n\n## Assignments for round {n + 1}\n" if not last else f"# Meeting {n} (last)\n\n{block}\n\n## Merges and kills\n\n## Digest of the shared notes\n"
+    wr(p_, t); print(plain("\n".join(auto))); print(f"written: {os.path.relpath(p_, m.root)}")
+
+
+def camp_close(m, cd, conf):
+    props, board = camp_board(cd)
+    ranked = sorted((p for p in props.values() if p["status"] in DP_LIVE and board[p["id"]]["composite"] > 0), key=lambda p: (-board[p["id"]]["composite"], -(board[p["id"]]["bt"] or 0), p["id"]))
+    nulls = [p for p in props.values() if p["poc"] == "failed" and board[p["id"]]["repl"] == "ok"]
+    sec = lambda p, s_: (lambda mo: one(" ".join(mo.group(1).split()), 600) if mo else "")(re.search(r"^\*\*" + re.escape(s_) + r"\.\*\*(.*?)(?=^\*\*[A-Z][^*]*\.\*\*|^## |\Z)", p["text"], re.M | re.S))
+    L = [f"# Campaign report: {conf['slug']}", "", f"Scope `{conf['scope']}` · agents {', '.join(conf['agents'])} · {conf['rounds']} rounds · closed {datetime.datetime.now().isoformat(timespec='minutes')}.",
+         "Nothing here is evidence. Each proposal goes to the user in the format of brain-mesh-discover section 5; only what the user accepts becomes a card.", "", "## The slate", ""]
+    for k, p in enumerate(ranked[:7], 1):
+        b = board[p["id"]]
+        L += [f"### {k}. {p['title']}", f"[[{os.path.basename(p['file'])[:-3]}|{p['id']}]] by {p['owner']} · impact {b['I']:g}, cogency {b['C']:g}, realism {b['R']:g} · novelty {b['novelty']} · composite {b['composite']:g}" + (f" · pairwise {b['bt']}" if b["bt"] else "") + f" · reach {p['reach']}",
+              f"- **Hypothesis.** {sec(p, 'Hypothesis')}", f"- **Proof of concept.** {p['poc']}" + (f", replicated {b['repl']}" if b["repl"] else "") + f". {sec(p, 'Proof of concept')}",
+              f"- **Decisive experiment.** {sec(p, 'Decisive experiment')}", f"- **Impact if true.** {sec(p, 'Impact if true')}", f"- **Rests on.** {' '.join((p['codes'].get('rests_on') or ['']))}", ""]
+    if nulls: L += ["## Informative nulls", ""] + [f"- [[{os.path.basename(p['file'])[:-3]}|{p['id']}]] {p['title']}: {sec(p, 'Proof of concept')}" for p in nulls] + [""]
+    dls = camp_downloads(cd, props, board)
+    if dls: L += ["## Download requests, by value over effort", ""] + [f"- [[{os.path.basename(d_['file'])[:-3]}|{d_['id']}]] {d_['title']} · {d_['access']} · effort {d_['effort']} · value {d_['value']:g} · for {' '.join(d_['for']) or '–'}" for d_ in dls] + [""]
+    L += ["## Scoreboard", ""] + camp_board_lines(cd, props, board) + ["", "## Credit", ""] + [f"- {a}: own {v[0]:g}, assists {v[1]:g}, kills {v[2]}, total {v[3]:g}" for a, v in sorted(camp_credit(props, board).items(), key=lambda kv: -kv[1][3])] + [""]
+    wr(J(cd, "REPORT.md"), "\n".join(L))
+    t = rd(J(cd, "CAMPAIGN.md")); wr(J(cd, "CAMPAIGN.md"), re.sub(r"^- status:: .*$", "- status:: closed", t, count=1, flags=re.M))
+    print(f"written: {os.path.relpath(J(cd, 'REPORT.md'), m.root)}; {len(ranked)} live proposals with a score, {len(nulls)} informative nulls, {len(dls)} download requests; campaign closed")
+
+
 HELP = """version | upgrade <vault>     tooling version; run `upgrade` from the repository copy to update a vault
 init <dir> <name> <topic>     create a vault                  anchor <P###> <file> [--force]  paragraph-anchored text
 anchor <P###> --correction <pdf> register a published correction: appended to P###_correction.pdf, paragraphs c####
@@ -9307,6 +9801,9 @@ seal [P###]                   record checksums for source files that have none
 linked [<file> [--from <where>] | --all | --restore | --verify]  source files over the size limit (MESH.json large_file_mb, 10) kept out of git: list, link, restore from history, check
 gaps [--all]                  scan for candidate gaps (signals to judge): the head of each section, or every row
 gapsdoc                       assemble gaps/RESEARCH-GAPS.md from the gap cards
+campaign init <name> --scope <topic:slug|concept|id> [--agents a,b,c] [--rounds n] [--minutes n] [--constraint "<text>"]
+campaign status | check | score <id> … | compare <A> <B> --winner … | set <id> <status> --why … | poc register|verify|replicate <id>
+                              | meeting [n] [--cut] | close   competing discovery agents with hourly meetings (brain-mesh-campaign)
 discover [miner ...] [--top n] [--focus concept] [--all] [--full]   mine the ontology for candidate cards (no miner named: an overview; --full: every miner in full): """ + ", ".join(MINERS) + """
 discover --recheck            after new sources: what changed for stamped cards and rejected signals
 report [<kind> [target]] [--focus concept] [--since date|P###] [--top n]   assemble a dated report in reports/: frontier, contradictions [V001 ...], theories, causal,
@@ -9390,6 +9887,7 @@ def main():
     elif c == "gaps": cmd_gaps(m, "--all" in a)
     elif c == "gapsdoc": cmd_gapsdoc(m)
     elif c == "discover": cmd_discover(m, a)
+    elif c == "campaign": cmd_campaign(m, a)
     elif c == "dismiss": cmd_dismiss(m, a[0], " ".join(a[1:]))
     elif c == "theories": cmd_theories(m)
     elif c == "log": cmd_log(m, " ".join(a))

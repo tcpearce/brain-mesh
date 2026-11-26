@@ -2,6 +2,16 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.28.0 (2026-11-26)
+
+**Discovery campaigns: competing agents, hourly meetings, blind referees, registered proofs of concept.**
+
+- **New document `brain-mesh-campaign`.** Three to five discovery agents, one lens each (recombiner, mechanist, sceptic, transferer, datascout), compete for proposals that score highest on impact, cogency and realism, and share everything else. A chair runs rounds of about 50 minutes and a meeting after each: fresh blind referees and a verifier score, the bottom half is cut (successive halving), merges and kills are recorded, a digest of the shared notes and new assignments go back to the agents. Agents write only in the campaign folder; the user gets one slate at the end and decides what enters the brain (`- miner:: campaign`).
+- **`mesh.py campaign`**: `init` (campaign folder, one brief per lens, referee and verifier briefs, the user's constraints), `status`, `check` (proposal format, ids and owners, links to real cards, registrations, outcomes, download requests), `score` (1 to 5 on each axis, novelty, gates), `compare` (pairwise preferences, fitted by Bradley-Terry), `set` (merged, killed with the killer named, withdrawn, cut, final), `poc register|verify|replicate` (a preregistration sealed by its checksum before the code runs; result after registration; the verifier's rerun), `meeting <n> [--cut]` and `close` (REPORT.md: the slate, informative nulls, download requests by value over effort, scoreboard, credit).
+- **Scoring.** Composite = geometric mean of the three medians × novelty (open 1, unchecked 0.8, partly 0.6, answered 0) × 0.9 until a reported proof of concept is replicated; a failed gate gives 0. Credit: own live composites, a quarter of those that build on an agent's work, one per evidenced kill.
+- **Download requests** carry what they would settle, the brain needs they bear on and the proposals that need them, and are ranked by value over effort.
+- **Checksums ignore line endings for text data files.** A supplementary CSV registered with CRLF endings came back from a clone with LF (the vault's `.gitattributes` keeps text in LF), and `check` called it changed; the original bytes and the file with its line ends converted now both match.
+
 ## 1.27.0 (2026-11-24)
 
 **The citation index: the works a vault cites but has not read, indexed from their abstracts.**

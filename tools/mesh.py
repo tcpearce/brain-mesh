@@ -633,16 +633,45 @@ def parse_ref_author_year(raw):
     core = re.sub(r",\s*(\d{1,4})\s*,\s*(?=[A-Za-z]?\d)", r" \1, ", core).rstrip(" .")  # and 'Journal, 17, 55' is 'Journal 17, 55'
     f = parse_ref(f"Anon, {core} ({mo.group(1)}). {link.group(1) if link else ''}".strip())  # everything before the year is the authors, so the parser is left only the tail
     people = re.findall(SURNAME + r",\s*(?:[A-ZÀ-ÞŒ]\.?(?:\s?-?[A-ZÀ-ÞŒ]\.?)*|[A-ZÀ-ÞŒ][\w'’\-]+(?:\s+[A-ZÀ-ÞŒ]\.?)*)", who)
-    f["authors"] = "; ".join(" ".join(p.split()) for p in people) or who
+    f["authors"] = ("; ".join(" ".join(p.split()) for p in people) + ("; others" if re.search(r"\bet al\b", who) else "")) if people else who  # et al. kept, as the other readers keep it (issue #49)
     f["year"], f["raw"] = mo.group(1), raw
+    if f.get("kind") != "article":  # no journal and volume: a preprint, software or a book, told apart by what the entry names (issue #49)
+        body = core.strip(" .")
+        srv = re.search(r"(?:^|[.,]\s*)(bioRxiv|medRxiv|ChemRxiv|arXiv|Research Square|Preprints|PsyArXiv|SSRN)\b[^()]*$", body)
+        if srv:
+            f.update(kind="preprint", title=body[:srv.start()].strip(" .,"))
+        elif re.search(r"\b(?:R package|Python package|MATLAB toolbox|software)\b|\b[Vv]ersion\s+\d", body):  # named as software; a bare number such as 18.1.0 is too often a DOI's or an address's digits
+            pm = re.search(r"\s*\(([^()]*)\)$", body); t_ = body[:pm.start()] if pm else body
+            f.update(kind="software", title=re.split(r",\s*(?=(?:R|Python) package\b|[Vv]ersion\s+\d)", t_)[0].strip(" .,"))
+            if pm: f["publisher"] = pm.group(1).split(":")[-1].strip()
+        else:
+            pm = re.search(r"\s*\(([^()]*)\)$", body)
+            if pm and not re.fullmatch(r"(?:19|20)\d{2}[a-z]?", pm.group(1).strip()):
+                f.update(kind=f.get("kind") if f.get("kind") == "incollection" else "book", publisher=pm.group(1).split(":")[-1].strip())
+                if f.get("kind") == "book": f["title"] = body[:pm.start()].strip(" .,")
+        if f.get("title"): f["title"] = re.sub(r"\s*\((?:19|20)\d{2}[a-z]?\)$", "", f["title"])  # the year the reader appended is not part of the title
     return f
 
 
+CELL_SURNAME = SURNAME.replace("[A-ZÀ-ÞŒ]", "[A-ZÀ-ÞŒŠŽŁĆČĐŘŚŞŻ]")
+
+def cell_head(raw):
+    """True for an entry whose authors, each 'Surname, I.', run to a year in brackets and a full stop: 'Pfister, P.,
+    Smith, B.C., …, et al. (2020). Title. Curr. Biol. 30, 2574–2587.e6.' That is Cell Press style, and a numbered list
+    may be written in it, as Current Biology's is (issue #49)."""
+    mo = re.match(r"\s*(.{3,1200}?)\s*\((?:19|20)\d{2}[a-z]?\)\.\s+\S", raw)
+    if not mo: return False
+    who = re.sub(r"\s*[ʰ-ͯ]\s*|[\x00-\x1f]", "", mo.group(1))  # an accent the PDF set apart ('Ra ́ cz'), or left as a control character
+    left = re.sub(r"\bet al\.?|\band\b|&|[,;\s]", "", re.sub(CELL_SURNAME + r",\s*[A-ZÀ-ÞŒ]\.(?:\s?-?[A-ZÀ-ÞŒ]\.)*", "", who))
+    return len(left) <= max(2, len(re.sub(r"\W", "", who)) // 10)  # a particle the surname pattern misses ('El Mountassir') may be left
+
 def parse_entry(raw, style="numbered"):
     """The fields of one reference entry, whatever the list's style: 'Surname II (year)' or 'Surname II. year.'
-    (PLOS, BMC, eLife) first, then the list's own style (issues #5, #45)."""
+    (PLOS, BMC, eLife) first, then 'Surname, I., … (year). Title.' (Cell Press, numbered or not), then the list's
+    own style (issues #5, #45, #49)."""
     mo = PLOS_ENTRY.match(raw)
     if mo and plos_authors(mo.group(1)): return parse_ref_plos(raw)
+    if style != "author-year" and cell_head(raw): return parse_ref_author_year(raw)
     return parse_ref_author_year(raw) if style == "author-year" else parse_ref(raw)
 
 
@@ -698,6 +727,9 @@ def journal_start(prefix):
 FURNITURE = [r"\s*Downloaded from \S+ by \S+ on [A-Z][a-z]+ \d{1,2}, \d{4}(?: from IP address \S+?)?\.?(?=\s|$)",  # a publisher's download stamp
              r"\s*\b[A-Z][\w.]* Author manuscript; available in PMC \d{4} [A-Z][a-z]+ \d{1,2}\.?", r"\s*\bAuthor Manuscript\b", r"\s*\bHHS Public Access\b",
              r"\s+pnas\.org(?=\s|$)",
+             r"\s*\bll(?:\s+OPEN\s+ACCESS)?(?:\s+Article)?(?=\s|$)",  # Cell Press's page head, and its footer: 'Current Biology 30, 2574–2587, July 6, 2020 2585 Article' (issue #49)
+             r"\s*(?:\bArticle\s+)?(?:\b\d{1,4}\s+)?\b[A-Z][A-Za-z&]*(?:\s+(?:[A-Z][A-Za-z&]*|of|and|in))*\s+\d{1,4},\s+[\w–\-.]+,\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}(?:\s+\d{1,4}(?=\s|$))?(?:\s+Article\b)?",
+             r"\s*\bSTAR\s*[+★]?\s*METHODS\b.*$",  # the STAR Methods that follow the last entry are not part of it
              r"\s\d{1,3} of \d{1,3}(?=\s+https?://|\s*$)"]  # a page counter, "6 of 6", once what followed it is gone
 
 def strip_furniture(raw, own_doi=""):
@@ -806,6 +838,7 @@ def ref_keys(f):
 
 def bibtex(f, key):
     kind = f.get("kind") or "misc"
+    if kind in ("preprint", "software"): kind = "misc"  # plain BibTeX has no such entry types (issue #49)
     names = [bib_name(n) for n in (f.get("authors") or "").split(";") if n.strip()]
     fields = [("author", " and ".join(n for n in names)), ("title", "{" + f["title"] + "}" if f.get("title") else ""), ("journal", f.get("journal") if kind == "article" else ""),
               ("booktitle", f.get("booktitle") if kind in ("inproceedings", "incollection") else ""), ("series", f.get("series")), ("publisher", f.get("publisher") if kind in ("book", "inproceedings", "incollection") else ""),

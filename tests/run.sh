@@ -2729,4 +2729,33 @@ print("names ok")
 PY
 [ $? = 0 ] && pass "a bracketed qualifier, an exact plural alias and id matching switched off none match 'the OR family'" || fail "narrow names"
 python3 tools/mesh.py build > b.txt 2>&1; grep -q "check: 0 errors" b.txt && pass "a vault with exact aliases and scan_names builds clean" || { grep -E "^ERROR" b.txt | head; fail "build with narrow names"; }
+# 49. a Cell-style reference list, numbered or not: the year after the authors, the title to its full stop, the journal, volume and pages in their own fields (issue #49)
+cp -r "$ROOT/demo-vault" "$T/ce"; cd "$T/ce"; cp "$MESH" tools/mesh.py; S1=$(ls -d sources/P001*)
+rm -f $S1/P001_refs.md
+cat >> $S1/P001_text.md <<'TXT'
+
+REFERENCES ^b0500
+
+1. Pfister, P., Smith, B.C., Evans, B.J., Brann, J.H., Trimmer, C., Sheikh, M., Arroyave, R., Reddy, G., Jeong, H.-Y., Raps, D.A., et al. (2020). Odorant receptor inhibition is fundamental to odor encoding. Curr. Biol. 30, 2574–2587.e6. ^b0501
+
+2. Buck, L., and Axel, R. (1991). A novel multigene family may encode odorant receptors: a molecular basis for odor recognition. Cell 65, 175–187. ^b0502
+
+3. Zak, J.D., Reddy, G., Vergassola, M., and Murthy, V.N. (2019). Antagonistic odor interactions in olfactory sensory neurons are widespread in freely breathing mice. bioRxiv. https:// doi.org/10.1101/847525. ^b0503
+
+4. Wickham, H. (2017). tidyverse: Easily Install and Load the ‘Tidyverse’, R package version 1.2.1 (Vienna, Austria: R Core Team). ^b0504
+
+5. Peterlin, Z., Li, Y., Sun, G., Shah, R., Firestein, S., and Ryan, K. (2008). The importance of odorant conformation to the binding and activation of a representative olfactory receptor. ll OPEN ACCESS Current Biology 30, 2574–2587, July 6, 2020 2585 Article Chem. Biol. 15, 1317–1327. ^b0505
+
+6. Shepherd, G.M. (1988). Neurobiology (New York: Oxford University Press). ll OPEN ACCESS 2587 Current Biology 30, 2574–2587, July 6, 2020 Article STAR+METHODS KEY RESOURCES TABLE REAGENT or RESOURCE SOURCE IDENTIFIER Forskolin Sigma Cat# F3917 ^b0506
+TXT
+python3 tools/mesh.py refs P001 > r.txt 2>&1; grep -q "P001: 6 references" r.txt || { cat r.txt; fail "Cell-style list not read"; }
+f() { grep -A14 "^## $1$" $S1/P001_refs.md | sed '/^$/q' | grep -q "^- $2:: $3$"; }
+f 1 title "Odorant receptor inhibition is fundamental to odor encoding" && f 1 journal "Curr. Biol." && f 1 volume 30 && f 1 year 2020 && f 1 kind article && pass "a ten-author entry: the title ends where the title ends, with journal, volume and year in their own fields" || { grep -A12 "^## 1$" $S1/P001_refs.md; fail "Cell entry 1"; }
+grep -A14 "^## 1$" $S1/P001_refs.md | grep -q "^- pages:: 2574.*e6$" && grep -A14 "^## 1$" $S1/P001_refs.md | grep -q "^- authors:: Pfister, P\.; .*Raps, D\.A\.; others$" && pass "the .eN page suffix stays with the pages, and et al. is kept as others" || { grep -A12 "^## 1$" $S1/P001_refs.md; fail "Cell pages or et al."; }
+f 2 title "A novel multigene family may encode odorant receptors: a molecular basis for odor recognition" && f 2 journal "Cell" && f 2 volume 65 && f 2 authors "Buck, L.; Axel, R." && pass "a two-author entry, 'and' not taken into a name" || { grep -A12 "^## 2$" $S1/P001_refs.md; fail "Cell entry 2"; }
+f 3 kind preprint && f 3 title "Antagonistic odor interactions in olfactory sensory neurons are widespread in freely breathing mice" && f 3 doi "10.1101/847525" && pass "a bioRxiv entry is a preprint, its title without the server's name" || { grep -A12 "^## 3$" $S1/P001_refs.md; fail "Cell preprint"; }
+f 4 kind software && grep -A14 "^## 4$" $S1/P001_refs.md | grep -q "^- title:: tidyverse: Easily Install and Load" && pass "an R package with no journal is software" || { grep -A12 "^## 4$" $S1/P001_refs.md; fail "Cell software"; }
+f 5 journal "Chem. Biol." && f 5 volume 15 && f 5 title "The importance of odorant conformation to the binding and activation of a representative olfactory receptor" && ! grep -A14 "^## 5$" $S1/P001_refs.md | grep -q "OPEN ACCESS\|July 6" && pass "a Cell Press page footer that falls mid-entry is stripped" || { grep -A12 "^## 5$" $S1/P001_refs.md; fail "Cell footer"; }
+f 6 kind book && f 6 title "Neurobiology" && f 6 publisher "Oxford University Press" && ! grep -A14 "^## 6$" $S1/P001_refs.md | grep -q "KEY RESOURCES" && pass "a book gives its publisher, and the STAR Methods table after the last entry is not taken into it" || { grep -A12 "^## 6$" $S1/P001_refs.md; fail "Cell book"; }
+python3 tools/mesh.py cite P001 > c.txt 2>&1; python3 tools/mesh.py build > b.txt 2>&1; grep -q "check: 0 errors" b.txt && grep -q "^@misc{" references/library.bib && pass "the cards are made and the vault builds clean; a preprint and software are @misc in BibTeX" || { grep -E "^ERROR" b.txt | head; fail "Cell cite"; }
 echo "ALL TESTS PASSED"

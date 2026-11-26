@@ -886,7 +886,7 @@ class Mesh:
             if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", b) or re.fullmatch(r"[pkxghelcdrtasv]\d{3}.*", b): s.err.append(f"concepts/{b}.md: name must be a lower-case hyphenated slug that does not look like an id"); continue
             add(f, "concept", b)
             c = s.cards[b]
-            for al in [] if c.get("retired") else [b, b.replace("-", " "), c.title] + [str(a) for a in (c.fm.get("aliases") or [])]:
+            for al in [] if c.get("retired") else [b, b.replace("-", " "), c.title] + [str(a) for a in aliases(c)]:
                 k = " ".join(al.lower().split())
                 if k and s.alias.setdefault(k, b) != b: s.err.append(f"alias '{al}' claimed by concepts {s.alias[k]} and {b}")
         for pre, (folder, *_r) in PAGES.items():
@@ -1616,7 +1616,7 @@ class Mesh:
                 for y in range(x + 1, len(g)):
                     if jac(s.terms(g[x]), s.terms(g[y])) >= 0.99 and not s.linked(g[x], g[y]): W.append(f"{g[y].id}: repeats the background claim already carded as {g[x].id} ({ref}); add '- also_cited_by::' to {g[x].id} and retire this card")
         con, idx = [c for c in s.cards.values() if c.fam == "concept"], defaultdict(set)
-        names = {c.id: {" ".join(str(a).lower().split()) for a in [c.id.replace("-", " "), c.title] + list(c.fm.get("aliases") or [])} for c in con}
+        names = {c.id: {" ".join(str(a).lower().split()) for a in [c.id.replace("-", " "), c.title] + aliases(c)} for c in con}
         deflinks = {c.id: set(s.ids(re.sub(r".*?\*\*Definition\.\*\*\s*", "", c.prose(), count=1, flags=re.S).split("\n")[0])[0]) if "**Definition.**" in c.prose() else set() for c in con}
         for c in con:
             for w in {w.rstrip("s") for n in names[c.id] for w in n.split() if len(w) > 3}: idx[w].add(c.id)
@@ -4122,7 +4122,7 @@ def cmd_adopt(m, args):
     best = max(props, key=lambda x: (len(x[2]), x[0]))[2]
     raw = best if best.startswith("---") else f"---\ntype: concept\nupdated: {TODAY}\n---\n" + best
     if not re.search(r"^type:\s*concept\s*$", raw.split("\n---\n", 1)[0], re.M): raw = set_fm(raw, "type", "concept")
-    raw = add_aliases(raw, [t for _p, _f, _b, t, _a in props] + [a for _p, _f, _b, _t, al in props for a in al])
+    raw = add_aliases(raw, [t for _p, _f, _b, t, _a in props if t.lower() != name.replace("-", " ").lower()] + [a for _p, _f, _b, _t, al in props for a in al])  # not the slug's own words again (issue #54)
     for w_ in alias_warnings(m, name, [t for _p, _f, _b, t, _a in props] + [a for _p, _f, _b, _t, al in props for a in al]): print("warn  adopt: " + w_)
     if "\n## Codes" not in raw: raw = raw.rstrip("\n") + "\n\n## Codes\n"
     if not re.search(r"^- id::", raw, re.M): raw = raw.replace("\n## Codes\n", f"\n## Codes\n- id:: {name}\n", 1)
@@ -4151,12 +4151,29 @@ SCAN_NAMES_ONLY = ("The scan matches names and aliases only (word stems too for 
                    "for a general method — does not appear, so 'nothing to do' means no unlinked passage names it, not that none is about it. "
                    "Read the source's section headings and methods list for the concepts that matter (issue #52).")
 
+def aliases(c):
+    """A card's aliases as names: an exact-form alias's leading '=' (issue #54) is not part of the name."""
+    return [re.sub(r"^=\s*", "", str(a)) for a in (c.fm.get("aliases") or [])]
+
+
+def scan_names(con):
+    """[(name, exact)] the scan looks for: the slug, the title and the aliases, or those that '- scan_names::' lists
+    (`aliases`, `title, aliases`), for a concept whose slug or title is an everyday word. An alias written '=OR
+    families' is exact: no plural folding, no spelling variants, no word stems (issue #54)."""
+    use = set(re.findall(r"[a-z]+", (con.get("scan_names") or "").lower())) or {"id", "slug", "title", "aliases"}
+    out = ([(con.id.replace("-", " "), False)] if use & {"id", "slug"} else []) + ([(con.title, False)] if "title" in use else [])
+    return out + ([(re.sub(r"^=\s*", "", str(a)), str(a).startswith("=")) for a in (con.fm.get("aliases") or [])] if use & {"alias", "aliases"} else [])
+
+
 def concept_rx(con, deep=False):
     """One regular expression for a concept: its slug, title and aliases, allowing British and American spelling
     (odour, odor; -ise, -ize), hyphens or spaces between words, and plurals. Acronyms (POM, GNN, gLMS) match in
     their own case. deep: word stems too (glomerul- finds glomerular), for high-priority concepts and sources.
+    A name's bracketed acronym is a second name ('Principal odor map (POM)'); any other bracket is a qualifier
+    ('OR family (40% level)'), and the name is then not matched with the bracket dropped (issue #54). An alias
+    written '=OR families' is exact, and '- scan_names:: aliases' leaves out the slug and the title.
     Returns (regex or None, prefilter keys)."""
-    names = [con.id.replace("-", " "), con.title] + [str(a) for a in (con.fm.get("aliases") or [])]
+    names = scan_names(con)
     ci, cs, keys = set(), set(), set()
     def word(w, last):
         s_ = re.sub(r"(?<=[a-z]{2})([iy])[sz](?=(?:e|ed|es|ing|ation|ations|er|ers)$)", lambda mo: mo.group(1) + "\x01", w)
@@ -4165,15 +4182,17 @@ def concept_rx(con, deep=False):
         if deep and len(w) >= 7: s_, suf = s_[:max(5, len(s_) - 3)], "[a-z]*"
         elif last: s_, suf = (s_[:-1], "(?:y|ies)") if s_.endswith("y") else (s_, "(?:es)?" if s_.endswith("s") else "(?:s|es)?")
         return s_.replace("\x01", "[sz]").replace("\x02", "ou?r") + suf
-    for nm in names:
-        nm = str(nm)
-        for part in [re.sub(r"\([^)]*\)", " ", nm)] + re.findall(r"\(([^)]+)\)", nm):
+    acro = lambda p: re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9\-]{1,9}", p) and sum(ch.isupper() for ch in p) >= 2
+    for nm, exact in names:
+        nm = str(nm); inner = [" ".join(x.split()) for x in re.findall(r"\(([^)]+)\)", nm)]
+        if any(not acro(x) for x in inner): continue  # a qualifier in brackets: the name without it is the phrase it was written to avoid
+        for part in [re.sub(r"\([^)]*\)", " ", nm)] + inner:
             part = " ".join(part.split())
-            if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9\-]{1,9}", part) and sum(ch.isupper() for ch in part) >= 2:
+            if acro(part):
                 cs.add(re.escape(part).replace(r"\-", "[-‐–\\s]?")); keys.add(part.lower()[:3]); continue
             words = re.findall(r"[a-z0-9]+", ascii_fold(part).lower())
             if not words or (len(words) == 1 and (len(words[0]) < 4 or words[0].isdigit())): continue
-            ci.add(r"[\s\-‐‑–/]+".join(word(w, k == len(words) - 1) for k, w in enumerate(words))); keys.add(words[0][:3])
+            ci.add(r"[\s\-‐‑–/]+".join(re.escape(w) if exact else word(w, k == len(words) - 1) for k, w in enumerate(words))); keys.add(words[0][:3])
     if not ci and not cs: return None, set()
     alts = ([f"(?i:{'|'.join(sorted(ci, key=len, reverse=True))})"] if ci else []) + sorted(cs, key=len, reverse=True)
     return re.compile(r"(?<![A-Za-z0-9])(?:" + "|".join(alts) + r")(?![A-Za-z0-9])"), keys
@@ -4232,7 +4251,7 @@ def concept_hits(m, pid, only=None):
         return [order[j] for j in sorted(got)]
     for con in [c for c in m.cards.values() if c.fam == "concept" and not c.get("retired") and (only is None or c.id == only)]:
         key = (con.id, deep_src or con.priority == "high")
-        sig = hashlib.sha1(json.dumps([con.id, con.title, [str(a) for a in (con.fm.get("aliases") or [])], key[1]], ensure_ascii=False).encode()).hexdigest()[:16]  # all that decides the concept's pattern
+        sig = hashlib.sha1(json.dumps([con.id, con.title, [str(a) for a in (con.fm.get("aliases") or [])], key[1], con.get("scan_names") or ""], ensure_ascii=False).encode()).hexdigest()[:16]  # all that decides the concept's pattern
         if sig in rows: h = {b: [tuple(x) for x in sp] for b, sp in rows[sig].items()}
         else:
             if key not in m._crx: m._crx[key] = concept_rx(con, key[1])
@@ -4568,13 +4587,16 @@ def cmd_propose(m, args):
     pid = o.get("from")
     if pid and not (re.fullmatch(r"P\d{3}", pid) and os.path.isdir(SRC(m.root, pid))): sys.exit(f"propose: no source folder for '{pid}'")
     path = J(SRC(m.root, pid), pid + "_concepts.md") if pid else J(m.root, "ledger", "concept-proposals.md")
-    fm = ["---", "type: concept"] + (["priority: low"] if o.get("low") else []) + ["aliases: " + json.dumps([title] + aliases, ensure_ascii=False), f"updated: {TODAY}", "---"]
+    title_alias = title.lower() != name.replace("-", " ").lower() and title.lower() not in {a.lower().lstrip("=").strip() for a in aliases}  # only the names given, and a title in other words than the slug (issue #54)
+    fm = ["---", "type: concept"] + (["priority: low"] if o.get("low") else []) + ["aliases: " + json.dumps(([title] if title_alias else []) + aliases, ensure_ascii=False), f"updated: {TODAY}", "---"]
     codes = [f"- kind:: {kind}"] + ([f"- unit:: {o['unit']}"] if o.get("unit") else []) + ([f"- prioritised:: {TODAY} low — {o['low']}"] if o.get("low") else []) + [f"- proposed:: {pid or 'ledger'} {TODAY}"]
     block = [f"=== {name}"] + fm + [f"# {title}", "", f"**Definition.** {definition.strip()}", "", "## Where it appears", "<!--AUTO:START-->", "<!--AUTO:END-->", "", "## Codes"] + codes
     os.makedirs(os.path.dirname(path), exist_ok=True)
     old = rd(path).rstrip("\n") + "\n\n" if os.path.exists(path) else ""
     wr(path, old + "\n".join(block) + "\n")
-    print(f"proposed [[{name}]] in {relp(path, m.root)}. Link it as [[{name}]] in the cards; it becomes a concept card when the user adopts it (`mesh.py adopt {name}`), or folds it into another (`adopt {name} into <concept>`)")
+    print(f"proposed [[{name}]] in {relp(path, m.root)}, titled '{title}', with " + (f"the aliases {', '.join(json.dumps(a, ensure_ascii=False) for a in ([title] if title_alias else []) + aliases)}" if title_alias or aliases else "no aliases")
+          + ("" if title_alias else " (the title is the slug's own words, so it is not an alias as well)") + ".")
+    print(f"Link it as [[{name}]] in the cards; it becomes a concept card when the user adopts it (`mesh.py adopt {name}`), or folds it into another (`adopt {name} into <concept>`)")
 
 
 def edit_block(f, name, fn):
@@ -5413,7 +5435,7 @@ def cmd_table(m, args):
         if page is not None or len(cons) != 1: sys.exit("table: definitions takes one concept")
         con = m.cards[cons[0]]
         L += [f"# Definitions and measures: {con.title}", "", f"**The brain's definition.** {definition_of(con) or 'none written'}", ""]
-        L += [f"Kind {con.get('kind')}" + (f", unit {con.get('unit')}" if con.get("unit") else "") + (f"; also called {', '.join(str(a) for a in (con.fm.get('aliases') or []))}" if con.fm.get("aliases") else "") + ".", ""]
+        L += [f"Kind {con.get('kind')}" + (f", unit {con.get('unit')}" if con.get("unit") else "") + (f"; also called {', '.join(str(a) for a in aliases(con))}" if aliases(con) else "") + ".", ""]
         for v in con.all("measured_by"): L.append(f"- measured by {plain(v)}")
         body, bare = [], []
         for pid, r in sorted(measures(m, con.id).items()):
@@ -6105,7 +6127,7 @@ def report_novelty(m, args):
             for w_ in works_cited(m, c):
                 if w_.fam == "reference" and w_.status != "held": near[w_.id] += 1
     L += ["## Rung 2: works the brain knows of and has not read", ""] + ([f"- {rl(m.cards[r])} {one(plain(m.cards[r].title), 120)} [{m.cards[r].status}] · cited by {n} card{'s' * (n != 1)} that hold{'s' * (n == 1)} two or more of these concepts" for r, n in ranked(near, 12)] or ["No unread work is cited by a card that holds two or more of these concepts."]) + [""]
-    names = [[str(m.cards[c].title or c)] + [str(a) for a in (m.cards[c].fm.get("aliases") or []) if str(a).lower() != str(m.cards[c].title).lower()][:2] for c in cs]
+    names = [[str(m.cards[c].title or c)] + [str(a) for a in aliases(m.cards[c]) if str(a).lower() != str(m.cards[c].title).lower()][:2] for c in cs]
     q = " AND ".join("(" + " OR ".join(f'"{n}"' for n in dict.fromkeys(ns)) + ")" for ns in names)
     gsr = [f"{g.id} searched {g.get('searched')}" for g in m.pages("G") if g.get("searched") and S & m.terms(g)]
     L += ["## Rung 3: the literature", "", "Nothing above says the idea is new to the field: only a logged search does (`brain-mesh-gaps`, section 4). A starting query:", "", f"`{q}`" if q else "(no concepts to search on)", ""]
@@ -6753,7 +6775,7 @@ def cmd_mentions(m, pid):
     cites that look like databases or software, and the data-set and code cards already in the brain that match."""
     bl = m.blocks(pid)
     if not bl: sys.exit(f"mentions: {pid} has no anchored text")
-    known = [(c, [x for x in [c.get("name"), c.get("url"), c.get("doi"), c.get("repo"), c.get("accession")] + [str(a) for a in (c.fm.get("aliases") or [])] if x]) for c in m.pages("DC")]
+    known = [(c, [x for x in [c.get("name"), c.get("url"), c.get("doi"), c.get("repo"), c.get("accession")] + [str(a) for a in aliases(c)] if x]) for c in m.pages("DC")]
     for title, rx in (("Data sets", MENTION_DATA), ("Code and software", MENTION_CODE)):
         hits = [(b, t) for b, (_pg, t) in bl.items() if rx.search(t)]
         print(f"\n## {title}: {len(hits)} paragraphs")
@@ -8333,7 +8355,7 @@ def cmd_outside(m, args):
     for p in srcs[:6]:
         c = m.cards.get(p)
         if c is not None: print(f"  {p} {short_cite(c)}" + (f" doi:{c.get('doi')}" if c.get("doi") else "") + (" · PREPRINT: has it been published, corrected or withdrawn?" if c.get("kind") == "preprint" else ""))
-    print("Search terms: " + "; ".join(title(t) + (" (" + ", ".join(str(a) for a in (m.cards[t].fm.get("aliases") or [])[:3]) + ")" if m.cards[t].fm.get("aliases") else "") for t in Q[:5]))
+    print("Search terms: " + "; ".join(title(t) + (" (" + ", ".join(str(a) for a in aliases(m.cards[t])[:3]) + ")" if aliases(m.cards[t]) else "") for t in Q[:5]))
     qs = ["Has this already been answered, explained or disputed? Look at the papers that cite " + fill["srcs"] + ", and at recent reviews."]
     for k in dict.fromkeys(k for x in opps for k, _t in x["missing"] + x["unknown"]):
         if k in ASK: qs.append(ASK[k].format(**fill))
@@ -8652,7 +8674,7 @@ def concept_named(m, name):
     if getattr(m, "_nalias", None) is None:
         m._nalias, m._nsquash = {}, {}
         for con in sorted((c for c in m.cards.values() if c.fam == "concept" and not c.get("retired")), key=lambda c: c.id):
-            for al in [con.id.replace("-", " "), con.title] + [str(a) for a in (con.fm.get("aliases") or [])]:
+            for al in [con.id.replace("-", " "), con.title] + [str(a) for a in aliases(con)]:
                 for v in (nrm(al), nrm(re.sub(r"\([^)]*\)", " ", al))):
                     if v: m._nalias.setdefault(v, con.id)
                     if len(v.replace(" ", "")) >= 8: m._nsquash.setdefault(v.replace(" ", ""), con.id)
@@ -8902,7 +8924,7 @@ def wiki_article(m, con, lang):
     shares half its words with one of the concept's names. `- wikipedia:: none` says the concept has no article."""
     set_ = (con.get("wikipedia") or "").strip()
     if set_.lower() in ("none", "-", "no"): return None, "none"
-    names = [set_] if set_ else list(dict.fromkeys([re.sub(r"\s*\([^)]*\)\s*$", "", con.title).strip(), con.id.replace("-", " ")] + [str(a) for a in (con.fm.get("aliases") or []) if not is_acronym(str(a))][:2]))
+    names = [set_] if set_ else list(dict.fromkeys([re.sub(r"\s*\([^)]*\)\s*$", "", con.title).strip(), con.id.replace("-", " ")] + [str(a) for a in aliases(con) if not is_acronym(str(a))][:2]))
     amb = None
     for nm in [n for n in names if n][:4]:
         try: d = wiki_get(m, nm, lang)

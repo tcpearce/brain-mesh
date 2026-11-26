@@ -948,7 +948,7 @@ for f in ("concepts/swelling.md", "concepts/binding-capacity.md"):
     open(f, "w").write(t)
 PY
 python3 tools/mesh.py build > build.txt; grep -q "check: 0 errors, 0 warnings" build.txt && pass "citing the work in the hub line clears it" || { cat build.txt; fail "hub line cleared"; }
-python3 tools/mesh.py propose cavity-collapse "Loss of the imprinted cavities' shape on heating." --from P001 --alias "collapsed cavities" > p.txt && grep -q "^=== cavity-collapse$" $S1/P001_concepts.md && grep -q '^aliases: \["Cavity collapse", "collapsed cavities"\]$' $S1/P001_concepts.md && grep -q "^- proposed:: P001 " $S1/P001_concepts.md && pass "propose writes a concept proposal in the paper's own folder" || { cat p.txt; fail "propose"; }
+python3 tools/mesh.py propose cavity-collapse "Loss of the imprinted cavities' shape on heating." --from P001 --alias "collapsed cavities" > p.txt && grep -q "^=== cavity-collapse$" $S1/P001_concepts.md && grep -q '^aliases: \["collapsed cavities"\]$' $S1/P001_concepts.md && grep -q "^- proposed:: P001 " $S1/P001_concepts.md && pass "propose writes a concept proposal in the paper's own folder" || { cat p.txt; fail "propose"; }
 python3 tools/mesh.py propose wet-swelling "dup" --alias "Swelling" > p.txt 2>&1 && fail "propose accepted an existing concept's name" || grep -q "already the concept \[\[swelling\]\]" p.txt && pass "propose refuses a name an existing concept has" || fail "propose existing"
 python3 tools/mesh.py propose cavity-shape-loss "Cavities lose their shape." > /dev/null && grep -q "^=== cavity-shape-loss" ledger/concept-proposals.md && pass "a proposal with no source goes to the ledger" || fail "ledger proposal"
 python3 tools/mesh.py adopt cavity-shape-loss into cavity-collapse > a.txt && grep -q "folded into the proposal 'cavity-collapse', which stays a proposal" a.txt && [ ! -f concepts/cavity-collapse.md ] && [ ! -f ledger/concept-proposals.md ] && grep -q '"cavity shape loss"' $S1/P001_concepts.md && pass "adopt into another proposal folds it without making a card" || { cat a.txt; fail "fold into proposal"; }
@@ -2695,4 +2695,38 @@ python3 tools/mesh.py propose odotope "The part of an odorant a receptor recogni
 python3 tools/mesh.py propose osmophore-group "A molecular group carrying an odour." --from P002 --alias "osmophore" > /dev/null 2>&1 || true
 python3 tools/mesh.py adopt odotope > a1.txt 2>&1; python3 tools/mesh.py adopt osmophore-group > a2.txt 2>&1
 grep -q "osmophore.*already.*odotope" a2.txt && pass "adopting a concept whose alias another concept already holds is warned about" || { cat a1.txt a2.txt; fail "alias collision at adoption"; }
+# 54. a concept whose everyday name is ambiguous can be given names the scan reads narrowly (issue #54)
+cp -r "$ROOT/demo-vault" "$T/nn"; cd "$T/nn"; cp "$MESH" tools/mesh.py
+python3 tools/mesh.py propose or-family "Receptors sharing 40 per cent identity." --from P001 --alias "OR families" > p.txt 2>&1
+grep -A4 "^=== or-family$" sources/P001*/P001_concepts.md | grep -q '^aliases: \["OR families"\]$' && grep -q "title" p.txt && pass "propose writes only the aliases given, not a title that is the slug in other case, and says so" || { cat p.txt; grep -A4 "^=== or-family" sources/P001*/P001_concepts.md; fail "propose added the slug title as an alias"; }
+python3 tools/mesh.py propose principal-odor-map "A map of odour percepts." --from P001 --title "Principal odor map" > /dev/null
+grep -A4 "^=== principal-odor-map$" sources/P001*/P001_concepts.md | grep -q '^aliases: \[\]$' && pass "nor one that differs only in case" || { grep -A4 "^=== principal-odor-map" sources/P001*/P001_concepts.md; fail "case-only title"; }
+python3 tools/mesh.py propose odour-receptor-gene "A gene of the receptor family." --from P001 --title "Receptor gene of the family" > /dev/null
+grep -A4 "^=== odour-receptor-gene$" sources/P001*/P001_concepts.md | grep -q '^aliases: \["Receptor gene of the family"\]$' && pass "a title in other words is kept as a name" || { grep -A4 "^=== odour-receptor-gene" sources/P001*/P001_concepts.md; fail "other title dropped"; }
+mkc() { printf -- "---\ntype: concept\naliases: [%s]\nupdated: 2026-11-26\n---\n# %s\n\n**Definition.** %s\n\n## Where it appears\n<!--AUTO:START-->\n<!--AUTO:END-->\n\n## Codes\n- id:: %s\n- kind:: concept\n%b" "$2" "$3" "A test concept for issue 54." "$1" "$4" > concepts/$1.md; }
+mkc or-family-level '' 'OR family (40% level)' ''
+mkc receptor-clade '"=OR families"' 'Receptor clade' ''
+mkc or-clan '"OR clan"' 'OR clan' '- scan_names:: aliases\n'
+mkc pom-map '"Principal odour map (POM)"' 'Pom map' ''
+S1=$(ls -d sources/P001*)
+printf '\nThe OR family is large, and the OR families OR1 to OR14 are smaller; an OR clan sits within one, and the POM and the principal odour map were used. ^b0400\n' >> $S1/P001_text.md
+python3 - <<'PY'
+import importlib.util
+spec = importlib.util.spec_from_file_location("mesh", "tools/mesh.py"); mesh = importlib.util.module_from_spec(spec); spec.loader.exec_module(mesh)
+m = mesh.Mesh(".")
+t = "The OR family is large, and the OR families OR1 to OR14 are smaller; an OR clan sits within one."
+def hits(cid):
+    rx, _k = mesh.concept_rx(m.cards[cid]); return [x.group(0) for x in rx.finditer(t)] if rx else []
+assert hits("or-family-level") == [], ("a bracketed qualifier is matched", hits("or-family-level"))
+assert hits("receptor-clade") == ["OR families"], ("an exact alias", hits("receptor-clade"))
+assert hits("or-clan") == ["OR clan"], ("scan_names:: aliases still reads the aliases", hits("or-clan"))
+m.cards["or-clan"].fm["aliases"] = []
+assert hits("or-clan") == [], ("scan_names:: aliases reads neither the id nor the title", hits("or-clan"))
+rx, _k = mesh.concept_rx(m.cards["pom-map"]); got = [x.group(0) for x in rx.finditer("the POM and the principal odour map")]
+assert got == ["POM", "principal odour map"], ("a bracketed acronym still gives both names", got)
+assert m.resolve("receptor-clade") and m.alias.get("or families") == "receptor-clade", "an exact alias still names its concept"
+print("names ok")
+PY
+[ $? = 0 ] && pass "a bracketed qualifier, an exact plural alias and id matching switched off none match 'the OR family'" || fail "narrow names"
+python3 tools/mesh.py build > b.txt 2>&1; grep -q "check: 0 errors" b.txt && pass "a vault with exact aliases and scan_names builds clean" || { grep -E "^ERROR" b.txt | head; fail "build with narrow names"; }
 echo "ALL TESTS PASSED"

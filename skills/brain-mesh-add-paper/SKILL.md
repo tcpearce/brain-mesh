@@ -159,6 +159,8 @@ The test every new card must pass: it adds a new statement, a new source for a s
 
 The tooling enforces these at three points: `split` refuses a same-source duplicate; `python3 tools/mesh.py neighbours P012` lists, for each new card, the most similar existing cards and what each calls for; `build` reports same-source near-duplicates, unlinked parallel results from different sources, repeated background claims, near-identical concept names and overlapping findings. Clear every one, or state why it stands.
 
+A same-source duplicate is judged on the variable, the conditions and the numbers of the value line; a range (`1 to 33`, `1–33`, `between 1 and 33`) counts as its two ends, never as its lower bound. Where two cards of one source share a number but state different things (different samples, different comparisons), record the judgement with `python3 tools/mesh.py contradictions dismiss values:P012-035~P012-054 "<why they differ>"`. Never reword a value line to get past the check.
+
 ## 6. Link
 
 The web grows from the bottom up, card to card.

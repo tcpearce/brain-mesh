@@ -990,7 +990,21 @@ class Mesh:
     def num(s, c):  # the value's first number that stands on its own: not a digit inside a name such as consOR1, TM3 or 6x55 (issue #34)
         mo = re.search(r"(?<![A-Za-z0-9.])[-+−]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?(?![A-Za-z0-9])", plain(s.pair(c.get("value"))[1])) if c.get("value") else None
         return mo.group(0) if mo else ""
+    def value_items(s, c):
+        # the numbers a value line states, in order, a range kept whole as its two ends: '1 to 11', '1-11', '1–11',
+        # 'between 1 and 11' (issue #50); a digit inside a name is not a number (issue #34)
+        t = plain(s.pair(c.get("value"))[1]) if c.get("value") else ""
+        ms, out, k = list(re.finditer(r"(?<![A-Za-z0-9.])[-+−]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?(?![A-Za-z0-9])", t)), [], 0
+        while k < len(ms):
+            if k + 1 < len(ms):
+                gap = t[ms[k].end():ms[k + 1].start()]
+                if re.fullmatch(r"\s*[–—]\s*|-|\s+to\s+", gap) or (re.fullmatch(r"\s+and\s+", gap) and re.search(r"\bbetween\s+$", t[:ms[k].start()])):
+                    out.append((ms[k].group(0), ms[k + 1].group(0))); k += 2; continue
+            out.append(ms[k].group(0)); k += 1
+        return out
     def same_value(s, a, b):  # the same number; or, with no number on either side, the same words (issue #34)
+        ia, ib = s.value_items(a), s.value_items(b)
+        if any(isinstance(x, tuple) for x in ia + ib): return set(ia) == set(ib)  # a range is never a single value, and ranges match only end for end (issue #50)
         na, nb = s.num(a), s.num(b)
         if na or nb: return na == nb
         words = lambda c: " ".join(plain(s.pair(c.get("value"))[1]).lower().split())
@@ -1574,7 +1588,8 @@ class Mesh:
                 for y in range(x + 1, len(g)):
                     a, b = g[x], g[y]
                     if a.id[:4] == b.id[:4]:
-                        if s.same_value(a, b) and not s.recomputes(a, b): E.append(f"{b.id}: duplicates {a.id} (same source, variable, value and conditions); keep one card and add the second anchor to it")
+                        if s.same_value(a, b) and not s.recomputes(a, b) and frozenset((a.id, b.id)) not in settled:  # a judged non-duplicate is recorded, not recoded (issue #50)
+                            E.append(f"{b.id}: duplicates {a.id} (same source, variable, value and conditions); keep one card and add the second anchor to it, or, if the two state different things, record why: `mesh.py contradictions dismiss values:{'~'.join(sorted((a.id, b.id)))} \"<why>\"`")
                     elif not s.linked(a, b) and frozenset((a.id, b.id)) not in settled: W.append(f"{b.id} and {a.id}: parallel results from different sources (same variable and conditions) are not linked; add replicates/contradicts/extends with a reason, or cite both in one finding")
         for cs in by_src.values():
             for x in range(len(cs)):
@@ -4733,13 +4748,14 @@ def cmd_contradictions(m, args):
         if key not in {r[0] for r in contradiction_candidates(m)}:
             mo = re.fullmatch(r"values:([^~]+)~([^~]+)", key)
             a, b = [m.cards.get(m.resolve(x) or "") for x in mo.groups()] if mo else (None, None)
-            if not (a and b and a.fam == b.fam == "evidence" and a.id[:4] != b.id[:4] and m.sig(a) and m.sig(a) == m.sig(b)):
-                sys.exit(f"contradictions dismiss: no possible contradiction '{key}' (see `mesh.py contradictions`), and not a pair of parallel results (same variable and conditions in two sources)")
+            if not (a and b and a.fam == b.fam == "evidence" and a.id != b.id and m.sig(a) and m.sig(a) == m.sig(b)):
+                sys.exit(f"contradictions dismiss: no possible contradiction '{key}' (see `mesh.py contradictions`), and not a pair of results on the same variable and conditions (parallel results of two sources, or a pair `check` calls duplicates)")
             key = "values:" + "~".join(sorted((a.id, b.id)))
         p = J(m.root, "ledger", "contradictions.md"); t = rd(p) if os.path.exists(p) else REGISTER_HEAD
         line = f"- {key} — {TODAY}: {why}\n"
         t = t.replace("\n## The register", "\n" + line + "\n## The register", 1) if "\n## The register" in t else t.rstrip("\n") + "\n" + line
-        wr(p, re.sub(r"\n{3,}", "\n\n", t)); print(f"dismissed {key}: {why}" + (" (this also settles `check`'s parallel-results warning for the pair)" if key.startswith("values:") else "")); return
+        wr(p, re.sub(r"\n{3,}", "\n\n", t)); same_ = key.startswith("values:") and len({x.split("-")[0] for x in key[7:].split("~")}) == 1
+        print(f"dismissed {key}: {why}" + ((" (this also settles `check`'s duplicate error for the pair)" if same_ else " (this also settles `check`'s parallel-results warning for the pair)") if key.startswith("values:") else "")); return
     scope = args[0] if args else None
     cid = None
     if scope and not re.fullmatch(r"P\d{3}", scope):

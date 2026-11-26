@@ -2624,4 +2624,18 @@ cat > $S1/P001_refs.md <<'REFS'
 REFS
 python3 tools/mesh.py cite P001 > c.txt 2>&1; python3 tools/mesh.py build > b.txt 2>&1
 grep -q "check: 0 errors" b.txt && ! grep -q "cites:: ref N" b.txt && grep -q "^- cites:: \[\[R0" $E && pass "after cite, neither warning nor error" || { cat c.txt; grep -E "ERROR|cites:: ref" b.txt; fail "after cite"; }
+# 50. a range is not its lower bound, and a judged non-duplicate is recorded rather than recoded (issue #50)
+cp -r "$ROOT/demo-vault" "$T/rg"; cd "$T/rg"; cp "$MESH" tools/mesh.py; S1=$(ls -d sources/P001*)
+mk() { printf -- "---\ntype: observation\nstatus: measured\nupdated: 2026-11-26\n---\n# Capacity reading %s\n\nAt 60 °C in [[water]] the [[binding-capacity|binding capacity]] was %s.\n\n## Codes\n- id:: P001-0%s\n- value:: [[binding-capacity]] = %s\n- when:: [[temperature]] = 60 degC\n- when:: [[solvent]] = [[water]]\n- anchor:: [[P001_text#^b0004]]\n- loc:: \"At 25 °C the binding capacity was 4.2\"\n" "$1" "$2" "$1" "$2" > $S1/P001-0$1-capacity-reading-$1.md; }
+mk 20 "1 neuron for cadaverine"; mk 21 "1 to 11 for alcohols, 1 to 7 for esters, 2–33 for aldehydes"
+python3 tools/mesh.py build > b.txt 2>&1; ! grep -q "P001-021: duplicates P001-020" b.txt && pass "a range and a single value that share its lower bound are not duplicates" || { grep -E "^ERROR" b.txt | head; fail "range read as its lower bound"; }
+mk 22 "between 1 and 11 for alcohols, 1–7 for esters, 2 to 33 for aldehydes"
+python3 tools/mesh.py build > b.txt 2>&1; grep -q "P001-022: duplicates P001-021" b.txt && pass "two lines stating the same ranges, written differently, are" || { grep -E "^ERROR" b.txt | head; fail "same ranges"; }
+rm $S1/P001-022-*.md; mk 22 "1 to 33 neurons"
+python3 tools/mesh.py build > b.txt 2>&1; ! grep -q "P001-022: duplicates P001-021" b.txt && ! grep -q "P001-022: duplicates P001-020" b.txt && pass "ranges with other endpoints are not" || { grep -E "^ERROR" b.txt | head; fail "different ranges"; }
+rm $S1/P001-02[012]-*.md
+mk 23 "0.58 ± 0.15 (n = 23) after ten to thirty days"; mk 24 "0.58 ± 0.21 (n = 18) across five sessions"
+python3 tools/mesh.py build > b.txt 2>&1; grep -q "P001-024: duplicates P001-023" b.txt && grep -q "contradictions dismiss values:P001-023~P001-024" b.txt && pass "two cards sharing a headline number still collide, and the error says how to record that they differ" || { grep -E "^ERROR" b.txt | head; fail "same headline number"; }
+python3 tools/mesh.py contradictions dismiss values:P001-024~P001-023 "different samples and comparisons; only the headline number is shared" > d.txt 2>&1 && grep -q "values:P001-023~P001-024 — " ledger/contradictions.md && pass "contradictions dismiss records a judged non-duplicate of one source" || { cat d.txt; fail "dismiss same source"; }
+python3 tools/mesh.py build > b.txt 2>&1; ! grep -q "P001-024: duplicates P001-023" b.txt && grep -q "check: 0 errors" b.txt && pass "check honours the judgement, and the value lines stay as written" || { grep -E "^ERROR" b.txt | head; fail "dismissed duplicate"; }
 echo "ALL TESTS PASSED"

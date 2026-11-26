@@ -2758,4 +2758,54 @@ f 4 kind software && grep -A14 "^## 4$" $S1/P001_refs.md | grep -q "^- title:: t
 f 5 journal "Chem. Biol." && f 5 volume 15 && f 5 title "The importance of odorant conformation to the binding and activation of a representative olfactory receptor" && ! grep -A14 "^## 5$" $S1/P001_refs.md | grep -q "OPEN ACCESS\|July 6" && pass "a Cell Press page footer that falls mid-entry is stripped" || { grep -A12 "^## 5$" $S1/P001_refs.md; fail "Cell footer"; }
 f 6 kind book && f 6 title "Neurobiology" && f 6 publisher "Oxford University Press" && ! grep -A14 "^## 6$" $S1/P001_refs.md | grep -q "KEY RESOURCES" && pass "a book gives its publisher, and the STAR Methods table after the last entry is not taken into it" || { grep -A12 "^## 6$" $S1/P001_refs.md; fail "Cell book"; }
 python3 tools/mesh.py cite P001 > c.txt 2>&1; python3 tools/mesh.py build > b.txt 2>&1; grep -q "check: 0 errors" b.txt && grep -q "^@misc{" references/library.bib && pass "the cards are made and the vault builds clean; a preprint and software are @misc in BibTeX" || { grep -E "^ERROR" b.txt | head; fail "Cell cite"; }
+# 47. a two-column page whose lines sit at the same heights is anchored column by column (issue #47)
+if python3 -c "import pymupdf" 2>/dev/null || python3 -c "import fitz" 2>/dev/null; then
+python3 "$MESH" init "$T/tc" "Columns" "two-column test" > /dev/null; cd "$T/tc"
+python3 - <<'PY'
+try: import pymupdf as fitz
+except ImportError: import fitz
+L = ("The left column opens the methods here. Neurons were taken from the septum of adult mice and dissociated in a buffer "
+     "without calcium. Each cell was loaded with a dye and imaged under a microscope at room temperature. Responses were read "
+     "as the fall in emission under violet light, and a cell counted as responsive when the change exceeded half of that to "
+     "potassium. The left column ends its paragraph here.").split()
+R = ("Adrian, E.D. (1950). Sensory discrimination with some recent evidence from the olfactory organ. Br. Med. Bull. 6, 330-333. "
+     "Amoore, J. (1970). Molecular Basis of Odor (New York: Charles C. Thomas). "
+     "Buck, L., and Axel, R. (1991). A novel multigene family may encode odorant receptors. Cell 65, 175-187.").split()
+def wrap(ws, width=40):
+    out, cur = [], ""
+    for w in ws:
+        if cur and len(cur) + len(w) + 1 > width: out.append(cur); cur = w
+        else: cur = (cur + " " + w).strip()
+    return out + [cur]
+doc = fitz.open(); pg = doc.new_page(width=612, height=792)
+lw, rw = wrap(L), wrap(R)
+for i in range(max(len(lw), len(rw))):  # drawn line by line across the page, as old journal PDFs are
+    if i < len(lw): pg.insert_text((60, 100 + 11 * i), lw[i], fontsize=9)
+    if i < len(rw): pg.insert_text((320, 100 + 11 * i), rw[i], fontsize=9)
+pg.insert_text((60, 100 + 11 * max(len(lw), len(rw)) + 20), "Figure 1. A caption that runs the full width of the page across both columns, and must stay whole.", fontsize=9)
+one = doc.new_page(width=612, height=792)  # a one-column page, read as before
+one.insert_text((60, 100), "A single column of text on the second page.", fontsize=9)
+doc.save("two.pdf")
+d = fitz.open("two.pdf"); blocks = [b[4] for b in d[0].get_text("blocks") if b[6] == 0]
+assert any("left column opens" in b and "Adrian" in b for b in blocks), "the fixture should interleave the columns in one block"
+PY
+python3 tools/mesh.py anchor P001 two.pdf > a.txt 2>&1 || { cat a.txt; fail "anchor two-column"; }
+TX=sources/P001/P001_text.md
+python3 - "$TX" <<'PY'
+import sys, re
+t = open(sys.argv[1], encoding="utf-8").read()
+paras = [re.sub(r" \^b\d{4}$", "", l) for l in t.splitlines() if re.search(r"\^b\d{4}$", l)]
+body = " ".join(paras)
+left = "The left column opens the methods here. Neurons were taken from the septum of adult mice and dissociated in a buffer without calcium."
+assert left in body, ("the left column's sentences are not whole", paras)
+assert body.index("The left column ends its paragraph here.") < body.index("Adrian, E.D. (1950)"), ("the right column began before the left one ended", paras)
+assert "Sensory discrimination with some recent evidence from the olfactory organ." in body, ("a reference was spliced", paras)
+assert body.index("Adrian, E.D.") < body.index("Amoore, J.") < body.index("Buck, L., and Axel"), paras
+cap = "Figure 1. A caption that runs the full width of the page across both columns, and must stay whole."
+assert cap in paras, ("the full-width caption was split or merged", paras)
+assert paras.index(cap) == len(paras) - 2 and paras[-1] == "A single column of text on the second page.", paras
+print("columns ok")
+PY
+[ $? = 0 ] && pass "anchor reads a two-column page column by column: the left column whole and first, a full-width caption one block" || fail "two-column anchoring"
+else echo "skip 47: PyMuPDF not installed"; fi
 echo "ALL TESTS PASSED"

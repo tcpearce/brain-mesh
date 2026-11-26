@@ -1801,11 +1801,62 @@ def cmd_upgrade(vault, quiet=False):
         if not quiet: print(f"recorded obsidian_vault = {cfg['obsidian_vault']} in MESH.json; change it if the vault has another name in Obsidian")
     if not quiet: print(f"tooling {old} -> {VERSION}" + ("; instructions copied to .brain-mesh/" if os.path.isdir(docs) and me != dst else "") + ". Now run `python3 tools/mesh.py build` in the vault.")
 
+def page_blocks(page):
+    """A page's text blocks in reading order (issue #47). PyMuPDF gives blocks in the order the page draws them; on a
+    two-column page that draws its lines across the whole width, as Cell, Nature and Science did before about 2000,
+    one block then holds lines of both columns in turn, and the anchored text splices them ('recent eviIsolation of
+    OR cDNAs dence from'). Such a page is read column by column: the gutter is the strip in the middle third that the
+    fewest lines cross; a block counts as interleaved when it holds a full-width line of each column; and when such
+    blocks hold a third of the page's lines, every line is taken left column then right column, band by band
+    between the lines that cross the gutter (a title, a caption across the page), which stay whole. Paragraphs are
+    cut where the gap between lines widens or a short line is followed by an indented one. Any other page is read
+    exactly as before, so a page whose blocks already follow its columns is not touched."""
+    plain = [b[4] for b in page.get_text("blocks") if b[6] == 0]
+    blks = [bk for bk in page.get_text("dict")["blocks"] if bk.get("type") == 0]
+    lt = lambda ln: "".join(sp["text"] for sp in ln["spans"])
+    lines = [(k, *ln["bbox"], lt(ln)) for k, bk in enumerate(blks) for ln in bk.get("lines", []) if lt(ln).strip()]  # (block, x0, y0, x1, y1, text)
+    if len(lines) < 10: return plain
+    W, best = page.rect.width, None
+    for x in range(int(W * 0.3), int(W * 0.7) + 1):
+        key = (sum(1 for l in lines if l[1] < x - 1 and l[3] > x + 1), -min(sum(1 for l in lines if l[3] <= x + 1), sum(1 for l in lines if l[1] >= x - 1)))
+        if best is None or key < best[0]: best = (key, x)
+    (cross, nside), g = best
+    if -nside < 5 or cross > 0.2 * len(lines): return plain
+    lo, hi = max([l[3] for l in lines if l[3] <= g + 1] or [g]), min([l[1] for l in lines if l[1] >= g - 1] or [g])
+    side = lambda l: "F" if l[1] < lo - 1 and l[3] > hi + 1 else ("L" if l[3] <= (lo + hi) / 2 + 1 else "R")
+    q = lambda xs, f: sorted(xs)[int(f * (len(xs) - 1))]
+    Ls, Rs = [l for l in lines if side(l) == "L"], [l for l in lines if side(l) == "R"]
+    if not Ls or not Rs: return plain
+    wl, wr = lo - q([l[1] for l in Ls], 0.1), q([l[3] for l in Rs], 0.9) - hi
+    full = lambda l: l[3] - l[1] >= 0.8 * (wl if side(l) == "L" else wr)
+    mix = {k for k in range(len(blks)) if any(l[0] == k and side(l) == "L" and full(l) for l in lines) and any(l[0] == k and side(l) == "R" and full(l) for l in lines)}
+    if not mix or sum(1 for l in lines if l[0] in mix) * 3 < len(lines): return plain
+    def paras(ls):
+        ls = sorted(ls, key=lambda l: (l[2], l[1]))
+        if not ls: return []
+        gaps = sorted(b_[2] - a_[4] for a_, b_ in zip(ls, ls[1:]) if b_[2] - a_[4] > -2)
+        lead = gaps[len(gaps) // 2] if gaps else 0
+        x0, x1 = q([l[1] for l in ls], 0.1), q([l[3] for l in ls], 0.9)
+        res, cur = [], [ls[0]]
+        for a_, b_ in zip(ls, ls[1:]):
+            if b_[2] - a_[4] > max(lead * 1.6, lead + 1.2) or (a_[3] < x1 - 0.15 * (x1 - x0) and b_[1] > x0 + 3): res.append(cur); cur = []
+            cur.append(b_)
+        return ["\n".join(x[5] for x in p_) + "\n" for p_ in res + [cur]]
+    out, band, wide = [], [], []
+    for l in sorted(lines, key=lambda l: (l[2], l[1])) + [None]:
+        if l is not None and side(l) == "F":
+            if band: out += paras([x for x in band if side(x) == "L"]) + paras([x for x in band if side(x) == "R"]); band = []
+            wide.append(l)
+        else:
+            if wide: out += paras(wide); wide = []
+            if l is not None: band.append(l)
+    return out + paras([x for x in band if side(x) == "L"]) + paras([x for x in band if side(x) == "R"])
+
 def pdf_pages(pdf):
     try:
         try: import pymupdf as fitz
         except ImportError: import fitz
-        return [[b[4] for b in pg.get_text("blocks") if b[6] == 0] for pg in fitz.open(pdf)], "PyMuPDF"
+        return [page_blocks(pg) for pg in fitz.open(pdf)], "PyMuPDF"
     except ImportError: pass
     if shutil.which("pdftotext"):
         r = subprocess.run(["pdftotext", pdf, "-"], capture_output=True, text=True)

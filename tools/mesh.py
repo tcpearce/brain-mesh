@@ -514,7 +514,7 @@ def soft(t):
 
 
 REF_HEAD = r"\s*(?:REFERENCES AND NOTES|References and Notes|REFERENCES|References|LITERATURE CITED|Literature cited|BIBLIOGRAPHY|Bibliography)"
-REF_STOP = r"\s*(ACKNOWLEDG|Acknowledg|AUTHOR CONTRIBUTIONS|Author contributions|COMPETING|Competing interests|SUPPLEMENTARY MATERIALS|Supplementary Materials|Correspondence|METHODS\s*$|ONLINE METHODS)"
+REF_STOP = r"\s*(ACKNOWLEDG|Acknowledg|AUTHOR CONTRIBUTIONS|Author contributions|COMPETING|Competing interests|SUPPLEMENTARY MATERIALS|Supplementary Materials|Correspondence|METHODS\s*$|ONLINE METHODS|Online Methods\s*$|(?:Article\s+)?Methods\s*$)"  # 'Article Methods': Nature's running head glued to the heading (issue #52)
 
 def ref_region(blocks):
     """The paragraphs holding a source's reference list: after a REFERENCES heading, or from the last paragraph that
@@ -531,15 +531,23 @@ def ref_region(blocks):
         firsts = [k for k, b in enumerate(ids) if re.match(r"\s*1\.\s+[A-ZÀ-ɏ]", blocks[b][1]) and k > len(ids) * 0.4]
         starts = [firsts[0]] if firsts else []
     if not starts: return []
-    out, seen = [], set()
-    for start in starts:
-        for b in ids[start:]:
-            if b in seen: continue
-            t = soft(blocks[b][1])
-            if re.match(REF_STOP, t): break
-            if re.match(r"\s*(NATURE |©|ARTICLES\s*$|RESEARCH\s*\||Published online|\d{1,4}\s*$)", t): continue  # page furniture
-            seen.add(b); out.append((b, re.sub(REF_HEAD + r"\s+(?=\d{1,3}\.\s|" + AY_HEAD + ")", "", t, count=1)))
-    return sorted(out, key=lambda r: r[0])
+    out, seen, done = [], set(), set()
+    while starts:
+        for start in starts:
+            done.add(start)
+            for b in ids[start:]:
+                if b in seen: continue
+                t = soft(blocks[b][1])
+                if re.match(REF_STOP, t): break
+                if re.match(r"\s*(NATURE |©|ARTICLES\s*$|RESEARCH\s*\||Published online|\d{1,4}\s*$)", t): continue  # page furniture
+                seen.add(b); out.append((b, re.sub(REF_HEAD + r"\s+(?=\d{1,3}\.\s|" + AY_HEAD + ")", "", t, count=1)))
+        # A numbered list the Methods interrupt with no second heading (Nature: '45. Staus, D. P. …' after the Methods)
+        # resumes at the paragraph that starts with its next number (issue #52)
+        out.sort(key=lambda r: r[0])
+        n = len(split_refs(" ".join(t for _b, t in out)))
+        nxt = next((k for k, b in enumerate(ids) if n and b not in seen and k not in done and k > ids.index(out[-1][0]) and re.match(r"\s*%d\.\s+[A-ZÀ-ɏ]" % (n + 1), soft(blocks[b][1]))), None) if out else None
+        starts = [nxt] if nxt is not None else []
+    return out
 
 
 def split_refs(text, limit=600):
@@ -4058,6 +4066,17 @@ def proposal_matches(m, names):
     return out
 
 
+def alias_warnings(m, cid, names):
+    """What adopting these names as a concept's aliases would cost (issue #52): a name another concept already holds,
+    which `check` will report as an error, and an acronym of two letters, which matches wherever those letters stand
+    in capitals (GC is also every gas chromatograph)."""
+    out = []
+    for nm in dict.fromkeys(str(x) for x in names if x):
+        k = " ".join(nm.lower().split()); other = m.alias.get(k)
+        if other and other != cid: out.append(f"'{nm}' is already a name of [[{other}]]: `check` will report it; drop it from one of the two")
+        elif re.fullmatch(r"[A-Z]{2}", nm.strip()): out.append(f"'{nm}' is a two-letter acronym: the scan will match it wherever those capitals stand; keep it only if nothing else in the field is written so")
+    return out
+
 def cmd_adopt(m, args):
     """Settle a proposed concept. `adopt <name>` makes it a concept card from the fullest proposal, with every
     proposing paper's names as aliases; an agent runs it only on the user's word, or where a vault rule tells it to.
@@ -4092,6 +4111,7 @@ def cmd_adopt(m, args):
             return
         if not tid or m.cards[tid].fam != "concept": sys.exit(f"adopt: '{target}' is neither a concept nor another proposal")
         tc = m.cards[tid]
+        for w_ in alias_warnings(m, tid, [x for x in names if " ".join(x.lower().split()) != name.replace("-", " ")]): print("warn  adopt: " + w_)
         wr(tc.path, add_aliases(rd(tc.path), names))
         n = relink(m, name, tc.name)
         for _pid, f, _b, _t, _a in props: drop_proposal(f, name)
@@ -4103,6 +4123,7 @@ def cmd_adopt(m, args):
     raw = best if best.startswith("---") else f"---\ntype: concept\nupdated: {TODAY}\n---\n" + best
     if not re.search(r"^type:\s*concept\s*$", raw.split("\n---\n", 1)[0], re.M): raw = set_fm(raw, "type", "concept")
     raw = add_aliases(raw, [t for _p, _f, _b, t, _a in props] + [a for _p, _f, _b, _t, al in props for a in al])
+    for w_ in alias_warnings(m, name, [t for _p, _f, _b, t, _a in props] + [a for _p, _f, _b, _t, al in props for a in al]): print("warn  adopt: " + w_)
     if "\n## Codes" not in raw: raw = raw.rstrip("\n") + "\n\n## Codes\n"
     if not re.search(r"^- id::", raw, re.M): raw = raw.replace("\n## Codes\n", f"\n## Codes\n- id:: {name}\n", 1)
     raw = raw.rstrip("\n") + f"\n- adopted:: {TODAY}\n"
@@ -4124,6 +4145,11 @@ def cmd_staged(m):
 
 
 # ---- 1.11.0: concept scan, proposals, hand-made concepts, citations behind facts ----
+
+SCAN_NAMES_ONLY = ("The scan matches names and aliases only (word stems too for high-priority concepts and sources): a concept the source "
+                   "states in other words — a role given only as a residue number, a procedure described but never named, a product name "
+                   "for a general method — does not appear, so 'nothing to do' means no unlinked passage names it, not that none is about it. "
+                   "Read the source's section headings and methods list for the concepts that matter (issue #52).")
 
 def concept_rx(con, deep=False):
     """One regular expression for a concept: its slug, title and aliases, allowing British and American spelling
@@ -4160,7 +4186,7 @@ def ref_paras(blocks):
     out, ids = {b for b, _t in ref_region(blocks)}, list(blocks)
     st = next((k for k, b in enumerate(ids) if k > len(ids) * 0.4 and re.match(r"\s*(References|REFERENCES|Bibliography|BIBLIOGRAPHY|Literature Cited|LITERATURE CITED)\b", blocks[b][1])), None)
     for b in (ids[st:] if st is not None else []):
-        if re.match(r"\s*(ACKNOWLEDG|Acknowledg|AUTHOR CONTRIBUTIONS|Author contributions|SUPPLEMENTARY MATERIALS|Supplementary (Materials|Information|Figures)\s*$)", blocks[b][1]): break
+        if re.match(r"\s*(ACKNOWLEDG|Acknowledg|AUTHOR CONTRIBUTIONS|Author contributions|SUPPLEMENTARY MATERIALS|Supplementary (Materials|Information|Figures)\s*$|(?:Article\s+)?(?:Methods|METHODS)\s*$|Online Methods\s*$|ONLINE METHODS)", blocks[b][1]): break  # the Methods after the list are text (issue #52)
         out.add(b)
     ab = next((k for k, b in enumerate(ids[:8]) if re.match(r"\s*(Abstract|ABSTRACT|Summary|SUMMARY)\b", blocks[b][1])), None)
     return out | set(ids[:ab] if ab else [])  # the title block before an Abstract heading: title, authors, journal
@@ -4410,7 +4436,7 @@ def cmd_scan(m, args):
         if not st or not st[1]: continue
         found += 1
         scan_report(m, pid, write=True, only=cid)
-    if not found: print(f"{cid}: every passage naming it in the {len(srcs)} sources is covered by a card, or none names it")
+    if not found: print(f"{cid}: every passage naming it in the {len(srcs)} sources is covered by a card, or none names it (by its names and aliases only: a source that states it in other words is not found)")
 
 
 def scan_report(m, pid, write=True, only=None):
@@ -4434,6 +4460,7 @@ def scan_report(m, pid, write=True, only=None):
     hits = concept_hits(m, pid)
     todo = [(c, st) for c, st in sorted(state.items()) if st[1] and c not in dec and m.cards[c].priority != "low" and (only is None or c == only)]
     print(f"{pid}: {len(state)} concepts named in the text; {len(todo)} named in passages no card of {pid} covers" + (f" (showing {only})" if only else ""))
+    print(SCAN_NAMES_ONLY)
     for cid, (_h, unc) in todo:
         print(f"\n[[{cid}]] — {len(unc)} passage{'s' * (len(unc) != 1)} with no card about it" + (" (high priority: word stems matched)" if m.cards[cid].priority == "high" else ""))
         for b in unc[:12]:
@@ -4465,7 +4492,7 @@ def scan_report(m, pid, write=True, only=None):
             ws = works_cited(m, c)
             print(f"  [[{cid}]] {it}" + (" (no image yet: crop the panel with `mesh.py figure`)" if is_crop(it) and not img else "") + f" — {c.id} {one(c.title, 60)}" + (" · cites " + "; ".join(short_cite(w) for w in ws) if ws else ""))
     if not write: return
-    L = [f"# {pid} concept scan", "", f"Written by `mesh.py scan {pid}` on {TODAY}: every concept in the brain looked for in this source's text. A passage is covered when a card of {pid} anchored there links the concept. For each concept under **To do**, card the new facts the passages state about it (link the concept, anchor the passage, and add `cites::` for the works the paper cites for them), or write on its `decided::` line why there is nothing new. Then run `scan {pid}` again: carded passages move to covered, and decisions are kept.", ""]
+    L = [f"# {pid} concept scan", "", f"Written by `mesh.py scan {pid}` on {TODAY}: every concept in the brain looked for in this source's text. A passage is covered when a card of {pid} anchored there links the concept. For each concept under **To do**, card the new facts the passages state about it (link the concept, anchor the passage, and add `cites::` for the works the paper cites for them), or write on its `decided::` line why there is nothing new. Then run `scan {pid}` again: carded passages move to covered, and decisions are kept.", "", SCAN_NAMES_ONLY, ""]
     rows = sorted(state.items())
     td = [(c, st) for c, st in rows if st[1] and c not in dec and m.cards[c].priority != "low"]
     dd = [(c, st) for c, st in rows if st[1] and c in dec and m.cards[c].priority != "low"]

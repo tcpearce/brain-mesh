@@ -2654,4 +2654,45 @@ grep -q "P001-005: 'concepts::' repeats \[\[temperature\]\]" k.txt && pass "chec
 grep -q "P001-005: 'based_on::' has an empty item" k.txt && pass "check flags an empty item on any link line" || { cat k.txt; fail "empty item not flagged"; }
 python3 tools/mesh.py tidy P001 > t.txt 2>&1; grep -q "^- concepts:: \[\[temperature\]\], \[\[swelling\]\]$" $E3 && grep -q "^- based_on:: \[\[P001-003-capacity-4-2-at-25c-water\]\]$" $E3 && grep -q "^- anchor:: \[\[P001_text#^b0004\]\], \[\[P001_text#^b0002\]\]$" $(ls $S1/P001-003-*.md) && pass "tidy keeps each link once and drops empty items, and leaves two anchors in one file alone" || { cat t.txt; grep -E "concepts|based_on" $E3; fail "tidy"; }
 python3 tools/mesh.py check P001 > k.txt 2>&1 || true; ! grep -E -q "repeats \[\[|has an empty item" k.txt && pass "after tidy, check flags nothing" || { grep -E "repeats|empty item" k.txt; fail "after tidy"; }
+# 52. the Methods after a reference list are text the scan reads; names against punctuation match; scan says what it matches (issue #52)
+cp -r "$ROOT/demo-vault" "$T/sm"; cd "$T/sm"; cp "$MESH" tools/mesh.py; S1=$(ls -d sources/P001*)
+cat > concepts/membrane-phospholipid.md <<'CON'
+---
+type: concept
+aliases: ["Membrane phospholipid", "POPC"]
+updated: 2026-11-26
+---
+# Membrane phospholipid
+
+**Definition.** A phospholipid of the bilayer in which a receptor sits.
+
+## Where it appears
+<!--AUTO:START-->
+<!--AUTO:END-->
+
+## Codes
+- id:: membrane-phospholipid
+- kind:: entity
+CON
+rm -f $S1/P001_refs.md
+printf '\nReferences ^b0300\n\n1. Lee, K. & Park, J. Hydrogel swelling scales with temperature. J. Appl. Polym. Sci. 98, 101-109 (2015). 2. Novak, P. Imprinted films in water. Eur. Polym. J. 41, 230-238 (2005). ^b0301\n\nArticle Methods ^b0302\n\nFilms were cast on a 75%% palmitoyl-oleoyl-phosphatidylcholine (POPC)–25%% cholesterol layer, and then POPC–CHSD and POPC, in turn, were allowed to move freely. ^b0303\n\n3. Chen, D. Binding retained in acetonitrile. Polymer Sensing Letters 4, 55-60 (2023). ^b0304\n' >> $S1/P001_text.md
+python3 tools/mesh.py scan P001 > s.txt 2>&1
+grep -A3 "^\[\[membrane-phospholipid\]\]" s.txt | grep -q "b0303" && pass "a methods paragraph after the reference list, under a running head ('Article Methods'), is scanned" || { cat s.txt; fail "methods after the reference list skipped"; }
+python3 - <<'PY'
+import importlib.util
+spec = importlib.util.spec_from_file_location("mesh", "tools/mesh.py"); mesh = importlib.util.module_from_spec(spec); spec.loader.exec_module(mesh)
+m = mesh.Mesh(".")
+rx, _k = mesh.concept_rx(m.cards["membrane-phospholipid"])
+t = "Films were cast on a 75% palmitoyl-oleoyl-phosphatidylcholine (POPC)–25% cholesterol layer, and then POPC–CHSD and POPC, in turn, POPC/POPE, were allowed to move."
+assert len(rx.findall(t)) == 4, rx.findall(t)
+assert not rx.search("the POPCX lipid and xPOPC"), "a longer word matched"
+print("punctuation ok")
+PY
+[ $? = 0 ] && pass "a name against a bracket, a dash, a slash or a comma is matched, and not inside a longer word" || fail "punctuation"
+grep -q "names and aliases only" s.txt && grep -q "names and aliases only" $S1/P001_scan.md && pass "scan says it matches names and aliases only, in its output and its file" || { tail -5 s.txt; fail "scan does not say what it matches"; }
+python3 tools/mesh.py refs P001 --force > r.txt 2>&1; grep -q "P001: 3 references (numbered list)" r.txt && grep -A3 "^## 3$" $S1/P001_refs.md | grep -q "Binding retained in acetonitrile" && pass "refs still reads a numbered list that the Methods interrupt, from where its numbering resumes" || { cat r.txt; grep "^## " $S1/P001_refs.md; fail "refs across the Methods"; }
+python3 tools/mesh.py propose odotope "The part of an odorant a receptor recognises." --from P001 --alias "osmophore" > /dev/null
+python3 tools/mesh.py propose osmophore-group "A molecular group carrying an odour." --from P002 --alias "osmophore" > /dev/null 2>&1 || true
+python3 tools/mesh.py adopt odotope > a1.txt 2>&1; python3 tools/mesh.py adopt osmophore-group > a2.txt 2>&1
+grep -q "osmophore.*already.*odotope" a2.txt && pass "adopting a concept whose alias another concept already holds is warned about" || { cat a1.txt a2.txt; fail "alias collision at adoption"; }
 echo "ALL TESTS PASSED"

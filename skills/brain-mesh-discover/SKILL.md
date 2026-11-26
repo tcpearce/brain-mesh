@@ -34,7 +34,7 @@ Everything the miners can find is limited by what the ontology codes, and everyt
 7. **Propose** (sections 5 and 6). Each proposal names its route, its ingredients, its reach, what the outside check found, and the proof it would need.
 8. **Record.** `zoom topic:<slug> --explored "<what was mined, proposed, accepted or dropped>"`, and at the end of the session `routes --record`. After the next sources are integrated, `routes --changes` says what they moved (section 8).
 
-Where the session can start subagents, give each branch to one, and each outside check to one: it returns a shortlist, each item with its need, its route, the ingredients it verified, what it found outside and the question to put to the user. The main conversation holds the top level and the shortlists, none of the reading. Without subagents, finish one branch and note its shortlist before the next.
+Where the session can start subagents, give each branch to one, and each outside check to one: it returns a shortlist, each item with its need, its route, the ingredients it verified, what it found outside and the question to put to the user. The main conversation holds the top level and the shortlists, none of the reading. Without subagents, finish one branch and note its shortlist before the next. For a long run with competing agents, hourly meetings, referees and proofs of concept, see `brain-mesh-campaign`.
 
 ## What discovery reads from the ontology
 

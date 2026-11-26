@@ -2638,4 +2638,20 @@ mk 23 "0.58 ± 0.15 (n = 23) after ten to thirty days"; mk 24 "0.58 ± 0.21 (n =
 python3 tools/mesh.py build > b.txt 2>&1; grep -q "P001-024: duplicates P001-023" b.txt && grep -q "contradictions dismiss values:P001-023~P001-024" b.txt && pass "two cards sharing a headline number still collide, and the error says how to record that they differ" || { grep -E "^ERROR" b.txt | head; fail "same headline number"; }
 python3 tools/mesh.py contradictions dismiss values:P001-024~P001-023 "different samples and comparisons; only the headline number is shared" > d.txt 2>&1 && grep -q "values:P001-023~P001-024 — " ledger/contradictions.md && pass "contradictions dismiss records a judged non-duplicate of one source" || { cat d.txt; fail "dismiss same source"; }
 python3 tools/mesh.py build > b.txt 2>&1; ! grep -q "P001-024: duplicates P001-023" b.txt && grep -q "check: 0 errors" b.txt && pass "check honours the judgement, and the value lines stay as written" || { grep -E "^ERROR" b.txt | head; fail "dismissed duplicate"; }
+# 53. folding a proposal into a concept leaves each concept once on a line, and check flags a repeated or empty item (issue #53)
+cp -r "$ROOT/demo-vault" "$T/dd"; cd "$T/dd"; cp "$MESH" tools/mesh.py; S1=$(ls -d sources/P001*)
+python3 tools/mesh.py propose cavity-distortion "The distortion of the imprinted cavities as the network swells." --from P001 > /dev/null
+E=$(ls $S1/P001-010-*.md); sed -i 's/^- concepts:: \[\[swelling\]\], \[\[temperature\]\]$/- concepts:: [[swelling]], [[cavity-distortion]], [[temperature]]/' $E
+E2=$(ls $S1/P001-007-*.md); sed -i 's/^- id:: P001-007$/- id:: P001-007\n- concepts:: [[cavity-distortion]], , [[swelling]]/' $E2
+grep -q "^- concepts:: \[\[swelling\]\], \[\[cavity-distortion\]\], \[\[temperature\]\]$" $E || fail "setup: the card does not link the proposal"
+python3 tools/mesh.py adopt cavity-distortion into swelling > a.txt 2>&1
+grep -q "^- concepts:: \[\[swelling\]\], \[\[temperature\]\]$" $E && pass "adopt into rewrites a line that linked both names to carry the concept once" || { cat a.txt; grep concepts $E; fail "fold left a repeated concept"; }
+! grep -E -q "^- concepts::.*(, ,|^- concepts:: ,|, *$)" $E2 && grep -q "^- concepts:: \[\[swelling\]\]$" $E2 && pass "and drops the empty items a fold leaves" || { grep concepts $E2; fail "fold left an empty item"; }
+python3 tools/mesh.py build > b.txt 2>&1; grep -q "check: 0 errors" b.txt && ! grep -q "repeats \[\[" b.txt && pass "the folded vault builds clean" || { grep -E "^ERROR|repeats" b.txt | head; fail "build after fold"; }
+E3=$(ls $S1/P001-005-*.md); sed -i 's/^- id:: P001-005$/- id:: P001-005\n- based_on:: , [[P001-003-capacity-4-2-at-25c-water]]\n- concepts:: [[temperature]], [[swelling]], [[temperature|Temperature]]/' $E3
+python3 tools/mesh.py check P001 > k.txt 2>&1 || true
+grep -q "P001-005: 'concepts::' repeats \[\[temperature\]\]" k.txt && pass "check flags a concept repeated on one line" || { cat k.txt; fail "repeated item not flagged"; }
+grep -q "P001-005: 'based_on::' has an empty item" k.txt && pass "check flags an empty item on any link line" || { cat k.txt; fail "empty item not flagged"; }
+python3 tools/mesh.py tidy P001 > t.txt 2>&1; grep -q "^- concepts:: \[\[temperature\]\], \[\[swelling\]\]$" $E3 && grep -q "^- based_on:: \[\[P001-003-capacity-4-2-at-25c-water\]\]$" $E3 && grep -q "^- anchor:: \[\[P001_text#^b0004\]\], \[\[P001_text#^b0002\]\]$" $(ls $S1/P001-003-*.md) && pass "tidy keeps each link once and drops empty items, and leaves two anchors in one file alone" || { cat t.txt; grep -E "concepts|based_on" $E3; fail "tidy"; }
+python3 tools/mesh.py check P001 > k.txt 2>&1 || true; ! grep -E -q "repeats \[\[|has an empty item" k.txt && pass "after tidy, check flags nothing" || { grep -E "repeats|empty item" k.txt; fail "after tidy"; }
 echo "ALL TESTS PASSED"

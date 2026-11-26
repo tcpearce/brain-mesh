@@ -1087,6 +1087,10 @@ class Mesh:
                 if k == "cites" and not s.ids(v)[0] and re.match(r"ref\s+S?\d+\b", v):  # `- cites:: ref 12 — why`, waiting for `cite` to link it (issue #48)
                     if i not in pending[pid]: pending[pid].append(i)
                     continue
+                items = link_items(v)  # a repeated or empty item is counted twice, or as nothing, wherever links are counted (issue #53)
+                if items and "" in items: W.append(f"{i}: '{k}::' has an empty item (a stray comma); `mesh.py tidy {pid if c.fam in ('evidence', 'source', 'claims') else i}` removes it")
+                rep = sorted(t_ for t_ in {link_target(x) for x in items if x} if sum(1 for x in items if x and link_target(x) == t_) > 1) if items else []
+                if rep: W.append(f"{i}: '{k}::' repeats {', '.join(f'[[{t_}]]' for t_ in rep)}; `mesh.py tidy {pid if c.fam in ('evidence', 'source', 'claims') else i}` keeps each link once")
                 if k in LINK_KEYS and not s.ids(v)[0] and v and not (k == "cites" and re.match(r"none\b", v, re.I)) and not any(t.strip() in s.proposed() for t, _a, _d in WIKI.findall(v)): E.append(f"{i}: '{k}::' has no card link")
             prose_terms = {r for t, _a, _d in WIKI.findall(c.human) for r in [s.resolve(t)] if r and s.cards[r].fam == "concept"}
             if c.fam in ("evidence", "page") and prose_terms - s.terms(c): W.append(f"{i}: concepts linked in the prose but absent from Codes: {' '.join(sorted(prose_terms - s.terms(c)))}")
@@ -3962,9 +3966,32 @@ def staged_blocks(m):
     return out
 
 
+def link_items(v):
+    """The items of a Codes value that is a list of links, '[[a]], [[b]]', with an empty item as '' (a stray comma);
+    None for any other value, such as a link followed by a reason."""
+    items = [x.strip() for x in re.split(r",(?![^\[]*\]\])", v or "")]
+    if not any(items) or not all(x == "" or re.fullmatch(r"\[\[[^\[\]]+\]\]", x) for x in items): return None
+    return items
+
+def link_target(item):  # what a link points at, a block or heading included: [[P001_text#^b0004]] and [[P001_text#^b0002]] are two
+    mo = WIKI.match(item)
+    return " ".join((mo.group(1) + (mo.group(2) or "")).lower().split()) if mo else item
+
+def tidy_link_line(line):
+    """A Codes line of links with each link once, in the order first given, and no empty item (issue #53). Any
+    other line is returned as it is."""
+    mo = re.match(r"(- [a-z_]+::[ \t]*)(.*)$", line)
+    items = link_items(mo.group(2)) if mo else None
+    if items is None: return line
+    seen, keep = set(), []
+    for x in items:
+        if x and link_target(x) not in seen: seen.add(link_target(x)); keep.append(x)
+    return mo.group(1) + ", ".join(keep)
+
 def relink(m, old, new):
     """Point every link to `old` at `new` in every card: plain in Codes, keeping the reader's words in the prose.
-    Returns the number of files changed."""
+    A Codes line the rewrite touches keeps each link once and no empty item, so a card that linked both names
+    carries the target once (issue #53). Returns the number of files changed."""
     pat = re.compile(r"\[\[" + re.escape(old) + r"(#[^\]|]*)?(\|[^\]]*)?\]\]")
     n = 0
     files = [c.path for c in m.cards.values()] + proposal_files(m.root)
@@ -3973,9 +4000,23 @@ def relink(m, old, new):
         if f"[[{old}" not in t: continue
         head, sep, tail = t.partition("\n## Codes")
         head = pat.sub(lambda mo: f"[[{new}{mo.group(1) or ''}{mo.group(2) or '|' + old.replace('-', ' ')}]]", head)
-        tail = pat.sub(lambda mo: f"[[{new}{mo.group(1) or ''}{mo.group(2) or ''}]]", tail)
+        tail = "\n".join(tidy_link_line(l2) if l2 != l1 else l2 for l1 in tail.split("\n") for l2 in [pat.sub(lambda mo: f"[[{new}{mo.group(1) or ''}{mo.group(2) or ''}]]", l1)])
         if head + sep + tail != t: wr(path, head + sep + tail); n += 1
     return n
+
+
+def cmd_tidy(m, args):
+    """Keep each link once and drop empty items on the link lists in Codes ('- concepts:: [[a]], [[a]], , [[b]]'),
+    for one card, a source's cards, or every card (issue #53). Nothing else on a card changes."""
+    scope, n = (args[0] if args else None), 0
+    for c in sorted(m.cards.values(), key=lambda c: c.id):
+        if scope and c.id != scope and not (re.fullmatch(r"P\d{3}", scope) and c.id[:4] == scope and c.fam in ("evidence", "source", "claims")): continue
+        t = rd(c.path); head, sep, tail = t.partition("\n## Codes")
+        if not sep: continue
+        codes, lsep, lf = tail.partition("\n## Linked from")
+        new = "\n".join(tidy_link_line(l) for l in codes.split("\n"))
+        if new != codes: wr(c.path, head + sep + new + lsep + lf); n += 1; print(f"tidied {c.id}")
+    print(f"tidy: {n} card{'s' * (n != 1)} rewritten" + (". Run `mesh.py build`." if n else ""))
 
 
 def drop_proposal(f, name):
@@ -10048,6 +10089,7 @@ report [<kind> [target]] [--focus concept] [--since date|P###] [--top n]   assem
                               robustness, methods, novelty "<idea>"|<S001> [--concepts a b], changes; `report all`; `report` alone lists them
 dismiss <signal key> <reason> record that the user rejected a signal (ledger/signals.md)
 theories                      the theory × finding matrix
+tidy [P###|<id>]              keep each link once and drop empty items on the link lists in Codes (a fold or a hand edit can leave them)
 log <message>                 append a dated changelog line          schema   print the enforced sets"""
 
 def main():
@@ -10129,6 +10171,7 @@ def main():
     elif c == "obvious": cmd_obvious(m, a)
     elif c == "dismiss": cmd_dismiss(m, a[0], " ".join(a[1:]))
     elif c == "theories": cmd_theories(m)
+    elif c == "tidy": cmd_tidy(m, a)
     elif c == "log": cmd_log(m, " ".join(a))
     else: sys.exit(f"unknown command '{c}'\n{HELP}")
 

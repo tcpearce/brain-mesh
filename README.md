@@ -34,7 +34,7 @@ Papers go in, and each one is woven into what the brain already holds. The brain
 | 1 Add papers | "Add this paper" (attach the PDF and its supplementary files); "Add these eight as a batch" | `brain-mesh-add-paper`, `brain-mesh-batch` | `anchor`, `refs`, `cite`, `split`, `check`, `staged`, `adopt` |
 | 2 Weave them in | Done as part of adding. To go back over old papers: "Scan all sources for concepts" | `brain-mesh-add-paper`, `brain-mesh-concept-scan` | `scan`, `contradictions`, `place`, `independence`, `build` |
 | 3 Find what is missing | "What are the key gaps on …? What should I read next?" | `brain-mesh-gaps` | `gaps`, `gapsdoc`, `matrix` |
-| 4 Mine for ideas | "Run a discovery session on …"; "What is in reach with what I have?"; "What is missing from the brain on …? What would other fields bring?" | `brain-mesh-discover`, `brain-mesh-beyond`, `brain-mesh-campaign` | `zoom`, `routes`, `profile`, `outside`, `beyond`, `discover`, `facts`, `dismiss`, `campaign` |
+| 4 Mine for ideas | "Run a discovery session on …"; "What is in reach with what I have?"; "Run a discovery campaign on …"; "What is missing from the brain on …? What would other fields bring?" | `brain-mesh-discover`, `brain-mesh-beyond`, `brain-mesh-campaign` | `zoom`, `routes`, `profile`, `outside`, `beyond`, `discover`, `facts`, `dismiss`, `obvious`, `campaign` |
 | 5 Test ideas | "Turn that into a hypothesis and design the experiment"; later "Here are my results" | `brain-mesh-experiment` | `matrix`, `impact`, `hypothesis deepen`, `experiment sweep/new/register/run` |
 | 6 Write and check | "Write the background on … from the brain"; "Audit this draft against the brain" | `brain-mesh-write` | `table`, `draft` |
 | Decide what next | "Give me a frontier map"; "Why do these results disagree?"; "Is this idea new?"; "What changed this week?" | `brain-mesh-report` | `report` |
@@ -96,6 +96,8 @@ Discovery looks for what the brain implies and no paper states. It finds the ope
 | Tools from other fields | "What would other fields bring to G004?" | `outside G004`, `beyond pointers`, `beyond judge … tool` |
 | What new papers changed | "What did the last batch change?" | `discover --recheck` |
 | More from discovery | "What would let discovery see more?" | `routes --readiness` |
+| What any competent reader would already propose | "What is obvious on this topic? I want to beat it" | `obvious topic:<slug>` |
+| A big push on one question | "Run a discovery campaign on odour intensity, three agents, three rounds" | `campaign init/check/meeting/close` |
 
 **Before the first session.** Five things decide how good every later session is.
 
@@ -182,12 +184,43 @@ Then run `beyond terms` again: a shared term appears only once two papers use it
 | 4 Stress the structure | `assumptions`, `oddities`, `genealogy`, `theories`, `cornerstones`, `mechanism`, `limits` | What everything rests on; what nobody has explained; which rival accounts nothing separates; what one group alone holds up; what was never tested by intervention; what is said to be impossible |
 | 5 Look at the means | `tools`, `unify`, `recognised`, `bottlenecks`, `ceilings`, `data` | A technique never brought to a question; one driver behind several outcomes; gaps the field already agrees on; where a new method or model would move most; open data nobody else has used |
 
+**When one session is not enough: a campaign.** A discovery session is one pass with you in the loop. A campaign is the
+heavy version, worth it when a question matters enough to spend a few hours of agent time on: three to six agents work the
+same scope in parallel, each with **one lens** (recombiner, mechanist, sceptic, transferer, datascout, instrumentalist), meet
+every round to share what they found, and compete on proposals that **blind referees** score — no agent scores its own lens.
+
+| Step | Command | What happens |
+|---|---|---|
+| Scope it | `campaign init <name> --scope topic:<slug>` — or `--sources P004,P005` for a **follow-on** from named papers | writes the campaign folder, one brief per agent, the referee and verifier briefs, and `OBVIOUS.md` |
+| Read `OBVIOUS.md` first | `obvious topic:<slug>` | what any competent reader would propose next, from the brain itself. Every proposal must name its nearest entry and **differ in kind, not degree** |
+| Each round | agents work, then `campaign check`, then `campaign meeting <n>` | the scoreboard, the credit, the ranked download requests, and the steers you give |
+| Close it | `campaign close` | `REPORT.md`: the slate by impact, informative nulls, download requests by value over effort, **what would unlock most**, where agents converged independently |
+
+Four rules make the result worth reading: **nothing enters the brain without you** (agents write only in the campaign folder,
+and you accept or reject the slate); **ideas compete but information does not** (a proposal cannot score on anything not
+shared at a meeting first); **a proof of concept is sealed before its code runs**; and **outside knowledge is a lead** until
+its source is carded, so a web find aims a proposal and never becomes a card.
+
+Expect three to seven proposals, each with its route, its ingredients, its novelty verdict against the literature, its proof
+of concept and what it would take. A proposal you want carried out is promoted straight into a study, below.
+
 ### 5. Test ideas
 
-- **An accepted idea becomes a hypothesis** with its rivals and its predictions written down.
-- **The best experiment** is the one whose result differs depending on which side of a contradiction, or which rival theory, is right.
-- **Register the predictions and the decision rule before the data exist.**
-- **Bring the results back as a source.** They are carded like a paper, judged against the registered predictions, and the findings, gaps and contradictions they touch are regraded.
+An accepted idea becomes a hypothesis with its rivals and its predictions written down; the best experiment is the one whose
+result differs depending on which side of a contradiction, or which rival theory, is right. Five commands carry it from a
+claim to a documented result, and each one is there because of a way studies go wrong.
+
+| | Command | Why |
+|---|---|---|
+| 1 | `hypothesis deepen <H###> --write` | A hypothesis written from the cards that prompted it is connected to a handful of them, and the brain usually already holds what would refute it. This files **every pertinent card** under how it can bear on the claim — evidence, other routes to the same outcome, findings it must agree with, confounds, open disputes with the evidence on both sides, data and code. Every line arrives unjudged: read each card, say how it bears, then rewrite the rationale, the rivals and the predictions against what you found |
+| 2 | `experiment sweep` / `experiment new <H###>` | Scaffolds the study with eighteen dimensions of the ontology written into it, so no heading of the brain is left unturned. A campaign proposal you accepted goes straight in with `--from-proposal <id>` |
+| 3 | fill in the card | Data (which data-set card, which subset, which split), Code, **Analysis plan** (one primary statistic, named secondaries, a threshold), leakage controls, a pipeline null, predictions **per rival**, and a decision rule |
+| 4 | `experiment register <E###>` | Checksums the analysis plan, the predictions and the decision rule into the ledger **before anything runs**. Move one of them afterwards and `check` errors until the change is written as an amendment |
+| 5 | `experiment run <E###> --from <folder>` | Turns the finished run into a sealed own-result source: code copied and checksummed, a manifest of every file, the commit, the environment, and the **complete output anchored line by line**, so every card from the run cites the line its number came from, exactly as a card from a paper cites a paragraph |
+
+Then card the result against those lines and write the outcome. A run is judged against the registered predictions, not
+against what the numbers suggest afterwards, and the findings, gaps and contradictions it touches are regraded. Results from
+the bench come back the same way: carded like a paper (`brain-mesh-add-paper`, **Own results**).
 
 ### 6. Write and check
 
@@ -220,8 +253,9 @@ A report is a snapshot: run it again when the brain changes, and never treat it 
 | Once, and when your lab changes | The research profile (`profile`) |
 | Every paper or batch | Stages 1 and 2, then `discover --recheck` (your earlier ideas, the routes and the leads from outside that the papers moved) and `report changes` |
 | Every five to ten papers, or monthly | `health`, `gaps`, the reading queue, `report frontier` and `report robustness`; a discovery session on the hottest topic; `beyond terms`, and that topic compared with an outside map; `routes --readiness` |
+| When a question is worth a few hours of agent time | A campaign on it (`campaign init … close`), after reading `obvious` on the same scope |
 | Now and then | An audit: `sample P012 10` puts ten cards beside their source text, to check meaning rather than typing |
-| Before an experiment | `report contradictions` and `report novelty` on the idea; discovery on the question; a hypothesis with rivals; registered predictions |
+| Before an experiment | `report contradictions` and `report novelty` on the idea; discovery on the question; a hypothesis with rivals, **deepened against the whole brain** (`hypothesis deepen`); the study swept from the ontology (`experiment new`) and sealed (`experiment register`) before anything runs |
 | Before submitting text | `draft` |
 | Weekly, unattended | A scheduled check that reports and changes nothing |
 

@@ -3086,5 +3086,40 @@ if command -v git > /dev/null; then
   git init -q -b main . ; git config user.email t@t; git config user.name t
   python3 tools/mesh.py sync "the reading queue" > s.txt 2>&1; tail -1 s.txt | grep -q "^Reading queue: .*Last forward search: $D\.$" && pass "sync ends with the queue's staleness line" || { cat s.txt; fail "sync staleness"; }
 fi
+
+cd "$T/xp"  # the vault of the 1.30.0 hypothesis-deepen section above
+# 1.31.0: three more health queues — a hypothesis the brain has moved past, a study whose inputs moved after sealing, an index entry whose work has been read
+python3 tools/mesh.py health > hl.txt
+grep -q "Hypotheses the brain has moved past" hl.txt && pass "health asks after hypotheses the brain has moved past" || fail "no hypothesis queue"
+grep -A3 "Hypotheses the brain has moved past" hl.txt | grep -q "H002" && fail "a deepened hypothesis is still listed" || pass "a hypothesis deepened after its newest evidence is not listed"
+sed -i.bak '/^- deepened:: /d' hypotheses/H002-swelling-sets-the-loss.md; rm -f hypotheses/*.bak
+python3 tools/mesh.py health > hl.txt
+grep -A3 "Hypotheses the brain has moved past" hl.txt | grep -q "H002.*never deepened" && pass "a hypothesis never brought up against the brain is listed" || { grep -A3 "moved past" hl.txt; fail "never-deepened not listed"; }
+python3 tools/mesh.py hypothesis deepen H002 --write > /dev/null
+mkdir -p data-sets
+cat > data-sets/D001-batch-rebinding-results.md <<'CARD'
+---
+type: dataset
+status: on-request
+updated: 2099-12-31
+---
+# Batch rebinding capacities of imprinted films in water at three temperatures
+
+**What it is.** Binding capacities measured by batch rebinding on imprinted films in [[water]] at 25, 35 and 45 °C.
+
+## Codes
+- id:: D001
+- name:: Smith batch rebinding data
+- size:: 9 films, 3 temperatures
+- access:: from the authors on request
+- concepts:: [[binding-capacity]], [[temperature]]
+CARD
+sed -i.bak "s|^- tests:: |- uses:: [[D001]] — its input\n- tests:: |" experiments/$EID-*.md; rm -f experiments/*.bak
+python3 tools/mesh.py build > /dev/null; python3 tools/mesh.py health > hl.txt
+grep -A3 "changed after they were sealed" hl.txt | grep -q "$EID" && pass "a study whose data card moved after sealing is listed" || { grep -A3 "sealed" hl.txt; fail "sealed-inputs queue"; }
+sed -i.bak 's/^updated: 2099-12-31/updated: 2026-11-20/' data-sets/D001-*.md; rm -f data-sets/*.bak
+python3 tools/mesh.py build > /dev/null; python3 tools/mesh.py health > hl.txt
+grep -A3 "changed after they were sealed" hl.txt | grep -q "$EID" && fail "still listed once the data card is older than the seal" || pass "the sealed-inputs queue clears when nothing moved"
+grep -q "Citation-index entries whose work has since been read" hl.txt && pass "health asks after index entries whose work has been read" || fail "no citation-index queue"
 unset BRAIN_MESH_FIXTURES BRAIN_MESH_NO_MARK
 echo "ALL TESTS PASSED"

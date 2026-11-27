@@ -118,7 +118,7 @@ have not changed for two meetings, or when the budget is spent.
    separately, each with what it would settle.
 3. Write what the user accepts (`brain-mesh-discover` section 6, `- miner:: campaign`, `- from::` the cards it rests on,
    and a line in the prose naming the campaign file). A proof of concept the user wants kept becomes an own result
-   (`brain-mesh-add-paper`, **Own results**). Approved downloads go to the reading queue or straight to `brain-mesh-add-paper`.
+   (`brain-mesh-add-paper`, **Own results**). Approved downloads go on the reading queue (`queue add <doi> --why "<the proposal it serves>" --from campaign:<name>`) or straight to `brain-mesh-add-paper`.
 4. `sync "campaign <name>: closed; <n> accepted"`.
 
 ## For discovery agents

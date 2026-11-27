@@ -2,6 +2,40 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.32.0 (2026-11-27)
+
+**One reading queue that every skill feeds, that looks forward as well as back, and that cannot go stale unnoticed; and the faults a batch of 35 papers found in the checker, the scan, the reference reader and the anchor.**
+
+Built on 1.31.0 (chronology). 1.30.0 is left to campaign work not yet published.
+
+### The reading queue (issue #56)
+
+The queue only looked backwards: built from the reference lists of the sources already held, every suggestion was older than the paper citing it. The foundational exemption kept the classics at its head, the skills recommended papers through two hand routes that nothing checked (and some through none), and the hand-written table at its top rotted: a paper sat there as a high-priority read three days after it became a source.
+
+- **`mesh.py queue add <doi | R id | "author year title"> --why "<what it would fill>" --from <skill or card id> [--high]`** is the one route onto the queue, for every skill. It finds the reference card by id, DOI, or first author, year and title, or makes one (from OpenAlex or Crossref when online, else from what it is given), sets the new status **`suggested`** (a skill recommends it; the user has not decided) unless the user has queued or skipped it, and appends `- suggested_by:: <date> [high] <who> — <why>`. Suggestions accumulate, and their number raises the work. `queue mark <ref> queued|skip` records the user's decision with its date; `queue` lists what is suggested and queued.
+- **`outside add --found`** puts every DOI and reference card it names on the queue, with the check's note as the reason.
+- **`mesh.py forward [P### …] [--since YEAR] [--max N] [--all]`** asks OpenAlex (free, no key; only DOIs and OpenAlex ids leave the machine) for the works citing each source, and keeps them in `ledger/forward.json` with the date of each source's search. Each work's reference list says which of the brain's sources it cites. With no source named it searches those never searched or searched over 30 days ago. Tested with stored fixtures (`BRAIN_MESH_FIXTURES`).
+- **The whole of `ledger/reading-queue.md` is generated**, in three parts: **Suggested by the skills** (each work with every reason and who gave it, queued first), **Forward** (recent citing works the brain neither holds nor has decided on, ranked by the sources they cite, the concepts their titles name and their recency) and **Backward** (the lists as before). `build` turns each row of the old hand-written table into a suggestion on a reference card (`hand-written table`), drops a row naming a source already held, and keeps a row it cannot read at the top, which `check` names.
+- **The foundational exemption is capped.** A work foundational only because two sources cite it, or one source in two paragraphs where its results rest, keeps at most half its score once older than two half-lives, and goes to a short list of its own, **Classics the brain cites but has not read**. A work someone marked (`foundational::`, `cited_count::`, priority high) keeps full weight.
+- **Held means held.** `build` marks a suggested or queued work held, as well as a cited one, when a source has its DOI or its first author, year and title, so a reference card with a title mangled by a mis-parsed list no longer keeps a held paper on the queue. `check` warns of two reference cards for one work by first author, year and title when no identifier joins them, and `merge` carries the suggestions over.
+- **Staleness is said.** `health`, and the last line of every `sync`, give one line: sources not searched forward, suggestions undecided and works queued with no PDF for over 30 days, and cited works not yet indexed from their abstracts. The queue opens with the same line, and MAP's Focus line gives the date of the last forward search.
+- **Every skill uses `queue add` and nothing else**: access (section 3 and "At the end"), gaps rung 2, discover's outside checks and the genealogy miner, beyond, campaign downloads, citation-index, write and report; housekeeping uses `queue mark`.
+
+### Indexing new reference cards before the sync
+
+`cite` makes a card for every work a new paper cites, and those cards stayed unindexed until someone remembered the citation index. add-paper step 10 and the batch Close step now index the new reference cards from their abstracts (`literature --unindexed`; `brain-mesh-citation-index`) and run `forward` for the new papers before syncing; the access skill's "At the end" says so for every session; and the staleness line counts the cited works still unindexed.
+
+### Fixes
+
+- **#48** `check` called every `cites:: ref N` line an error although brain-mesh-batch prescribes the form until the merge runs `cite`; it is now one warning per source naming the cards and the remedy. Tests section 48.
+- **#50** The duplicate check read a range as its lower bound, so `= 1 neuron` and `= 1 to 11 …` collided as an error that blocked the sync. A value line's ranges are kept whole, and `contradictions dismiss values:A~B "<why>"` records a judged non-duplicate of one source, which `check` honours. Tests section 50.
+- **#53** `adopt <name> into <concept>` keeps each concept once on a line and drops empty items; `check` warns of a repeated or empty item on any link line; `tidy [P###|<id>]` mends cards already affected. Tests section 53.
+- **#52** The scan reads the Methods after a reference list (the list's region ran on through a Methods heading glued to a running head), says it matches names and aliases only, and concept-scan tells a sweep agent to read a source's headings and methods list; `adopt` warns of an alias another concept owns or a two-letter acronym. Tests section 52.
+- **#54** A concept with an ambiguous everyday name can be named narrowly: `propose` and `adopt` add only the aliases given, `- scan_names:: aliases` leaves the slug and title out of the scan, an alias written `=OR families` is exact, and a bracket in a name is a qualifier unless it holds an acronym. Tests section 54.
+- **#49** `refs` reads Cell-style entries, numbered or not: the title to its full stop, the journal, volume and pages (with an `.eN` suffix) in their own fields, `et al.` kept, and `kind` inferred (preprint, software, book); Cell Press page furniture is stripped. Tests section 49.
+- **#47 (in part)** `anchor` reads a two-column page whose lines sit at the same heights column by column, keeping full-width lines whole. Three-column pages, and the anchored text of a source already carded, are left open on the issue. Tests section 47.
+- Tests section 56.
+
 ## 1.31.0 (2026-11-26)
 
 **Knowledge has a date: the brain stops asserting what was only true when it was written.**

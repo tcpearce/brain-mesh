@@ -226,7 +226,8 @@ Then:
 - **Decide on every open gap, tension, contradiction and hypothesis the source bears on** (below).
 - **Write the claims card** (below).
 - **Recheck the discovery cards.** Run `python3 tools/mesh.py discover --recheck` and take every dissolved, strengthened, weakened or re-opened item to the user (`brain-mesh-discover` section 8). It ends with what the new source moved among the routes: opportunities it brought, ingredients that arrived or went, and signals set aside that it reopens. Check too whether the source answers an outside lead or search already on record (`mesh.py outside`). A new paper that answers a seed is often the most useful thing it does.
-- If the source was in `ledger/reading-queue.md`, `build` marks its reference card held by itself (by DOI, or first author, year, volume and page; set `status: held` and `held:: [[P012]]` by hand if it did not match). Revisit the gap or tension it was queued for.
+- If the source was in `ledger/reading-queue.md`, `build` marks its reference card held by itself (by DOI, by first author, year, volume and page, or by first author, year and title; set `status: held` and `held:: [[P012]]` by hand if it did not match). Revisit the gap or tension it was suggested for: its `suggested_by::` lines say which.
+- A paper the source sends you to (a work it leans on, a result it says is elsewhere) goes on the queue with `python3 tools/mesh.py queue add <doi or R id> --why "<what it would fill>" --from P012`, never as a note.
 
 ### Decisions on gaps, tensions and hypotheses
 
@@ -288,9 +289,14 @@ This is what the user reads, so it is not optional. For every concept the source
 
 ## 10. Close
 
-Set the source card's status to `integrated`. Rewrite the Overview in `MAP.md` if the picture has changed. Run `python3 tools/mesh.py build` until there are no errors (the decisions on gaps and tensions and the claims card are checked from here on), then `python3 tools/mesh.py log "add P012 <authors year> (<n> cards); <findings, tensions and gaps changed>"` and `python3 tools/mesh.py sync "add P012"`.
+Set the source card's status to `integrated`. Rewrite the Overview in `MAP.md` if the picture has changed. Then, before syncing, keep the reading queue current (issue #56):
 
-Report to the user in a few lines: the paper's main claim and how far its evidence carries it; cards by type; the contradictions it logged, explained or resolved; what the concept scan added (new facts by concept, citations added); the concepts proposed, for the user to adopt, fold or reject, one line each with its definition; findings added or re-graded; gaps closed or narrowed and tensions explained or resolved; new tensions and gaps; data sets and code carded; hubs updated; anything bearing on their hypotheses or experiments; what was not extracted and why; and the top of the reading queue: the ★ works bearing on research gaps, then works cited where open gaps and tensions rest, with their years and DOIs (the queue puts recent work first and marks foundational old works ⌛). If the session's files are temporary, hand back the vault archive.
+1. **Index the new reference cards.** `cite` made a card for every work this paper cites that the brain had not met. `python3 tools/mesh.py literature --unindexed` lists them under P012: index each from its abstract (`brain-mesh-citation-index`), or at least those the paper leans on, its methods and the works cited where its claims rest, and say in the report how many are left. The count of works still unindexed is on the last line of `sync`.
+2. **Search forward.** `python3 tools/mesh.py forward P012` asks OpenAlex for the works that cite the new paper (it needs a DOI on the source card and a network) and stamps the date; `build` ranks them in the queue's Forward section. With no network, say so in the report: `sync` will go on counting the paper among those not searched forward.
+
+Run `python3 tools/mesh.py build` until there are no errors (the decisions on gaps and tensions and the claims card are checked from here on), then `python3 tools/mesh.py log "add P012 <authors year> (<n> cards); <findings, tensions and gaps changed>"` and `python3 tools/mesh.py sync "add P012"`.
+
+Report to the user in a few lines: the paper's main claim and how far its evidence carries it; cards by type; the contradictions it logged, explained or resolved; what the concept scan added (new facts by concept, citations added); the concepts proposed, for the user to adopt, fold or reject, one line each with its definition; findings added or re-graded; gaps closed or narrowed and tensions explained or resolved; new tensions and gaps; data sets and code carded; hubs updated; anything bearing on their hypotheses or experiments; what was not extracted and why; the reference cards indexed and those left; and the top of the reading queue: what the skills suggested, the best of the Forward section, then the ★ works bearing on research gaps and the works cited where open gaps and tensions rest, with their years and DOIs (the queue puts recent work first and lists the old classics apart). If the session's files are temporary, hand back the vault archive.
 
 ## Lens pass: re-reading sources for a new question
 

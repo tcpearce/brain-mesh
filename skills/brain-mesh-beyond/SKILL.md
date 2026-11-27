@@ -67,7 +67,7 @@ A tool from another field cannot be found by searching this field's words. Find 
 1. Take a need from `mesh.py routes` (a limit, a bottleneck, a ceiling, an open gap) and print its brief: `mesh.py outside <need>`.
 2. **Say the problem without this field's nouns.** "Predict a perceptual quality from molecular structure" becomes "learn a map from a discrete structured object to a low-dimensional human judgement, from a few thousand labelled examples". "Read which of 400 receptor types respond to a mixture" becomes "recover a sparse high-dimensional vector from few noisy measurements".
 3. **Name the fields that have that problem, and what each uses for it:** the instrument, the assay, the estimator, the formalism, the standard data set. Use what you know, the paragraphs `beyond pointers` found, and `beyond wiki <technique> --family`.
-4. **Search before believing** (`outside`): has it been tried here? If it has, that is a paper to read, not a tool to import.
+4. **Search before believing** (`outside`): has it been tried here? If it has, that is a paper to read, not a tool to import: `python3 tools/mesh.py queue add <doi> --why "<the tool, and what it would do here>" --from beyond`.
 5. **Keep what survives:** `beyond judge "<tool>" tool "<need>: <what it would do here>; from <field>"`. `routes` and `outside <need>` then show it, and it feeds the tool-transfer and concept-transfer routes in `brain-mesh-discover`. It stays a lead until a source that uses it is carded.
 6. What the user's own group brings from elsewhere belongs in the research profile (`mesh.py profile brings`), on their word.
 

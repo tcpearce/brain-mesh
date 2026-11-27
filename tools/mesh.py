@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, bisect, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.31.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.32.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -15,7 +15,7 @@ ORIGIN = ["authors", "claude"]
 VIA = ["text", "table", "figure", "si", "inferred"]
 PARTS = {"": "b", "_SI": "s", "_correction": "c"}  # parts of a source: main text, supplementary material, published corrections; paragraph ids b0001, s0001, c0001
 REF_FIELDS = ("authors", "year", "title", "journal", "booktitle", "series", "volume", "pages", "publisher", "doi", "pmid", "arxiv", "url", "kind")
-REF_STATUS = ["not-held", "queued", "held", "skip"]  # a cited work: not in the brain, asked for, in the brain, decided against
+REF_STATUS = ["not-held", "suggested", "queued", "held", "skip"]  # a cited work: not in the brain, recommended by a skill (`queue add`), asked for, in the brain, decided against
 MISSING = ["method", "basis", "data", "statistics", "sample-size", "definition"]  # what a source can fail to give: `- missing:: method — ...`
 EVIDENCE_RELS = ["obtained_by", "based_on", "qualifies", "underlies", "supports", "contradicts", "replicates", "extends", "superseded_by", "uses_data", "uses_code"]
 ACCESS = ["open", "on-request", "restricted", "unavailable", "unknown"]
@@ -1307,7 +1307,9 @@ class Mesh:
                 if not re.fullmatch(r"(1[5-9]|20)\d{2}[a-z]?", c.get("year") or "") and not c.get("url"): W.append(f"{i}: no year")
                 if not (c.get("authors") or c.get("title")): W.append(f"{i}: neither authors nor title")
                 if c.get("doi") and not re.fullmatch(r"10\.\d{4,9}/\S+", c.get("doi")): W.append(f"{i}: doi '{c.get('doi')}' does not look like a DOI")
-                if not c.all("cited_by") and c.status != "held": W.append(f"{i}: cited by no source; retire it or add its cited_by:: line")
+                if not c.all("cited_by") and c.status != "held" and not c.all("suggested_by"): W.append(f"{i}: cited by no source and suggested by no skill; retire it, add its cited_by:: line, or put it on the queue (`mesh.py queue add {i} --why ... --from ...`)")
+                for v in c.all("suggested_by"):  # the reading queue's one route in (issue #56)
+                    if not re.match(r"\s*\d{4}-\d\d-\d\d\s+\S.*?\s+—\s+\S", v): W.append(f"{i}: 'suggested_by:: {one(v, 50)}' should read '<date> <who suggested it> — <what it would fill>' (`mesh.py queue add` writes it)")
                 if c.status == "held" and not c.get("held"): W.append(f"{i}: status held needs '- held:: [[P###]]', the source in the brain")
                 # The citation index: the abstract read and meshed, so the work can be cross-referenced before it is read in full
                 cons = [t for v in c.all("concepts") for t in s.ids(v)[0]]
@@ -1457,6 +1459,19 @@ class Mesh:
                 for k_ in ref_keys(r.fields()):
                     if k_ in seen_ and seen_[k_] != r.id: W.append(f"{r.id} and {seen_[k_]} look like the same work ({k_.split(':')[0]}); merge them with `mesh.py merge`")
                     seen_.setdefault(k_, r.id)
+            ay_ = defaultdict(list)  # no identifier shared, but the same first author, year and title, one of them mis-parsed (issue #56)
+            for r in sorted((c for c in s.cards.values() if c.fam == "reference" and not c.get("retired")), key=lambda c: c.id):
+                f_ = r.fields()
+                if surname_key(f_) and year4(f_): ay_[(surname_key(f_), year4(f_))].append((r, f_))
+            for grp in ay_.values():
+                for x_, (ra, fa) in enumerate(grp):
+                    for rb, fb in grp[x_ + 1:]:
+                        if set(ref_keys(fa)) & set(ref_keys(fb)) or (fa.get("doi") and fb.get("doi") and clean_doi(fa["doi"]) != clean_doi(fb["doi"])): continue
+                        if same_work(fa, fb): W.append(f"{rb.id} and {ra.id} look like the same work (first author, year and title); merge them with `mesh.py merge`")
+            rq_ = J(s.root, "ledger", "reading-queue.md")
+            if os.path.exists(rq_) and "## Rows of the old hand-written table" in rd(rq_).split("<!--AUTO:START")[0]:
+                n_ = len(queue_table_rows(rd(rq_).split("<!--AUTO:START")[0]))
+                if n_: W.append(f"ledger/reading-queue.md: {n_} row{'s' if n_ != 1 else ''} of the old hand-written table could not be read (no DOI, no reference card id, no 'Author Year, *Title*'): put each on the queue with `mesh.py queue add` and delete the row")
             cited = {m_.group(1) for r in s.cards.values() if r.fam == "reference" for v in r.all("cited_by") for m_ in [re.search(r"(P\d{3})", v)] if m_}
             for src in [c for c in s.cards.values() if c.fam == "source"]:
                 rf = J(SRC(s.root, src.id), src.id + "_refs.md")
@@ -1770,7 +1785,7 @@ def cmd_init(path, name, topic):
     wr(J(path, "ledger", "lenses.md"), "# Lens passes (targeted re-reads of the sources)\n")
     wr(J(path, ".gitignore"), "# Everything a vault needs is versioned, including index/, so a pull and a build are enough to browse it.\n" + MARKED_IGNORE + "__pycache__/\n*.pyc\n*.tmp\n.DS_Store\n.trash/\nindex/.new*.md\nindex/.scratch/\n.obsidian/workspace*.json\n" + INGEST_IGNORE)
     wr(J(path, ".gitattributes"), GITATTR)
-    wr(J(path, "ledger", "reading-queue.md"), "# Reading queue (papers found that are not yet in the brain)\n\n| ref | would fill | priority | access | status |\n|---|---|---|---|---|\n")
+    wr(J(path, "ledger", "reading-queue.md"), "# Reading queue\n\n<!--AUTO:START-->\n" + QUEUE_NOTE + "\n<!--AUTO:END-->\n")
     cmd_upgrade(path, quiet=True)
     print(f"Brain mesh '{name}' created at {os.path.abspath(path)} with tooling {VERSION} (open this folder as an Obsidian vault)")
 
@@ -2869,7 +2884,7 @@ def frontier(m):
         r = " ".join(c.get("ref").lower().split())
         if r and not any(d in r for d in dois): fr[r].add(c.id[:4])
     for r in m.cards.values():  # reference cards: works cited by two or more sources and not yet in the brain
-        cited = {pid for pid, _n, _b in ref_cites(r)} if r.fam == "reference" and r.status in ("not-held", "queued") else set()
+        cited = {pid for pid, _n, _b in ref_cites(r)} if r.fam == "reference" and r.status in ("not-held", "suggested", "queued") else set()
         if len(cited) > 1: fr[f"[[{r.name}|{one(r.title, 70)}]]"] |= cited
     return sorted(fr.items(), key=lambda kv: (-len(kv[1]), kv[0]))
 
@@ -3075,10 +3090,12 @@ def cmd_build(root):
         if not os.path.exists(hp) or rd(hp) != text: wr(hp, text)
     for hp in glob.glob(J(hubdir, "*--all.md")):
         if os.path.basename(hp)[:-len("--all.md")] not in hub_pages: os.remove(hp)
+    mig, mheld, mleft = migrate_queue_table(m)  # the hand-written table of the reading queue becomes suggestions on reference cards (issue #56)
+    if mig or mheld: print(f"reading queue: {mig} rows of the hand-written table are now suggestions on reference cards ('suggested_by:: … hand-written table')" + (f", {mheld} named a source already in the brain" if mheld else "") + "; the whole file is generated from now on" + (f"; {len(mleft)} rows could not be read and stay at its top" if mleft else ""))
     refs = sorted((c for c in m.cards.values() if c.fam == "reference" and not c.get("retired")), key=lambda c: c.id)
     srckeys = {k: c for c in m.cards.values() if c.fam == "source" for k in ref_keys(source_fields(c))}
-    for k_, r in enumerate(refs):  # a cited work that has since become a source in the brain is marked held
-        h = next((srckeys[x] for x in ref_keys(r.fields()) if x in srckeys), None) if r.status in ("not-held", "queued") else None
+    for k_, r in enumerate(refs):  # a cited, suggested or queued work that has since become a source in the brain is marked held
+        h = (next((srckeys[x] for x in ref_keys(r.fields()) if x in srckeys), None) or find_work(m, r.fields(), sources_only=True)) if r.status in ("not-held", "suggested", "queued") else None
         if h:
             wr(r.path, re.sub(r"^status: .*$", "status: held", r.raw, count=1, flags=re.M).replace("\n## Codes\n", f"\n## Codes\n- held:: [[{h.name}]]\n", 1))
             refs[k_] = m.cards[r.id] = Card(r.path, "reference", r.id); print(f"{r.id} is now a source in the brain ({h.id}): marked held")
@@ -3127,11 +3144,7 @@ def cmd_build(root):
     if refs:
         srcbib = [bibtex(source_fields(c), c.id) for c in sorted((c for c in m.cards.values() if c.fam == "source"), key=lambda c: c.id)]
         wr(J(root, "references", "library.bib"), "% Generated by brain mesh: the sources in the brain (keyed by their ids), then every work they cite.\n\n" + "\n\n".join(srcbib + [bibtex(r.fields(), keys[r.id]) for r in refs]) + "\n")
-        q = J(root, "ledger", "reading-queue.md"); t = rd(q) if os.path.exists(q) else "# Reading queue\n"
-        if "<!--AUTO:START" not in t: t = t.rstrip("\n") + "\n\n## Suggested by the brain\n\n<!--AUTO:START-->\n<!--AUTO:END-->\n"
-        a, b = t.find("<!--AUTO:START"), t.find("<!--AUTO:END-->")
-        new = t[:t.find("\n", a) + 1] + "\n".join(reading_queue(Mesh(root))) + "\n" + t[b:]
-        if new != t: wr(q, new)
+    write_reading_queue(Mesh(root))  # all of it generated (1.32.0): suggested by the skills, forward, backward
     write_register(Mesh(root))
     write_backlinks(Mesh(root))
     marked = [] if os.environ.get("BRAIN_MESH_NO_MARK") else mark(Mesh(root))  # a session that never opens a PDF (a report run in the cloud) can skip the marked copies
@@ -3156,7 +3169,8 @@ def cmd_build(root):
     wr(J(ix, "stats.json"), json.dumps({"sources": len(srcs), "evidence": len(ev), "by_type": types, "concepts": len(concepts), "pages": Counter(c.id[0] for c in m.pages(PG)), "errors": len(m.err), "warnings": len(m.warn)}, indent=1) + "\n")
     fo = m.focus(); highs = sorted((c for c in m.cards.values() if c.priority == "high" and not c.get("retired")), key=lambda c: c.id)
     focus_line = ["**Focus** (high priority, set by you): " + (" · ".join(f"[[{c.name}|{c.id}]]" for c in highs) if highs else "none yet; `mesh.py priority <id> high \"<why>\"` sets one")
-                  + f". Elevated: {sum(1 for v in fo.values() if v[0] == 'elevated')} cards; low: {sum(1 for c in m.cards.values() if c.priority == 'low')}.", ""]
+                  + f". Elevated: {sum(1 for v in fo.values() if v[0] == 'elevated')} cards; low: {sum(1 for c in m.cards.values() if c.priority == 'low')}."
+                  + f" Last forward search: {last_forward(m) or 'never'} (`mesh.py forward`; [[reading-queue]]).", ""]
     L = focus_line + [f"**Counts:** {len(srcs)} sources · {len(ev)} evidence cards ({', '.join(f'{k} {v}' for k, v in ranked(types))}) · {len(concepts)} concepts · " + " · ".join(f"{k} {len(m.pages(k))}" for k in PAGES if k in "KXGHE" or m.pages(k)), ""]
     def sect(title, cs, cap=40):
         if not cs: return
@@ -3954,8 +3968,9 @@ def cmd_health(m):
     rx = m.retracted(); W_ = []; m.retraction_warnings(W_); m.superseded_warnings(W_)
     sec("Retracted sources and cards, with dependants not yet reviewed", [f"{x} {one(m.cards[x].title, 90)} [{m.cards[x].get('retracted')}; {sum(1 for w in W_ if f'rests on {x},' in w)} dependants to review]" for x in sorted(set(rx.values()))])
     sec("Published corrections registered", [f"{c.id} {one(c.title, 80)} [{sum(1 for e in m.evidence(c.id) if e.get('corrected'))} cards marked corrected]" for c in m.cards.values() if c.fam == "source" and os.path.exists(J(SRC(m.root, c.id), c.id + "_correction.pdf"))])
-    rq = [r for r in m.cards.values() if r.fam == "reference" and r.status in ("not-held", "queued")]
+    rq = [r for r in m.cards.values() if r.fam == "reference" and r.status in ("not-held", "suggested", "queued")]
     sec("Cited works to consider reading (see ledger/reading-queue.md)", [f"{r.id} {one(r.title, 90)} [{r.status}; cited by {len(r.all('cited_by'))} sources]" for r in sorted(rq, key=lambda r: (-len(r.all("cited_by")), r.id)) if len(r.all("cited_by")) > 1], 15)
+    print("\n" + queue_stale_line(m))  # issue #56: the queue cannot go stale unnoticed
     sec("Sources not yet integrated", [f"{row(c)} [{c.status}]" for c in m.cards.values() if c.fam == "source" and c.status != "integrated"])
     newest = lambda cs: max([str(e.fm.get("updated", ""))[:10] for e in m.evidence() if m.terms(e) & cs] or [""])
     sec("Mined cards with evidence newer than their stamp (run `discover --recheck` and take the changes to the user)", [f"{c.id} {key} [stamped {d}, newer evidence {newest(m.terms(c))}]" for c, key, d, _s, _b in stamps(m) if newest(m.terms(c)) > d])
@@ -3980,7 +3995,8 @@ def cmd_merge(m, keep, drop):
         txt = rd(path); new = re.sub(r"\[\[" + re.escape(d.name) + r"(?=[\]|#\\])", "[[" + k.name, txt)
         if new != txt: wr(path, new); n += 1
     if k.fam == "reference":  # the kept card takes over every citation of the dropped one
-        kr = rd(k.path); extra = [f"- cited_by:: {v}" for v in d.all("cited_by") if v not in Card(k.path, k.fam, k.id).all("cited_by")]
+        kc = Card(k.path, k.fam, k.id)
+        kr = rd(k.path); extra = [f"- {key}:: {v}" for key in ("cited_by", "suggested_by") for v in d.all(key) if v not in kc.all(key)]  # and every suggestion made for it (issue #56)
         if extra: wr(k.path, kr.rstrip("\n") + "\n" + "\n".join(extra) + "\n")
         wr(d.path, rd(d.path).replace("- cited_by::", "- was_cited_by::"))
     d = Card(d.path, d.fam, d.id)
@@ -6642,14 +6658,20 @@ def ref_cites(r):
 
 
 def reading_queue(m):
-    """What to read next, from the reference cards, each list sorted by one score: the works you marked high; works
+    """The generated reading queue (1.32.0, issue #56), in three parts. Suggested by the skills: the works a skill put on
+    it with `queue add`, or the user queued, each with every reason given and who gave it. Forward: recent works citing
+    the brain's sources, from `forward`. Backward: what the brain's sources cite, as below.
+    Backward, from the reference cards, each list sorted by one score: the works you marked high; works
     cited where research gaps rest (★); works a high-priority source cites in two or more paragraphs or in its
     methods or results (◆); works cited where open gaps, tensions and high findings rest; works cited near cards
     sharing concepts with them; works cited by more than one source. Priority raises a work's score, never hides it.
     Recent work comes first: a score halves with every QUEUE_HALF_LIFE years of the work's age, unless the work is
     foundational (cited by two or more sources, cited in two or more paragraphs of one source where methods, models or
-    results rest on it, marked high, carrying `foundational::`, or with `cited_count::` at or above the threshold)."""
+    results rest on it, marked high, carrying `foundational::`, or with `cited_count::` at or above the threshold).
+    The exemption is capped: a work foundational only by those counts keeps at most half its score once older than two
+    half-lives, and such classics leave the main lists for a short list of their own."""
     refs = [r for r in m.cards.values() if r.fam == "reference" and not r.get("retired")]
+    shown = queue_rows_suggested(m); shown_ids = {r.id for r in shown}
     half = float(m.cfg.get("queue_half_life", QUEUE_HALF_LIFE)); fcites = int(m.cfg.get("queue_foundational_citations", QUEUE_FOUNDATIONAL_CITES))
     now = int(TODAY[:4]); year_of = lambda r: int(r.get("year").strip()) if re.fullmatch(r"\s*\d{4}\s*", r.get("year") or "") else None
     ages = sorted(max(0, now - y) for y in (year_of(r) for r in refs) if y); mid_age = ages[len(ages) // 2] if ages else 0  # a work with no year gets the median age
@@ -6665,9 +6687,9 @@ def reading_queue(m):
         if lv(d.id) in ("high", "elevated"):
             for v in d.all("cites"):
                 for t in m.ids(v)[0]: dc_cites[t].append(d)
-    tiers = {k: [] for k in ("mine", "star", "high", "direct", "near", "multi")}
+    tiers = {k: [] for k in ("mine", "star", "high", "direct", "near", "multi", "classic")}
     for r in refs:
-        if r.status in ("held", "skip"): continue
+        if r.status in ("held", "skip") or r.id in shown_ids: continue
         cites = ref_cites(r)
         cards = {c.id: c for pid, _n, bs in cites for b in bs for c in at.get((pid, b), [])}
         hits = []  # (page, via card, kind, how, weight)
@@ -6691,12 +6713,15 @@ def reading_queue(m):
         yr = year_of(r); age = max(0, now - yr) if yr else mid_age  # recency (issue #7): old work keeps full weight only when foundational
         cc = re.match(r"\s*(\d+)", r.get("cited_count") or "")
         core = any(len(bs) >= 2 and any(c.type in ("method", "observation", "model") for b in bs for c in at.get((pid, b), [])) for pid, _n, bs in cites)
-        found = n_src > 1 or core or r.priority == "high" or bool(r.get("foundational")) or bool(cc and int(cc.group(1)) >= fcites)
+        named = r.priority == "high" or bool(r.get("foundational")) or bool(cc and int(cc.group(1)) >= fcites)  # someone said so
+        found = n_src > 1 or core or named
+        classic = found and not named and age > 2 * half  # foundational only by the counts, and old: capped, and listed apart (issue #56)
         if not found: score *= 0.5 ** (age / half)
+        elif classic: score *= 0.5
         if r.priority == "low" and not star and not any(lv(h[0].id) == "high" for h in hits): continue
         why_high = [pid for pid, _n, bs in cites if lv(pid) == "high" and (len(bs) >= 2 or any(c.type in ("method", "observation", "model") for b in bs for c in at.get((pid, b), [])))]
         marks = sorted(set(why_high + [h[0].id for h in hits if lv(h[0].id) == "high"] + [f.get(d.id, ("", d.id))[1] or d.id for d in dc_cites.get(r.id, []) for f in [m.focus()]] + ([r.id] if r.priority == "high" else [])))
-        label = f"[[{r.name}|{one(r.title, 80)}]]" + (f" ({yr})" if yr else "") + (f" · [doi:{r.get('doi')}](https://doi.org/{r.get('doi')})" if r.get("doi") else (f" · [arXiv:{r.get('arxiv')}](https://arxiv.org/abs/{r.get('arxiv')})" if r.get("arxiv") else ""))
+        label = f"[[{r.name}|{one(r.title, 80)}]]" + (f" ({yr})" if yr else "") + (f" · {doi_link(r.get('doi'))}" if r.get("doi") else (f" · [arXiv:{r.get('arxiv')}](https://arxiv.org/abs/{r.get('arxiv')})" if r.get("arxiv") else ""))
         by = ", ".join(f"{pid} ref {n} ({len(bs)}×)" if bs else f"{pid} ref {n}" for pid, n, bs in cites)
         box = "- [ ] " if r.status == "not-held" else "- [~] "
         why = lambda hs: "; ".join(f"{kind} [[{p.name}|{p.id}]] ({how} [[{m.cards[c].name}|{c}]], where it is cited)" for p, c, kind, how, _w in hs[:3])
@@ -6705,23 +6730,544 @@ def reading_queue(m):
         line_ = lambda pre, extra: f"{box}{pre}{label} — cited by {by}" + (f"; {extra}" if extra else "") + tail
         if r.priority == "high": tiers["mine"].append((key, line_("", why(hits))))
         elif star: tiers["star"].append((key, line_("★ ", "bears on " + why(star + direct))))
+        elif classic: tiers["classic"].append((key, line_("", ("bears on " + why(direct + near)) if hits else "")))
         elif why_high: tiers["high"].append((key, line_("", ("bears on " + why(direct + near)) if hits else "")))
         elif direct: tiers["direct"].append((key, line_("", "bears on " + why(direct))))
         elif near: tiers["near"].append((key, line_("", why(near))))
-        if n_src > 1: tiers["multi"].append((key, line_("", "")))
+        if n_src > 1 and not classic: tiers["multi"].append((key, line_("", "")))
     held = sum(1 for r in refs if r.status == "held")
-    L = [f"_Generated by `build` from {len(refs)} reference cards. Mark progress on the reference card: status `queued` once asked for, `held` once it is a source in the brain (with `- held:: [[P###]]`), `skip` to drop it; `priority: high` on a reference card puts it at the top. `[~]` means queued; `2×` means cited in two paragraphs; ◆ names the high-priority cards that lift a work; each list is sorted by score. Recent work comes first: a score halves with every {half:g} years of age unless the work is foundational, marked ⌛ when it is older than that (cited by two or more sources, in two or more paragraphs where one source's methods or results rest on it, marked high, or carrying `foundational::` or a `cited_count::` of {fcites} or more)._", ""]
+    L = [f"_Generated by `build` from {len(refs)} reference cards and the forward searches: never edit it. A skill puts a work on the queue with `mesh.py queue add <doi | R id | \"author year title\"> --why \"...\" --from <skill>`; the user decides with `mesh.py queue mark <ref> queued|skip`. A work is marked held by itself once a source in the brain has its DOI, or its first author, year and title. `[~]` means queued (being fetched)._", "",
+         queue_stale_line(m), ""]
+    L += [f"## Suggested by the skills ({len(shown)})", ""]
+    for r in shown:
+        yr = year_of(r); s_ = suggestions(r)
+        L.append(("- [~] " if r.status == "queued" else "- [ ] ") + f"[[{r.name}|{one(r.title, 90)}]]" + (f" ({yr})" if yr else "")
+                 + (f" · {doi_link(r.get('doi'))}" if r.get("doi") else "")
+                 + (f" — queued {dated(r, 'queued')[-1]}" if r.status == "queued" else "") + (f" — {len(s_)} suggestions" if len(s_) > 1 else "")
+                 + (f"; cited by {', '.join(sorted({p for p, _n, _b in ref_cites(r)}))}" if ref_cites(r) else ""))
+        L += [f"  - {d} {by}{' (high)' if h else ''}: {why_}" for d, h, by, why_ in reversed(s_)]
+    if not shown: L.append("None yet. `mesh.py queue add` puts a work here, with what it would fill.")
+    fr = forward_rows(m); last = last_forward(m); fcap = int(m.cfg.get("forward_queue_cap", 40))
+    L += ["", f"## Forward: recent works citing the brain's sources ({len(fr)}; last search {last or 'never'})", ""]
+    for sc, k, w_, cites_, about in fr[:fcap]:
+        L.append(f"- [ ] {ref_title(w_)}" + (f" · {doi_link(w_['doi'])}" if w_.get("doi") else f" · [OpenAlex {k}](https://openalex.org/{k})")
+                 + (f" · *{w_['journal']}*" if w_.get("journal") else "") + f" — cites {', '.join(cites_)}" + (f"; about {', '.join(f'[[{t}]]' for t in about[:5])}" if about else "") + f" (score {sc:.1f})")
+    if len(fr) > fcap: L.append(f"…and {len(fr) - fcap} more in ledger/{FORWARD_LOG}")
+    if not fr: L.append("None yet. `mesh.py forward` asks OpenAlex for the works citing each source." if not last else "None that the brain neither holds nor has decided on.")
+    L += ["", "## Backward: what the brain's sources cite", "",
+          f"_`2×` means cited in two paragraphs; ◆ names the high-priority cards that lift a work; each list is sorted by score. `priority: high` on a reference card puts it at the top. Recent work comes first: a score halves with every {half:g} years of age unless the work is foundational, marked ⌛ when it is older than that (cited by two or more sources, in two or more paragraphs where one source's methods or results rest on it, marked high, or carrying `foundational::` or a `cited_count::` of {fcites} or more). A work foundational only by the counts keeps half its score once older than {2 * half:g} years, and is listed with the classics._", ""]
     for k, title, cap in (("mine", "Marked high by you: read these first", 50),
                           ("star", "★ Bearing on research gaps (gaps/RESEARCH-GAPS.md)", 50),
                           ("high", "◆ From high-priority sources: cited in two or more paragraphs, or in their methods or results", 50),
                           ("direct", "Cited where the brain's open gaps, tensions and high-priority findings rest", 50),
                           ("near", "Cited near cards sharing concepts with a gap or tension (weaker; top 12)", 12),
-                          ("multi", "Cited by more than one source in the brain", 50)):
+                          ("multi", "Cited by more than one source in the brain", 50),
+                          ("classic", "⌛ Classics the brain cites but has not read (top 15)", 15)):
         rows = [x[-1] for x in sorted(tiers[k])]
         if k == "mine" and not rows: continue
         L += [f"### {title} ({len(rows)})"] + (rows[:cap] or ["None yet."]) + ([f"…and {len(rows) - cap} more"] if len(rows) > cap else []) + [""]
     L += [f"Already in the brain: {held} cited works. Research gaps are gap cards with status confirmed or planned; open gaps become research gaps once a literature search finds no answer."]
     return L
+
+
+# ---------- 1.32.0: one reading queue that every skill feeds, forward citations, and staleness that shows (issue #56) ----------
+QUEUE_STALE_DAYS = 30  # a suggestion left undecided, or a work queued with no PDF, for longer than this is named in health and sync
+FORWARD_LOG = "forward.json"  # ledger/: each source's OpenAlex id, when it was last searched forward, and the works found citing it
+FORWARD_YEARS = 5  # `forward` looks this many years back by default (MESH.json forward_years), never before the source's own year
+OPENALEX = "https://api.openalex.org"
+QUEUE_NOTE = ("<!-- Generated by `build` from the reference cards and ledger/forward.json: never edit it. A work goes on the queue "
+              "with `mesh.py queue add`; `mesh.py queue mark` records the user's decision. -->")
+QUEUE_TABLE_COLS = ["ref", "would fill", "priority", "access", "status"]  # the hand-written table every vault had before 1.32.0
+
+
+def web_json(url, timeout=30):
+    """GET one JSON record; only the URL leaves the machine. None when the record does not exist, NoNetwork when it
+    cannot be reached. BRAIN_MESH_FIXTURES names a JSON file of {URL fragment: response} that stands in for the network
+    (the longest fragment found in the URL answers; null means 'not found'); BRAIN_MESH_OFFLINE refuses."""
+    fx = os.environ.get("BRAIN_MESH_FIXTURES")
+    if fx:
+        table = json.loads(rd(fx))
+        key = max((k for k in table if k in url), key=len, default=None)
+        if key is None: raise NoNetwork(f"no fixture for {url}")
+        return table[key]
+    if os.environ.get("BRAIN_MESH_OFFLINE"): raise NoNetwork("BRAIN_MESH_OFFLINE is set")
+    import urllib.request, urllib.error
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "brain-mesh/" + VERSION + " (https://github.com/tcpearce/brain-mesh; research vault tooling)", "Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=timeout) as r: return json.loads(r.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        if e.code == 404: return None
+        raise NoNetwork(f"HTTP {e.code}")
+    except Exception as e: raise NoNetwork(str(e))
+
+
+def clean_doi(s):
+    """A DOI from a link, a 'doi:' prefix or bare text: unescaped, lower-cased, trailing punctuation dropped; '' if none."""
+    s = urllib.parse.unquote(re.sub(r"^\s*(?:https?://(?:dx\.)?doi\.org/|doi:\s*)", "", str(s or "").strip(), flags=re.I))
+    while s and (s[-1] in ".,;:" or (s[-1] == ")" and s.count("(") < s.count(")")) or (s[-1] == "]" and s.count("[") < s.count("]"))): s = s[:-1]
+    return s.lower() if re.fullmatch(r"10\.\d{4,9}/\S+", s) else ""
+
+
+def doi_link(doi):
+    """A markdown link to a DOI that survives the '#', '<' and '>' some DOIs carry."""
+    return f"[doi:{doi}](https://doi.org/{urllib.parse.quote(str(doi), safe='/:;()')})"
+
+
+def append_code(raw, key, line):
+    """Put a Codes line after the card's last line with that key, or last in Codes (before '## Linked from')."""
+    if "\n## Codes\n" in raw and re.search(r"(?m)^- " + re.escape(key) + "::", raw.split("\n## Codes\n", 1)[1]): return add_code_line(raw, key, line)
+    head, sep, tail = raw.partition("\n## Codes\n")
+    if not sep: return raw.rstrip("\n") + f"\n\n## Codes\n{line}\n"
+    body, sep2, rest = tail.partition("\n## ")
+    return head + sep + body.rstrip("\n") + "\n" + line + "\n" + (("\n## " + rest) if sep2 else "")
+
+
+def surname_key(f): return re.sub(r"[^a-z]", "", ascii_fold(first_surname(f.get("authors"))).lower())
+
+
+def year4(f): y = str(f.get("year") or "").strip()[:4]; return y if y.isdigit() else ""
+
+
+def title_words(t): return {w for w in re.findall(r"[a-z]{4,}", ascii_fold(str(t or "")).lower()) if w not in STOP}
+
+
+def same_work(f, g):
+    """One work, by first author, year and title, when no identifier says so: the titles share nearly every word of the
+    shorter, so a title with the journal, volume or authors run into it (a mis-parsed list, issue #49) still matches."""
+    if not surname_key(f) or surname_key(f) != surname_key(g) or not year4(f) or year4(f) != year4(g): return False
+    a, b = title_words(f.get("title")), title_words(g.get("title"))
+    return min(len(a), len(b)) >= 3 and len(a & b) >= 0.8 * min(len(a), len(b))
+
+
+def work_index(m):
+    """(identifier keys, (surname, year) -> [(fields, card)]) over the sources and the live reference cards; a source wins."""
+    if getattr(m, "_wix", None) is None:
+        keys, ay = {}, defaultdict(list)
+        for c in sorted(m.cards.values(), key=lambda c: (c.fam != "source", c.id)):
+            if c.fam == "source": g = source_fields(c)
+            elif c.fam == "reference" and not c.get("retired"): g = c.fields()
+            else: continue
+            for k in ref_keys(g): keys.setdefault(k, c)
+            if surname_key(g) and year4(g): ay[(surname_key(g), year4(g))].append((g, c))
+        m._wix = (keys, ay)
+    return m._wix
+
+
+def find_work(m, f, sources_only=False):
+    """The card the brain has for a work: a source, or a reference card, by DOI, arXiv or PubMed id, first author + year +
+    volume + page, or first author + year + title (exact words, then same_work). None when the brain does not know it."""
+    keys, ay = work_index(m)
+    ok = lambda c: c.fam == "source" or not sources_only
+    hit = next((keys[k] for k in ref_keys(f) if k in keys and ok(keys[k])), None)
+    return hit or next((c for g, c in ay.get((surname_key(f), year4(f)), []) if ok(c) and same_work(f, g)), None)
+
+
+def suggestions(r):
+    """A reference card's suggestions, oldest first: [(date, high, by, why)] from its suggested_by:: lines."""
+    out = []
+    for v in r.all("suggested_by"):
+        mo = re.match(r"\s*(\d{4}-\d\d-\d\d)\s+(?:(high)\s+)?(.*?)\s+—\s+(.*)$", v)
+        out.append((mo.group(1), bool(mo.group(2)), mo.group(3).strip(), mo.group(4).strip()) if mo else ("", False, "", v.strip()))
+    return sorted(out, key=lambda x: x[0])
+
+
+def dated(r, key):
+    """The dates on a card's '- key:: <date> …' lines, oldest first; its 'updated' date when it has none."""
+    ds = sorted(mo.group(1) for v in r.all(key) for mo in [re.match(r"\s*(\d{4}-\d\d-\d\d)", v)] if mo)
+    return ds or [str(r.fm.get("updated", ""))[:10]]
+
+
+def oa_fields(w):
+    """An OpenAlex work as reference-card fields."""
+    if not w: return {}
+    au = w.get("authorships") or []
+    def name(a):
+        p = ((a.get("author") or {}).get("display_name") or "").split()
+        return (p[-1] + ", " + " ".join(x[0] + "." for x in p[:-1] if x[:1].isalpha())).strip(", ") if p else ""
+    names = [n for n in (name(a) for a in au[:10]) if n] + (["others"] if len(au) > 10 else [])
+    src = (w.get("primary_location") or {}).get("source") or {}; bib = w.get("biblio") or {}
+    pages = "--".join(x for x in (bib.get("first_page"), bib.get("last_page")) if x)
+    typ = w.get("type") or ""
+    f = {"authors": "; ".join(names), "year": str(w.get("publication_year") or ""), "title": " ".join(str(w.get("title") or w.get("display_name") or "").split()),
+         "journal": src.get("display_name") or "", "volume": bib.get("volume") or "", "pages": pages, "doi": clean_doi(w.get("doi") or ""),
+         "kind": "preprint" if typ in ("preprint", "posted-content") or src.get("type") == "repository" else "book" if typ in ("book", "monograph") else "incollection" if typ == "book-chapter" else "article"}
+    return {k: v for k, v in f.items() if v}
+
+
+def cr_fields(w):
+    """A Crossref work as reference-card fields."""
+    if not w: return {}
+    au = w.get("author") or []
+    names = [f"{a.get('family')}, " + " ".join(x[0] + "." for x in (a.get("given") or "").replace("-", " ").split() if x[:1].isalpha()) if a.get("family") else a.get("name", "") for a in au[:10]]
+    names = [n.strip(", ") for n in names if n] + (["others"] if len(au) > 10 else [])
+    year = next((str(d[0][0]) for k in ("published-print", "published-online", "issued") for d in [((w.get(k) or {}).get("date-parts") or [[None]])] if d and d[0] and d[0][0]), "")
+    typ = w.get("type") or ""
+    f = {"authors": "; ".join(names), "year": year, "title": " ".join(((w.get("title") or [""])[0] or "").split()), "journal": (w.get("container-title") or [""])[0],
+         "volume": w.get("volume") or "", "pages": bib_pages(w.get("page") or ""), "doi": clean_doi(w.get("DOI") or ""),
+         "kind": "preprint" if typ == "posted-content" else "book" if typ in ("book", "monograph") else "incollection" if typ == "book-chapter" else "article"}
+    return {k: v for k, v in f.items() if v}
+
+
+def work_meta(m, doi):
+    """Bibliographic fields for a DOI: from a forward search already made, else OpenAlex, else Crossref; {} if none answers."""
+    hit = next((w for w in forward_log(m)["works"].values() if w.get("doi") == doi), None)
+    if hit: return {k: v for k, v in hit.items() if k in REF_FIELDS}
+    q = urllib.parse.quote(doi, safe="/:;()<>")
+    for url, conv in ((f"{OPENALEX}/works/doi:{q}", oa_fields), (f"https://api.crossref.org/works/{q}", lambda d: cr_fields((d or {}).get("message")))):
+        try:
+            f = conv(web_json(url))
+            if f.get("title"): return f
+        except NoNetwork: pass
+    return {}
+
+
+def new_ref_card(m, f, status):
+    """A reference card for a work no source in the brain cites (yet): the queue's own cards."""
+    nums = [int(c.id[1:]) for c in m.cards.values() if c.fam == "reference" and c.id[1:].isdigit()] + [int(g[1:]) for g in removed_ids(m.root) if re.fullmatch(r"R\d+", g)]
+    rid = f"R{max(nums + [0]) + 1:04d}"
+    f = dict(f); f.setdefault("kind", "article" if f.get("journal") else "misc")
+    sur = ascii_fold(first_surname(f.get("authors"))).strip() or "anon"
+    words = [w for w in re.findall(r"[a-z0-9]+", ascii_fold(f.get("title") or f.get("journal") or "").lower()) if w not in STOP][:4]
+    name = re.sub(r"-+", "-", f"{rid}-{re.sub(r'[^a-z]', '', sur.lower()) or 'anon'}-{f.get('year') or 'nd'}-{'-'.join(words)}").strip("-")
+    head = ref_title(f) if (f.get("title") or f.get("journal")) else f"{sur} ({f.get('year') or 'n.d.'}) doi:{f.get('doi', '')}"
+    codes = [f"- id:: {rid}"] + [f"- {k}:: {f[k]}" for k in REF_FIELDS if f.get(k)]
+    os.makedirs(J(m.root, "references"), exist_ok=True); path = J(m.root, "references", name + ".md")
+    wr(path, f"---\ntype: reference\nstatus: {status}\nupdated: {TODAY}\n---\n# {head}\n\n<!--AUTO:START-->\n<!--AUTO:END-->\n\n## Notes\n\n## Codes\n" + "\n".join(codes) + "\n")
+    m.cards[rid] = Card(path, "reference", rid); m._wix = None; m._workkeys = None
+    return m.cards[rid]
+
+
+def fill_ref(m, card, f):
+    """Give a reference card the fields it lacks, from metadata found since it was made, and a heading to match."""
+    if not f: return card
+    raw = rd(card.path)
+    for k in REF_FIELDS:
+        if f.get(k) and not card.get(k): raw = add_code_line(raw, k, f"- {k}:: {f[k]}")
+    if f.get("title") and not card.get("title"): raw = re.sub(r"(?m)^# .*$", "# " + ref_title({**card.fields(), **{k: v for k, v in f.items() if v}}).replace("\\", "\\\\"), raw, count=1)
+    wr(card.path, raw); m.cards[card.id] = Card(card.path, card.fam, card.id); m._wix = None
+    return m.cards[card.id]
+
+
+def suggest(m, card, by, why, high=False, date=None, status=None):
+    """Record one suggestion on a reference card: '- suggested_by:: <date> [high] <by> — <why>'. Its status becomes
+    `suggested` unless the user has queued it or skipped it, or it is held; `status` (queued or skip, from the old table)
+    sets it outright. Returns the line to print."""
+    date = date or TODAY
+    line = f"- suggested_by:: {date} {'high ' if high else ''}{by} — {why}"
+    raw = rd(card.path); st = card.status
+    if st == "held": return f"{card.id} {one(card.title, 70)}: already in the brain as {card.get('held') or 'a source'}; nothing to queue"
+    if line in raw.split("\n"): return f"{card.id} {one(card.title, 70)}: already suggested by {by} for that reason"
+    new = status if status in ("queued", "skip") else ("suggested" if st in ("not-held", "suggested", "") else st)
+    raw = append_code(re.sub(r"^status: .*$", f"status: {new}", raw, count=1, flags=re.M), "suggested_by", line)
+    if status == "queued" and not card.all("queued"): raw = append_code(raw, "queued", f"- queued:: {date} — {by}")
+    raw = re.sub(r"^updated: .*$", f"updated: {TODAY}", raw, count=1, flags=re.M)
+    wr(card.path, raw); m.cards[card.id] = Card(card.path, card.fam, card.id)
+    n = len(m.cards[card.id].all("suggested_by"))
+    return (f"{card.id} {one(card.title, 70)}: {new}; {n} suggestion{'s' if n != 1 else ''} on record"
+            + (" (the user skipped it before: the suggestion is recorded and the status left as skip; `queue mark` changes it)" if st == "skip" and new == "skip" and status != "skip" else ""))
+
+
+def parse_work(item, given=None):
+    """(R id or '', fields) from what a skill names: a reference card id, a DOI or a link to one, or 'author year title'."""
+    item = " ".join(str(item or "").split()); f = {k: v for k, v in (given or {}).items() if v}
+    if re.fullmatch(r"R\d{3,5}", item): return item, f
+    doi = clean_doi(item) or clean_doi(f.get("doi", ""))
+    if doi: f["doi"] = doi; return "", f
+    mo = re.match(r"(.+?)[\s,]+\(?((?:1[5-9]|20)\d\d)[a-z]?\)?[\s,.:]+(.{8,})$", item)
+    if mo:
+        au = re.sub(r"\s+(?:et al\.?|and others|and colleagues)$", "; others", mo.group(1).strip(" ,"))
+        f.setdefault("authors", "; ".join(x.strip() for x in re.split(r"\s+(?:&|and)\s+", au))); f.setdefault("year", mo.group(2)); f.setdefault("title", mo.group(3).strip(" .*\"'"))
+    return "", f
+
+
+def queue_add(m, item, by, why, high=False, given=None, fetch=True):
+    """Put a work on the reading queue: the one route in, for every skill (issue #56). Finds the reference card by id,
+    DOI or first author, year and title, or makes one (from OpenAlex or Crossref when online, else from what is given),
+    and records the suggestion. Returns the line to print."""
+    rid, f = parse_work(item, given)
+    if rid:
+        card = m.cards.get(rid)
+        if card is None or card.fam != "reference": return f"queue add: there is no reference card {rid}"
+        if fetch and card.get("doi") and not card.get("title"): card = fill_ref(m, card, work_meta(m, clean_doi(card.get("doi"))))
+    else:
+        if not f.get("doi") and not f.get("title"): return "queue add: name the work with a DOI, a reference card id (R0123) or \"author year title\""
+        card = find_work(m, f)
+        if card is None and f.get("doi") and not f.get("title") and fetch:
+            f = {**work_meta(m, f["doi"]), **f}; card = find_work(m, f)
+        if card is not None and card.fam == "source": return f"{card.id} {one(card.title, 70)} is already a source in the brain: nothing to queue"
+    made = card is None
+    if made:
+        card = new_ref_card(m, f, "suggested")
+    out = suggest(m, card, by, why, high)
+    if made: out = out.replace(": suggested;", ": new reference card, suggested;", 1) + ("" if card.get("title") else f". Its title is not known (no network?): give --title, --authors and --year, or run `queue add {card.id}` again online")
+    return out
+
+
+def forward_log(m):
+    """ledger/forward.json: {'openalex': {P###: W id}, 'searched': {P###: {date, since, found, total}}, 'works': {W id: fields + cites, about, found}}."""
+    if getattr(m, "_fwd", None) is None:
+        p = J(m.root, "ledger", FORWARD_LOG)
+        try: d = json.loads(rd(p)) if os.path.exists(p) else {}
+        except ValueError: d = {}
+        for k in ("openalex", "searched", "works"): d.setdefault(k, {})
+        m._fwd = d
+    return m._fwd
+
+
+def write_forward_log(m, d):
+    """One entry a line, sorted, so two sessions' searches merge in git line by line."""
+    parts = []
+    for k in ("openalex", "searched", "works"):
+        items = sorted(d.get(k, {}).items())
+        body = ",\n".join(f"  {json.dumps(a, ensure_ascii=False)}: {json.dumps(b, ensure_ascii=False, sort_keys=True)}" for a, b in items)
+        parts.append(f' "{k}": {{' + (f"\n{body}\n " if items else "") + "}")
+    wr(J(m.root, "ledger", FORWARD_LOG), "{\n" + ",\n".join(parts) + "\n}\n"); m._fwd = d
+
+
+def last_forward(m): return max((v.get("date", "") for v in forward_log(m)["searched"].values()), default="")
+
+
+def forward_rows(m):
+    """The works found citing the sources that the brain neither holds nor has decided on, best first:
+    [(score, W id, fields, cites, about)]. A work scores by the sources it cites (weighted by their priority), the
+    concepts its title names, and its recency (the queue's half-life)."""
+    log = forward_log(m); half = float(m.cfg.get("queue_half_life", QUEUE_HALF_LIFE)); now = int(TODAY[:4]); out = []
+    for k, w in log["works"].items():
+        hit = find_work(m, w)
+        if hit is not None and (hit.fam == "source" or hit.status != "not-held"): continue  # in the brain, or on the queue's other lists
+        cites = [p for p in w.get("cites", []) if p in m.cards and m.cards[p].fam == "source"]
+        if not cites: continue
+        about = [t for t in w.get("about", []) if t in m.cards and not m.cards[t].get("retired") and m.level(t) != "low"]
+        age = max(0, now - int(year4(w) or now))
+        sc = (sum(SRC_W[m.level(p)] for p in cites) + 0.5 * len(about) + 0.5 * sum(1 for t in about if m.level(t) == "high")) * 0.5 ** (age / half)
+        out.append((sc, k, w, cites, about))
+    return sorted(out, key=lambda x: (-x[0], x[1]))
+
+
+def queue_rows_suggested(m):
+    """The reference cards a skill suggested or the user queued, in the order to read them."""
+    rs = [r for r in m.cards.values() if r.fam == "reference" and not r.get("retired") and (r.status in ("suggested", "queued") or (r.status == "not-held" and r.all("suggested_by")))]
+    newest = lambda r: max([datetime.date.fromisoformat(d).toordinal() for d, _h, _b, _w in suggestions(r) if re.fullmatch(r"\d{4}-\d\d-\d\d", d)] or [0])
+    return sorted(rs, key=lambda r: (r.status != "queued", -sum(1 for s in suggestions(r) if s[1]), -len(suggestions(r)), -newest(r), r.id))
+
+
+def queue_stale_line(m):
+    """One line on how current the reading queue is (health, sync): sources not searched forward, suggestions undecided
+    and works queued for over QUEUE_STALE_DAYS days, and cited works not yet indexed from their abstracts."""
+    log = forward_log(m); last = last_forward(m)
+    srcs = [c for c in m.cards.values() if c.fam == "source" and not c.get("retired") and clean_doi(c.get("doi") or "")]
+    unsearched = [c.id for c in srcs if c.id not in log["searched"]]
+    refs = [r for r in m.cards.values() if r.fam == "reference" and not r.get("retired")]
+    undecided = [r for r in refs if r.status == "suggested" and days_since(dated(r, "suggested_by")[0]) > QUEUE_STALE_DAYS]
+    waiting = [r for r in refs if r.status == "queued" and days_since(dated(r, "queued")[-1]) > QUEUE_STALE_DAYS]
+    unidx = [r for r in refs if r.status not in ("held", "skip") and not r.get("indexed") and not concepts_none(r)]
+    pl = lambda n, w: f"{n} {w}{'' if n == 1 else 's'}"
+    parts = []
+    if unsearched: parts.append(pl(len(unsearched), "source") + (" added since the last forward search" if last else " never searched forward") + " (run `mesh.py forward`)")
+    if undecided: parts.append(f"{pl(len(undecided), 'suggestion')} undecided for over {QUEUE_STALE_DAYS} days (`mesh.py queue`)")
+    if waiting: parts.append(f"{len(waiting)} queued for over {QUEUE_STALE_DAYS} days with no PDF")
+    if unidx: parts.append(f"{pl(len(unidx), 'cited work')} not yet indexed from {'its abstract' if len(unidx) == 1 else 'their abstracts'} (`mesh.py literature --unindexed`)")
+    return "Reading queue: " + ("; ".join(parts) if parts else "up to date") + f". Last forward search: {last or 'never'}."
+
+
+def queue_table_rows(text):
+    """The rows of the hand-written reading-queue table (before 1.32.0): [(line, {column: cell})]."""
+    rows, cols = [], None
+    for l in text.split("\n"):
+        if not l.strip().startswith("|"): continue
+        cells = [c.strip() for c in l.strip().strip("|").split("|")]
+        if all(re.fullmatch(r":?-{3,}:?", c) for c in cells if c): continue
+        if cols is None and cells and cells[0].lower() == "ref": cols = [c.lower() for c in cells]; continue
+        rows.append((l, dict(zip(cols or QUEUE_TABLE_COLS, cells))))
+    return rows
+
+
+def table_work(cell):
+    """Fields from a hand-written row's 'ref' cell: '[Author et al. 2020, *Title*, Journal 12, 1-9](https://doi.org/…)'."""
+    f = {}
+    url = re.search(r"\]\((https?://[^\s()]*(?:\([^\s()]*\)[^\s()]*)*)\)", cell)
+    doi = clean_doi(url.group(1)) if url and "doi.org/" in url.group(1) else ""
+    if not doi:
+        mo = re.search(r"(?:doi:\s*|doi\.org/)(10\.\d{4,9}/\S+)", cell, re.I) or re.search(r"\b(10\.\d{4,9}/\S+)", cell)
+        doi = clean_doi(mo.group(1)) if mo else ""
+    if doi: f["doi"] = doi
+    elif url: f["url"] = url.group(1)
+    lt = re.match(r"\s*\[(.+?)\]\(", cell); text = lt.group(1) if lt else re.sub(r"\]\(.*?\)", "", cell)
+    ti = re.search(r"\*([^*]+)\*", text)
+    ay = re.match(r"\s*([^,*\d][^,*]*?)\s*,?\s*\(?((?:1[5-9]|20)\d\d)[a-z]?\)?", text)
+    if ay:
+        au = re.sub(r"\s+(?:et al\.?|and others)$", "; others", ay.group(1).strip(" ,"))
+        f["authors"] = "; ".join(x.strip() for x in re.split(r"\s+(?:&|and)\s+", au)); f["year"] = ay.group(2)
+    if ti:
+        f["title"] = " ".join(ti.group(1).split())
+        rest = text[ti.end():].strip(" ,.")
+        vp = re.match(r"(.+?)\s+(\d+[A-Za-z]?),\s*([\w\-–.]+)$", rest)
+        if vp: f.update(journal=vp.group(1), volume=vp.group(2), pages=bib_pages(vp.group(3)))
+        elif rest: f["journal"] = rest
+    return f
+
+
+def migrate_queue_table(m):
+    """Before 1.32.0 a vault's reading queue began with a hand-written table that nothing checked. Each row it can read
+    becomes a suggestion on a reference card ('hand-written table'), made if need be; a row naming a source already in
+    the brain is dropped. Returns (rows migrated, rows dropped as held, [rows it could not read]), and the hand-written
+    part of the file is left holding only the unread rows."""
+    q = J(m.root, "ledger", "reading-queue.md")
+    if not os.path.exists(q): return 0, 0, []
+    t = rd(q); a = t.find("<!--AUTO:START"); hand = t[:a] if a >= 0 else t
+    rows = queue_table_rows(hand)
+    if not rows: return 0, 0, []
+    done, held, left = 0, 0, []
+    for line, row in rows:
+        cell = row.get("ref", "")
+        f = table_work(cell)
+        rids = sorted(set(re.findall(r"\bR\d{4}\b", " ".join(row.values()))))
+        if not f.get("doi") and not (f.get("title") and f.get("year")) and len(rids) != 1: left.append(line); continue
+        card = find_work(m, f) if (f.get("doi") or f.get("title")) else None
+        if card is None and len(rids) == 1 and rids[0] in m.cards: card = m.cards[rids[0]]
+        if card is not None and card.fam == "source": held += 1; continue
+        if card is None:
+            if not f.get("title") and not f.get("doi"): left.append(line); continue
+            card = new_ref_card(m, f, "suggested")
+        st = row.get("status", ""); dt = re.search(r"\b(\d{4}-\d\d-\d\d)\b", st)
+        status = "queued" if re.search(r"\b(queued|requested|ordered|fetching|downloading|asked for)\b", st, re.I) else "skip" if re.search(r"\b(skip|skipped|dropped|declined)\b", st, re.I) else None
+        why = " ".join(x for x in (row.get("would fill", "").strip(), f"(access: {row['access'].strip()})" if row.get("access", "").strip() else "", f"[{st}]" if st else "") if x) or "listed by hand"
+        suggest(m, card, "hand-written table", " ".join(why.split()), high=row.get("priority", "").strip().lower() == "high", date=dt.group(1) if dt else TODAY, status=status)
+        done += 1
+    keep = ("## Rows of the old hand-written table that `build` could not read\n\nGive each a DOI or a reference card id, or put it on the queue "
+            "with `mesh.py queue add`, and delete the row. `check` warns until none is left.\n\n| " + " | ".join(QUEUE_TABLE_COLS) + " |\n|" + "---|" * len(QUEUE_TABLE_COLS) + "\n" + "\n".join(left) + "\n\n") if left else ""
+    wr(q, "# Reading queue\n\n" + keep + (t[a:] if a >= 0 else "<!--AUTO:START-->\n<!--AUTO:END-->\n"))
+    return done, held, left
+
+
+def write_reading_queue(m):
+    """ledger/reading-queue.md, all of it generated (1.32.0): the works the skills suggested and the user queued, the
+    recent works citing the sources, and the works the sources cite. Rows of the old hand-written table that could not
+    be read stay above the generated part."""
+    q = J(m.root, "ledger", "reading-queue.md"); t = rd(q) if os.path.exists(q) else ""
+    a = t.find("<!--AUTO:START"); hand = t[:a] if a >= 0 else ""
+    keep = hand[hand.find("## Rows of the old hand-written table"):] if "## Rows of the old hand-written table" in hand else ""
+    if not queue_table_rows(keep): keep = ""  # the last unread row was dealt with: the whole file is generated
+    new = "# Reading queue\n\n" + keep + "<!--AUTO:START-->\n" + QUEUE_NOTE + "\n\n" + "\n".join(reading_queue(m)) + "\n<!--AUTO:END-->\n"
+    if new != t: wr(q, new)
+
+
+def cmd_queue(m, args):
+    """`queue` lists what the skills suggested and the user queued. `queue add <doi | R id | "author year title"> --why
+    "<what it would fill>" --from <skill or card id> [--high] [--title ...] [--authors ...] [--year ...] [--journal ...]`
+    puts a work on the reading queue: the one route in, for every skill. `queue mark <R id | doi> queued|skip|suggested
+    ["<why>"]` records the user's decision."""
+    if not args:
+        rs = queue_rows_suggested(m)
+        print(queue_stale_line(m)); print(f"\n{len(rs)} works suggested or queued (ledger/reading-queue.md has the rest):")
+        for r in rs:
+            sg = suggestions(r)
+            print(f"- {r.id} [{r.status}] {one(r.title, 90)}" + (f" doi:{r.get('doi')}" if r.get("doi") and r.get("doi") not in r.title else ""))
+            for d, h, by, why in sg[-4:]: print(f"    {d} {by}{' (high)' if h else ''}: {one(why, 120)}")
+            if len(sg) > 4: print(f"    … {len(sg) - 4} earlier")
+        return
+    if args[0] == "add":
+        opt, pos, it = {}, [], iter(args[1:])
+        for a_ in it:
+            if a_ in ("--why", "--from", "--title", "--authors", "--year", "--journal", "--doi"): opt[a_[2:]] = " ".join(next(it, "").split())
+            elif a_ == "--high": opt["high"] = True
+            elif a_.startswith("--"): sys.exit(f"queue add: unknown option '{a_}'")
+            else: pos.append(a_)
+        if not pos and not opt.get("title") and not opt.get("doi"): sys.exit('queue add: name the work: a DOI, a reference card id (R0123) or "author year title"')
+        if not opt.get("why") or not opt.get("from"): sys.exit('queue add: say what it would fill (--why "...") and who suggests it (--from <skill or card id>, e.g. gaps:G003, outside, beyond, campaign:<name>, write, report, citation-index)')
+        given = {k: opt.get(k, "") for k in ("title", "authors", "year", "journal", "doi")}
+        msg = queue_add(m, " ".join(pos), opt["from"], opt["why"], bool(opt.get("high")), given)
+        print(msg)
+        if msg.startswith("queue add:"): sys.exit(1)
+        if "on record" in msg: print("Run `mesh.py build` to rebuild the reading queue (sync does it), and tell the user which PDF to supply.")
+        return
+    if args[0] == "mark":
+        if len(args) < 3 or args[2] not in ("queued", "skip", "suggested", "not-held"): sys.exit('queue mark: give <R id | doi> queued|skip|suggested|not-held ["<why>"]')
+        rid, f = parse_work(args[1])
+        card = m.cards.get(rid) if rid else find_work(m, f)
+        if card is None or card.fam != "reference": sys.exit(f"queue mark: no reference card for {args[1]}")
+        why = " ".join(args[3:]).strip(); raw = re.sub(r"^status: .*$", f"status: {args[2]}", rd(card.path), count=1, flags=re.M)
+        if args[2] in ("queued", "skip"): raw = append_code(raw, args[2] if args[2] == "queued" else "skipped", f"- {'queued' if args[2] == 'queued' else 'skipped'}:: {TODAY}" + (f" — {why}" if why else ""))
+        wr(card.path, re.sub(r"^updated: .*$", f"updated: {TODAY}", raw, count=1, flags=re.M))
+        print(f"{card.id} {one(card.title, 80)}: {card.status} -> {args[2]}. Run `mesh.py build` to rebuild the reading queue.")
+        return
+    sys.exit("queue: use `queue`, `queue add ...` or `queue mark ...` (`mesh.py help`)")
+
+
+def queue_found(m, found, by, why):
+    """Every DOI and reference card id named in an outside check's --found goes on the queue. Returns the lines to print."""
+    items = [clean_doi(x) for x in re.findall(r"(?:https?://(?:dx\.)?doi\.org/|doi:\s*)?10\.\d{4,9}/\S+", found or "")] + re.findall(r"\bR\d{4}\b", found or "")
+    return [queue_add(m, x, by, why) for x in dict.fromkeys(x for x in items if x)]
+
+
+def cmd_forward(m, args):
+    """`forward [P### ...] [--since YEAR] [--max N] [--all]`: the works that cite the brain's sources, from OpenAlex (free,
+    no key; only DOIs and OpenAlex ids leave the machine). With no source named it searches those never searched, or
+    searched more than QUEUE_STALE_DAYS days ago; --all searches every source with a DOI. Each source's search is
+    stamped with its date in ledger/forward.json, which syncs; `build` ranks the works in the reading queue's Forward
+    section by the sources they cite, the concepts their titles name and their recency."""
+    opt, ids, it = {}, [], iter(args)
+    for a_ in it:
+        if a_ in ("--since", "--max"): opt[a_[2:]] = next(it, "")
+        elif a_ == "--all": opt["all"] = True
+        elif re.fullmatch(r"P\d{3}", a_): ids.append(a_)
+        else: sys.exit(f"forward: unknown argument '{a_}' (give source ids, --since YEAR, --max N or --all)")
+    if any(not v.isdigit() for k, v in opt.items() if k in ("since", "max")): sys.exit("forward: --since takes a year and --max a number")
+    cap, log = int(opt.get("max") or 200), forward_log(m)
+    srcs = sorted((c for c in m.cards.values() if c.fam == "source" and not c.get("retired")), key=lambda c: (PRANK[m.level(c.id)], c.id))
+    if ids:
+        bad = [i for i in ids if i not in m.cards or m.cards[i].fam != "source"]
+        if bad: sys.exit(f"forward: no source {', '.join(bad)}")
+        todo = [c for c in srcs if c.id in ids]
+    else: todo = [c for c in srcs if opt.get("all") or c.id not in log["searched"] or days_since(log["searched"][c.id].get("date")) > QUEUE_STALE_DAYS]
+    nodoi = [c.id for c in todo if not clean_doi(c.get("doi") or "")]
+    todo = [c for c in todo if clean_doi(c.get("doi") or "")]
+    if nodoi: print(f"forward: no DOI on {', '.join(nodoi)}, so OpenAlex cannot be asked who cites {'it' if len(nodoi) == 1 else 'them'}; add '- doi::' to the source card where there is one")
+    if not todo: print(("forward: every source with a DOI was searched within the last " + str(QUEUE_STALE_DAYS) + " days; name sources, or --all, to search again.") if not ids else "forward: nothing to search."); return
+    q = lambda s: urllib.parse.quote(s, safe="/:;()<>")
+    try:
+        for c in srcs:  # every source's OpenAlex id, so a citing work's reference list says which of the brain's sources it cites
+            d = clean_doi(c.get("doi") or "")
+            if d and c.id not in log["openalex"]:
+                w = web_json(f"{OPENALEX}/works/doi:{q(d)}?select=id,doi,publication_year")
+                log["openalex"][c.id] = ((w or {}).get("id") or "").rsplit("/", 1)[-1]
+        byoa = {w: p for p, w in log["openalex"].items() if w}
+        now, back = int(TODAY[:4]), int(m.cfg.get("forward_years", FORWARD_YEARS))
+        cons = [(con.id, concept_rx(con)[0]) for con in m.cards.values() if con.fam == "concept" and not con.get("retired") and m.level(con.id) != "low"]
+        sel = "id,doi,title,display_name,publication_year,authorships,primary_location,referenced_works,type,biblio"
+        for c in todo:
+            wid = log["openalex"].get(c.id)
+            if not wid:
+                log["searched"][c.id] = {"date": TODAY, "found": 0, "note": "not in OpenAlex"}; write_forward_log(m, log)
+                print(f"{c.id}: OpenAlex has no record of doi:{clean_doi(c.get('doi'))}; stamped, nothing found"); continue
+            since = int(opt["since"]) if opt.get("since") else max(int(year4(source_fields(c)) or now), now - back)
+            base = f"{OPENALEX}/works?filter=cites:{wid},from_publication_date:{since}-01-01&sort=publication_date:desc&per-page=200&select={sel}&cursor="
+            got, cur, total = [], "*", None
+            while cur and len(got) < cap:
+                d = web_json(base + urllib.parse.quote(cur)) or {}
+                res = d.get("results") or []; got += res; total = (d.get("meta") or {}).get("count", total); cur = (d.get("meta") or {}).get("next_cursor")
+                if not res: break
+            new = 0
+            for w in got[:cap]:
+                k = (w.get("id") or "").rsplit("/", 1)[-1]
+                if not k: continue
+                f = oa_fields(w); old = log["works"].get(k) or {}
+                refd = {x.rsplit("/", 1)[-1] for x in w.get("referenced_works") or []}
+                cites = sorted({byoa[x] for x in refd if x in byoa} | {c.id} | set(old.get("cites", [])))
+                about = sorted(t for t, rx in cons if rx and rx.search(f.get("title", "")))
+                new += not old
+                log["works"][k] = {**f, "cites": cites, "about": about, "found": old.get("found", TODAY)}
+            log["searched"][c.id] = {"date": TODAY, "since": since, "found": min(len(got), cap), "total": total if total is not None else len(got)}
+            write_forward_log(m, log)
+            print(f"{c.id}: {min(len(got), cap)} work{'' if min(len(got), cap) == 1 else 's'} citing it since {since}" + (f" (of {total}; raise --max to see more)" if total and total > cap else "") + f", {new} new to the log")
+    except NoNetwork as e:
+        write_forward_log(m, log)
+        sys.exit(f"forward: OpenAlex cannot be reached from here ({e}). What was found so far is kept in ledger/{FORWARD_LOG}; run it where there is a network, then sync.")
+    rows = forward_rows(m)
+    print(f"\n{len(rows)} works citing the brain's sources that it neither holds nor has decided on. The best:")
+    for sc, k, w, cites, about in rows[:10]:
+        print(f"  {k} {one(ref_title(w), 90)}" + (f" doi:{w.get('doi')}" if w.get("doi") else "") + f" — cites {', '.join(cites)}" + (f"; about {', '.join(about[:4])}" if about else "") + f" ({sc:.1f})")
+    print("\n`mesh.py build` (or sync) puts them in the reading queue's Forward section. One worth reading: `mesh.py queue add <doi> --why \"<what it would fill>\" --from forward`.")
 
 
 def days_since(d):
@@ -7043,6 +7589,7 @@ def cmd_sync(root, msg=None, push=True):
         m = Mesh(root); m.check()
         if m.err: sys.exit(f"sync: build has {len(m.err)} errors; fix them before syncing (nothing committed)")
         guard_large(root, m)
+        qline = queue_stale_line(m)  # said at the end of every sync, so the reading queue cannot go stale unnoticed (issue #56)
         gone = untrack_marked(root)
         if gone: print(f"sync: {gone} marked PDFs are no longer kept in git. `build` makes them from the originals and the cards, and your own highlights on them travel in P###_annotations.json. They stay on this computer; git keeps the old copies in its history.")
         git(root, "add", "-A")
@@ -7054,6 +7601,7 @@ def cmd_sync(root, msg=None, push=True):
                 print(f"sync: nothing new to commit; pushed {ahead} local commit{'s' if int(ahead) > 1 else ''}")
             else: print("sync: up to date, nothing to commit")
             if kept: print(f"sync: your local edits to {len(kept)} files clashed with newer versions from GitHub ({', '.join(kept[:8])}). The GitHub versions are in place; your edits are kept in the git stash (`git stash show -p`; `git stash drop` once you are sure).")
+            print(qline)
             return
         changed = len(git(root, "diff", "--cached", "--name-only").stdout.split())
         git(root, "commit", "-q", "-m", msg or f"brain sync {TODAY}: {changed} files")
@@ -7065,6 +7613,7 @@ def cmd_sync(root, msg=None, push=True):
                 git(root, "push", "-q")
         print(f"sync: committed {changed} files" + (" and pushed" if push and has_remote else " (no remote to push to)"))
         if kept: print(f"sync: your local edits to {len(kept)} files clashed with newer versions from GitHub ({', '.join(kept[:8])}). The GitHub versions are in place; your edits are kept in the git stash: `git stash show -p` to see them, `git stash drop` once you are sure you do not need them.")
+        print(qline)
     except RuntimeError as e:
         sys.exit(f"sync: {e}")
 
@@ -7462,7 +8011,7 @@ def mine(m, want):
             cards = {c.id: c for p, _n, bs in cites for b in bs for c in at.get((p, b), [])}
             dep = sorted(d for d in (m.dependants(set(cards)) if cards else {}) if m.cards[d].fam == "page")
             cs = set.union(*[m.terms(c) for c in cards.values()]) if cards else set()
-            if r.status in ("not-held", "queued") and (len(srcs) > 1 or dep):
+            if r.status in ("not-held", "suggested", "queued") and (len(srcs) > 1 or dep):
                 add("genealogy", 2 * len(srcs) + len(dep), r.id, f"{r.id} {one(r.title or '', 80)} is cited by {', '.join(srcs)} and is not in the brain" + (f"; {len(dep)} synthesis or workbench cards rest on the passages citing it" if dep else ""),
                     [f"cards at the citing passages: {' '.join(sorted(cards)[:6]) or 'none anchored there'}"] + ([f"resting on them: {' '.join(dep[:6])}"] if dep else []), cs, srcs)
             elif r.status == "held" and cards:
@@ -8415,7 +8964,9 @@ def cmd_outside(m, args):
         p = J(m.root, "ledger", OUTSIDE_LOG)
         line = f"- {TODAY} | {need_} | {verdict} | " + " | ".join(f"{k}: {opt[k]}" for k in ("where", "query", "found", "note") if opt.get(k))
         wr(p, (rd(p) if os.path.exists(p) else OUTSIDE_HEAD).rstrip("\n") + "\n" + line + "\n")
-        print(f"outside: recorded for {need_}: {verdict}." + (" Put the paper on the reading queue (ledger/reading-queue.md) and ask the user for its PDF: nothing from outside goes on a card until its source is carded." if verdict in ("answered", "partly") else
+        queued = queue_found(m, opt.get("found", ""), f"outside {need_}", opt.get("note") or f"outside check of {need_}: {verdict}") if verdict != "nothing" else []  # issue #56: what an outside check finds reaches the queue
+        for q_ in queued: print(f"  queue: {q_}")
+        print(f"outside: recorded for {need_}: {verdict}." + ((" The works found are on the reading queue (`mesh.py queue`); ask the user for their PDFs" if queued else " Put the paper on the reading queue with `mesh.py queue add <doi> --why \"...\" --from outside` and ask the user for its PDF") + ": nothing from outside goes on a card until its source is carded." if verdict in ("answered", "partly") else
               " A lead is not evidence: search for a source that states it, then record what the search finds." if verdict == "lead" else ""))
         if need_ in m.cards and need_[0] == "G": print("  For a gap, also write the search in the gap card's Search log and set its status (brain-mesh-gaps, rung 2).")
         return
@@ -8455,7 +9006,7 @@ def cmd_outside(m, args):
     prev = log.get(need_)
     if prev: print("Checked before: " + "; ".join(f"{d_} {v}" + (f" ({one(r_, 80)})" if r_ else "") for d_, v, r_ in prev[-3:]))
     print(f"\nRecord what comes back: `mesh.py outside add {need_} nothing|answered|partly|lead --where \"<where>\" --query \"<queries>\" --found \"<DOIs>\" --note \"<what it means>\"`.")
-    print("What you know without a source is a `lead`. A paper worth reading goes on the reading queue. Nothing from outside goes onto an evidence card, a hub or a finding until its source is carded (brain-mesh-add-paper).")
+    print("What you know without a source is a `lead`. The DOIs given with --found go on the reading queue by themselves; any other paper worth reading goes on it with `mesh.py queue add`. Nothing from outside goes onto an evidence card, a hub or a finding until its source is carded (brain-mesh-add-paper).")
 
 
 def readiness(m):
@@ -9216,7 +9767,7 @@ def cmd_beyond(m, args):
         head = [f"{len(items)} works" + (f" from {opt['--frame']}" if opt["--frame"] else "") + f". Sources in the brain: {len(G['source'])}; cited and held: {len(G['held'])}; cited, not held: {len(G['cited'])}; unknown to the brain: {len(G['unknown'])}" + (f"; judged before: {len(G['judged'])}" if G["judged"] else "") + "."]
         emit(head, [("Unknown to the brain: neither a source nor cited by one. Outside literature, to judge by its abstract", G["unknown"], 0.5), ("Cited by the brain's sources and not held: the outside list and the brain's own sources both point at it", G["cited"], 0.3),
                     ("Cited and held", G["held"], 0.1), ("Sources already", G["source"], 0.1)],
-             ["A work worth reading goes on the reading queue (ledger/reading-queue.md) and to the user for its PDF; `mesh.py beyond judge \"<doi or title>\" skip|lead \"<note>\"` records the rest."], budget)
+             ["A work worth reading goes on the reading queue (`mesh.py queue add <doi> --why \"...\" --from beyond`) and to the user for its PDF; `mesh.py beyond judge \"<doi or title>\" skip|lead \"<note>\"` records the rest."], budget)
         if opt["--frame"]: beyond_write(m, f"- {TODAY} | {clean(opt['--frame'])} | probe | {clean(opt['--scope'] or '')} | {len(items)} works: {len(G['source'])} sources, {len(G['held'])} held, {len(G['cited'])} cited, {len(G['unknown'])} unknown")
         return
     if sub == "wiki":
@@ -10160,7 +10711,7 @@ routes [topic:<slug>|<concept>|<id>] [--route <name>] [--reach in|partner|unclea
                               ontology shows, the ones missing, and its reach under the research profile; --list, --readiness
 outside [<need> | add <need> nothing|answered|partly|lead [--where "<where>"] [--query "<queries>"] [--found "<DOIs>"] [--note "<text>"]]
                               the brief for checking one need outside the brain (Claude's own knowledge, then the literature), and the
-                              record of what came back (ledger/outside.md); `routes` reads it
+                              record of what came back (ledger/outside.md); `routes` reads it; the DOIs in --found go on the reading queue
 beyond [terms [topic:<slug>|<concept>] | pointers [--all] | probe "<name>" ... [--from <file>] [--frame "<where from>"] [--scope topic:<slug>]
         | wiki <concept ...|topic:<slug>> [--family] [--lang en] | works "<doi|pmid|title>" ... [--from <file>] [--frame "<where from>"]
         | judge "<term>" skip|concept|alias|lead|tool "<note>"] [--top n] [--budget n]
@@ -10179,6 +10730,9 @@ table <concept ...|K###|X###|V###|G###> [evidence|relations|definitions] [--type
                               evidence table (one row per card: study, design, sample, result, conditions, limits, page); the relations a concept has, with basis; how each source defines and measures it
 independence [K###|P### P### ...]  the independent groups of sources behind each finding (shared data sets or authors count once)
 chronology [<concept>|<P###>|<card> ...]   what the brain asserts that has a shelf life: claims of absence, of being first, or of what was then possible, oldest first, with the sources read since that bear on them
+queue [add <doi|R id|"author year title"> --why "<what it would fill>" --from <skill or card> [--high] [--title ..] [--authors ..] [--year ..]
+      | mark <R id|doi> queued|skip|suggested ["<why>"]]   the reading queue: the one route onto it for every skill, and the user's decisions
+forward [P### ...] [--since YEAR] [--max N] [--all]   the works citing the sources, from OpenAlex, for the queue's Forward section; stamps each search
 literature [<concept> ...] [--gaps] [--unindexed]   where the brain is thin against the literature it cites: sources read against cited works indexed from their abstracts; --gaps names the thin concepts no gap card covers
 draft <file> [--out file]     worklist for auditing a draft against the brain: per sentence, the works cited, concepts, numbers, likeliest cards and what to check
 sample <P###> [n]             random cards beside their source text, for spot checks
@@ -10277,6 +10831,8 @@ def main():
     elif c == "routes": cmd_routes(m, a)
     elif c == "profile": cmd_profile(m, a)
     elif c == "outside": cmd_outside(m, a)
+    elif c == "queue": cmd_queue(m, a)
+    elif c == "forward": cmd_forward(m, a)
     elif c == "beyond": cmd_beyond(m, a)
     elif c == "linked": cmd_linked(m, a)
     elif c == "find": cmd_find(m, a)

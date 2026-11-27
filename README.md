@@ -77,7 +77,7 @@ After you adopt or hand-make a concept, run `scan <concept>` to find it in the p
 2. **Brain gap:** the literature has it, the brain does not. It goes on the reading list.
 3. **Research gap:** a logged search finds nothing. Only now is it a gap to do science on.
 
-Skipping a rung is the usual mistake: proposing an experiment that page 7 of a paper in the vault already answers. `ledger/reading-queue.md` ranks what to read next by how much each cited work bears on your gaps, tensions and high-priority cards. Read from the top, then go back to stage 1.
+Skipping a rung is the usual mistake: proposing an experiment that page 7 of a paper in the vault already answers. `ledger/reading-queue.md` ranks what to read next: the papers every skill suggested (`queue add`, the one route in), the recent works citing your sources (`forward`, from OpenAlex), and the works your sources cite, by how much each bears on your gaps, tensions and high-priority cards. It is generated in full, and `sync` ends with a line saying how current it is. Read from the top, then go back to stage 1.
 
 ### 4. Mine for ideas
 
@@ -218,7 +218,7 @@ A report is a snapshot: run it again when the brain changes, and never treat it 
 |---|---|
 | Every session | `sync` first and last |
 | Once, and when your lab changes | The research profile (`profile`) |
-| Every paper or batch | Stages 1 and 2, then `discover --recheck` (your earlier ideas, the routes and the leads from outside that the papers moved) and `report changes` |
+| Every paper or batch | Stages 1 and 2, then `discover --recheck` (your earlier ideas, the routes and the leads from outside that the papers moved) and `report changes`; the new reference cards indexed from their abstracts and `forward` for the new papers, before `sync` |
 | Every five to ten papers, or monthly | `health`, `gaps`, the reading queue, `report frontier` and `report robustness`; a discovery session on the hottest topic; `beyond terms`, and that topic compared with an outside map; `routes --readiness` |
 | Now and then | An audit: `sample P012 10` puts ten cards beside their source text, to check meaning rather than typing |
 | Before an experiment | `report contradictions` and `report novelty` on the idea; discovery on the question; a hypothesis with rivals; registered predictions |

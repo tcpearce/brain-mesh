@@ -70,7 +70,7 @@ What each one holds:
    | A gap not yet searched, or papers waiting | `brain-mesh-gaps`, then `brain-mesh-add-paper` |
    | A research gap, a hypothesis with no experiment, an untested link | `brain-mesh-experiment` |
    | Passages not carded (novelty rung 1), sources not read in full | a lens pass or `brain-mesh-concept-scan` |
-   | A finding that needs regrading, a second-hand claim | `brain-mesh-housekeeping`; the reading queue |
+   | A finding that needs regrading, a second-hand claim | `brain-mesh-housekeeping`; the original on the reading queue (`queue add <R id> --why "..." --from report`) |
    | A signal worth pursuing | `brain-mesh-discover` |
 
 ## When to run which

@@ -39,3 +39,14 @@ updated: 2026-11-20
 - coverage:: all | full | five capacity values and the method line
 - coverage:: Supplementary material | none | not applicable
 - pass:: 2026-11-20 | full | 5 cards | verified 5 of 5
+
+## Linked from
+- listed_in:: [[acetonitrile|Acetonitrile]]
+- listed_in:: [[analyte-x|Analyte X]]
+- listed_in:: [[batch-rebinding-assay|Batch rebinding assay]]
+- listed_in:: [[binding-capacity|Binding capacity]]
+- listed_in:: [[imprinted-polymer-film|Imprinted polymer film]]
+- listed_in:: [[solvent|Solvent]]
+- listed_in:: [[swelling|Swelling]]
+- listed_in:: [[temperature|Temperature]]
+- listed_in:: [[water|Water]]

@@ -65,3 +65,6 @@ updated: 2026-11-20
 - coverage:: Discussion | full | swelling explanation, limits, open question
 - coverage:: Supplementary material | none | none published
 - pass:: 2026-11-20 | full | 11 cards | verified 11 of 11
+
+## Linked from
+- listed_in:: [[equilibration-time|Equilibration time]]

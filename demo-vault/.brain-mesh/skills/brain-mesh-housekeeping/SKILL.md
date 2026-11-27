@@ -5,7 +5,12 @@ description: "Keep a brain mesh healthy as it grows: health report, stale concep
 
 # Brain mesh: housekeeping
 
-Read `brain-mesh` first, and its FORMATS.md before writing or changing a card. Find the vault.
+> Part of every health check: `mesh.py chronology`. It lists the claims the brain asserts that have a shelf life —
+> absences, firsts, limits of the day, counts of the day — oldest first, with the sources read since that bear on
+> them. Settle what has moved on with `- superseded_by:: [[card]] — <what changed>`; that is progress, not a
+> contradiction, and must not go on the contradictions register.
+
+Read `brain-mesh` first, its FORMATS.md before writing or changing a card, and `brain-mesh-access` for syncing. Find the vault.
 
 A vault that only ever grows drifts: hubs fall behind their evidence, findings keep grades they no longer deserve, searches age, and small extraction errors accumulate. Housekeeping is the work that keeps the brain trustworthy enough to design experiments from.
 

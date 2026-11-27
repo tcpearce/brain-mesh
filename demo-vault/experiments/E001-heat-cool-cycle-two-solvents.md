@@ -7,6 +7,29 @@ updated: 2026-11-20
 
 **Question.** Does [[binding-capacity|binding capacity]] recover on cooling in [[water]], and does the solvent difference survive when one method is used for both?
 
+## What the brain brings
+
+Swept before the design was written (`mesh.py experiment sweep H001`). This is a bench experiment, so the computational
+headings — data sets, code, leakage and the pipeline null — do not apply; what the sweep gave is below.
+
+### Established facts the design must agree with
+- [[K001-capacity-falls-on-heating-in-water]] and the capacity values already measured, which fix the levels.
+
+### Limitations and assumptions to control for
+- [[P001-009-equilibrium-assumed-within-60-min]]: the assay assumes equilibrium at 60 minutes; the cycle holds it fixed.
+
+### Open contradictions the design must not assume a side of
+- [[X001-does-heat-or-solvent-uptake-lower-capacity]]: the experiment is built to tell the two sides apart, not to assume one.
+
+### What the research profile says the group can do
+- The rebinding assay and the heat-cool cycle are in reach; no new resource.
+
+## Analysis plan
+
+**Primary statistic.** The binding capacity measured by the batch rebinding assay at each point of the cycle.
+**Secondary.** Film thickness, where it was measured.
+**Threshold.** As the decision rule below.
+
 ## Design
 Films from one batch; [[batch-rebinding-assay|batch rebinding]] as in [[P001-002-batch-rebinding-uv-254|Smith & Jones 2021]]; [[solvent]] = water or [[acetonitrile]]; [[temperature]] 25, 45, then back to 25 °C; four films per condition.
 
@@ -37,5 +60,6 @@ Run 2026-11-18 as registered, with no deviations ([[P003-own-2026-heat-cool-cycl
 - addresses:: [[G001-is-capacity-loss-reversible-on-cooling]], [[X001-does-heat-or-solvent-uptake-lower-capacity]]
 - uses:: [[P001-002-batch-rebinding-uv-254]]
 - registered:: 2026-11-20
+- swept:: 2026-11-20 claim needs facts controls contradictions reach
 - results:: [[P003-own-2026-heat-cool-cycle-results]]
 - concepts:: [[binding-capacity]], [[temperature]], [[solvent]], [[water]], [[acetonitrile]], [[batch-rebinding-assay]]

@@ -11,7 +11,7 @@ description: "Add a paper, PDF, preprint, thesis or own result to a brain mesh a
 > newer one has overtaken it, add `- superseded_by:: [[card]] — <what changed>`. Never log that as a contradiction.
 > Where the paper reports an earlier state of play rather than its own, add `- asof:: <year>`.
 
-Read `brain-mesh` and its FORMATS.md first; this skill assumes their card formats, ids and link types. Find the vault and run `python3 tools/mesh.py build` so the index is current. If there is no vault, use `brain-mesh-setup`.
+Read `brain-mesh` and its FORMATS.md first; this skill assumes their card formats, ids and link types, and `brain-mesh-access` for syncing. Find the vault and run `python3 tools/mesh.py build` so the index is current. If there is no vault, use `brain-mesh-setup`.
 
 Work through the steps in order for one source at a time. With several papers, finish steps 1 to 7 for one and integrate it before starting the next, so that later papers link to earlier ones. With more than about five papers to add, read `brain-mesh-batch`: extraction then runs in parallel agents.
 

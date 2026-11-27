@@ -23,3 +23,4 @@ At 25 °C in [[acetonitrile]] the [[binding-capacity|binding capacity]] was 3.9 
 ## Linked from
 - in_source:: [[P003-own-2026-heat-cool-cycle-results|Own result (2026) Heat-then-cool cycle in water and acetonitrile, experiment E001]]
 - mentioned_in:: [[E001-heat-cool-cycle-two-solvents|Heat-then-cool cycle in water and acetonitrile with one assay]]
+- mentioned_in:: [[H001-loss-is-reversible-swelling|The loss of binding capacity on heating in water is reversible swelling, not damage]]

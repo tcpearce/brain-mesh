@@ -23,3 +23,6 @@ Evidence published 2023; newest: [[P002-garcia-2023-binding-retained-acetonitril
 ## Codes
 - id:: quartz-crystal-microbalance
 - kind:: technique
+
+## Linked from
+- mentioned_in:: [[H001-loss-is-reversible-swelling|The loss of binding capacity on heating in water is reversible swelling, not damage]]

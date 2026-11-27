@@ -26,4 +26,5 @@ In [[acetonitrile]], [[binding-capacity|binding capacity]] did not change signif
 - basis_for:: [[P002-005-heat-alone-does-not-degrade-cavities|Temperature alone does not degrade the imprinted cavities]]
 - in_source:: [[P002-garcia-2023-binding-retained-acetonitrile|Garcia & Chen (2023) Imprinted polymer films retain analyte X binding at elevated tempera…]]
 - main_claim_of:: [[P002-claims|P002 claims: temperature alone does not degrade the imprinted cavities]] — Heating alone does not degrade the imprinted cavities, since capacity is unchanged in acetonitrile
+- mentioned_in:: [[H001-loss-is-reversible-swelling|The loss of binding capacity on heating in water is reversible swelling, not damage]]
 - mentioned_in:: [[K001-capacity-falls-on-heating-in-water|In water, binding capacity of the imprinted film for analyte X falls about threefold betw…]]

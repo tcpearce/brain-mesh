@@ -5,7 +5,7 @@ description: "Mine a brain mesh, with the user, for new hypotheses and new links
 
 # Brain mesh: discovery
 
-Read `brain-mesh` first, and its FORMATS.md before writing or changing a card. Find the vault and run `python3 tools/mesh.py build`.
+Read `brain-mesh` first, and its FORMATS.md before writing or changing a card, and `brain-mesh-access` for syncing. Find the vault and run `python3 tools/mesh.py build`.
 
 The other documents build the brain from what papers say and find what they leave unknown. This one looks for what the brain implies and no paper states: connections between papers, hidden variables behind disagreements, results that ought to carry over to another system, rival accounts and the observations that would separate them. Its output is proposals put to the user, not conclusions.
 

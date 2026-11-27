@@ -1,0 +1,3 @@
+# Experiments and analysis plans sealed before they were run. A line here freezes a card's analysis plan,
+# registered predictions and decision rule: any later change belongs under '## Amendments', not in those sections.
+E001 b43799893b944392fdbd5828125ce8eef1fe1ae1cbce37fe83729f760d9cdce3 2026-11-20 09:00:00

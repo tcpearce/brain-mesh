@@ -11,7 +11,7 @@ description: "Find the key knowledge gaps in a brain mesh, search for papers tha
 > gap makes the brain assert that something is unknown when it is not, which misdirects reading and can stand for
 > years. Where the answer exists and the brain has not read it, that is a reading list, not a research gap.
 
-Read `brain-mesh` first, and its FORMATS.md before writing or changing a card. Find the vault and run `python3 tools/mesh.py build`.
+Read `brain-mesh` first, and its FORMATS.md before writing or changing a card, and `brain-mesh-access` for syncing. Find the vault and run `python3 tools/mesh.py build`.
 
 ## The ladder
 

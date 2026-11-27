@@ -19,3 +19,4 @@ One [[imprinted-polymer-film|film]] at 35 °C in [[water]] showed a transient in
 
 ## Linked from
 - in_source:: [[P001-smith-2021-temperature-binding-water|Smith & Jones (2021) Temperature dependence of analyte X binding by an imprinted polymer …]]
+- mentioned_in:: [[H001-loss-is-reversible-swelling|The loss of binding capacity on heating in water is reversible swelling, not damage]]

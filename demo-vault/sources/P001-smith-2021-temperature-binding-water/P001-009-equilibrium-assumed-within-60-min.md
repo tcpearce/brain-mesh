@@ -20,4 +20,5 @@ The [[batch-rebinding-assay|rebinding assay]] assumes that binding reaches equil
 ## Linked from
 - in_source:: [[P001-smith-2021-temperature-binding-water|Smith & Jones (2021) Temperature dependence of analyte X binding by an imprinted polymer …]]
 - mentioned_in:: [[E001-heat-cool-cycle-two-solvents|Heat-then-cool cycle in water and acetonitrile with one assay]]
+- mentioned_in:: [[H001-loss-is-reversible-swelling|The loss of binding capacity on heating in water is reversible swelling, not damage]]
 - mentioned_in:: [[K001-capacity-falls-on-heating-in-water|In water, binding capacity of the imprinted film for analyte X falls about threefold betw…]]

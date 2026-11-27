@@ -35,7 +35,7 @@ Papers go in, and each one is woven into what the brain already holds. The brain
 | 2 Weave them in | Done as part of adding. To go back over old papers: "Scan all sources for concepts" | `brain-mesh-add-paper`, `brain-mesh-concept-scan` | `scan`, `contradictions`, `place`, `independence`, `build` |
 | 3 Find what is missing | "What are the key gaps on …? What should I read next?" | `brain-mesh-gaps` | `gaps`, `gapsdoc`, `matrix` |
 | 4 Mine for ideas | "Run a discovery session on …"; "What is in reach with what I have?"; "What is missing from the brain on …? What would other fields bring?" | `brain-mesh-discover`, `brain-mesh-beyond`, `brain-mesh-campaign` | `zoom`, `routes`, `profile`, `outside`, `beyond`, `discover`, `facts`, `dismiss`, `campaign` |
-| 5 Test ideas | "Turn that into a hypothesis and design the experiment"; later "Here are my results" | `brain-mesh-experiment` | `matrix`, `impact` |
+| 5 Test ideas | "Turn that into a hypothesis and design the experiment"; later "Here are my results" | `brain-mesh-experiment` | `matrix`, `impact`, `hypothesis deepen`, `experiment sweep/new/register/run` |
 | 6 Write and check | "Write the background on … from the brain"; "Audit this draft against the brain" | `brain-mesh-write` | `table`, `draft` |
 | Decide what next | "Give me a frontier map"; "Why do these results disagree?"; "Is this idea new?"; "What changed this week?" | `brain-mesh-report` | `report` |
 | Keep it healthy | "Run housekeeping" | `brain-mesh-housekeeping` | `health`, `sample` |
@@ -268,7 +268,7 @@ Both keep a session's context small however large the brain grows. The commands 
 | `skills/brain-mesh-write/SKILL.md` | Writing from the brain (a literature review, a background section, evidence tables) with every claim traced to a card and page, and auditing a draft against the brain claim by claim. |
 | `skills/brain-mesh-report/SKILL.md` | Dated reports assembled from the cards: frontier map, contradiction dossier, theory scorecard, causal map, robustness audit, methods and data landscape, novelty check, what-changed digest. |
 | `skills/brain-mesh-gaps/SKILL.md` | Finding key gaps, hunting papers that fill them, the research-gaps document. |
-| `skills/brain-mesh-experiment/SKILL.md` | Hypotheses, experiment design, registered predictions, assessing outcomes. |
+| `skills/brain-mesh-experiment/SKILL.md` | Specifying a study from a sweep of the whole ontology, sealing its analysis plan and predictions before it runs, sealing the finished run with its code, data checksums, environment and line-anchored output, and judging every registered prediction. |
 | `skills/brain-mesh-campaign/SKILL.md` | Discovery campaigns, on a topic or as a follow-on from named papers: competing agents with one lens each, hourly meetings, blind referees and a verifier, the list of what is already obvious, credibility checks, registered proofs of concept on open data, download requests, a slate ranked by impact with what would unlock the rest. |
 | `skills/brain-mesh-discover/SKILL.md` | Discovery sessions with the user: topics by need to know, routes to a contribution, the research profile, checks outside the brain, the miners; theory, analogy and seed cards; rechecking them as sources arrive. |
 | `skills/brain-mesh-beyond/SKILL.md` | Finding what the ontology lacks by comparing it with something outside it: the sources' own words, Wikipedia, MeSH, a review, the literature around the sources, and the tools other fields use for the same kind of problem. |

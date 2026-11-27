@@ -7264,7 +7264,7 @@ def cmd_forward(m, args):
     try:
         for c in srcs:  # every source's OpenAlex id, so a citing work's reference list says which of the brain's sources it cites
             d = clean_doi(c.get("doi") or "")
-            if d and c.id not in log["openalex"]:
+            if d and (c.id not in log["openalex"] or (not log["openalex"][c.id] and (opt.get("all") or c.id in ids))):  # one OpenAlex did not know is asked again when named
                 w = web_json(f"{OPENALEX}/works/doi:{q(d)}?select=id,doi,publication_year")
                 log["openalex"][c.id] = ((w or {}).get("id") or "").rsplit("/", 1)[-1]
         byoa = {w: p for p, w in log["openalex"].items() if w}

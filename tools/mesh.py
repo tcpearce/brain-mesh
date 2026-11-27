@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, bisect, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.30.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.31.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -3816,6 +3816,7 @@ def cmd_neighbours(m, target, top=5, floor=0.2):
 
 def cmd_health(m):
     """Housekeeping report: queues to work through, not errors."""
+    regs = registrations(m.root)
     def sec(title, rows, cap=20):
         print(f"\n## {title} ({len(rows)})")
         for r in rows[:cap]: print("  " + r)
@@ -3859,6 +3860,24 @@ def cmd_health(m):
     sec("Sources not yet integrated", [f"{row(c)} [{c.status}]" for c in m.cards.values() if c.fam == "source" and c.status != "integrated"])
     newest = lambda cs: max([str(e.fm.get("updated", ""))[:10] for e in m.evidence() if m.terms(e) & cs] or [""])
     sec("Mined cards with evidence newer than their stamp (run `discover --recheck` and take the changes to the user)", [f"{c.id} {key} [stamped {d}, newer evidence {newest(m.terms(c))}]" for c, key, d, _s, _b in stamps(m) if newest(m.terms(c)) > d])
+    hyp = [h for h in m.pages("H") if not h.get("retired") and h.status in ("open", "supported", "refuted")]
+    sec("Hypotheses the brain has moved past (run `hypothesis deepen <H###> --write` and judge the new lines)",
+        [f"{row(h)} [{'never deepened' if not h.get('deepened') else 'deepened ' + str(h.get('deepened'))[:10]}"
+         + (f", evidence to {newest(m.terms(h))}" if newest(m.terms(h)) else "") + "]"
+         for h in hyp if not h.get("deepened") or str(h.get("deepened"))[:10] < newest(m.terms(h))])
+    moved = []
+    for e in m.pages("E"):
+        reg = regs.get(e.id)
+        if not reg or e.get("retired"): continue
+        for v in e.all("uses"):
+            for x in m.ids(v)[0]:
+                d = m.cards.get(x)
+                if d is not None and d.id[0] in "DC" and str(d.fm.get("updated", ""))[:10] > reg[1]:
+                    moved.append(f"{row(e)} [sealed {reg[1]}; {d.id} changed {str(d.fm.get('updated', ''))[:10]}]")
+    sec("Studies whose data or code card changed after they were sealed (check the study still runs on what it registered)", moved)
+    sec("Citation-index entries whose work has since been read (retire the indexed claim; a read source supersedes an abstract)",
+        [f"{r.id} {one(plain(r.title or r.id), 80)} [indexed {str(r.get('indexed'))[:10]}; now {r.status}]"
+         for r in m.cards.values() if r.fam == "reference" and r.get("indexed") and not r.get("retired") and r.status == "held"])
     rj = judged(m)
     if rj: print(f"\nRejected signals on record: {len(rj)} (ledger/signals.md); `discover --recheck` lists any that new sources re-open.")
     print(f"\nRetired cards kept as pointers: {sum(1 for c in m.cards.values() if c.get('retired'))}. Run `check` for errors and duplicate warnings, `gaps` for research signals.")
@@ -5034,8 +5053,8 @@ def cmd_literature(m, args):
         queued = sum(1 for r in idx.get(con.id, []) if r.status == "queued")
         rows.append((ni - 2 * nh + (3 if con.priority == "high" else 0), con, nh, ni, queued))
     rows.sort(key=lambda r: (-r[0], r[1].id))
-    nidx = sum(1 for r in m.cards.values() if r.fam == "reference" and r.get("indexed"))
-    nref = sum(1 for r in m.cards.values() if r.fam == "reference" and not r.get("retired") and r.status != "held")
+    pool = [r for r in m.cards.values() if r.fam == "reference" and not r.get("retired") and r.status != "held"]
+    nidx, nref = sum(1 for r in pool if r.get("indexed")), len(pool)  # one population: a retired or now-read work is neither cited-and-unread nor to be counted as indexed
     print(f"Citation index: {nidx} of {nref} cited works indexed from their abstracts"
           + (f"; {nref - nidx} still unindexed (`mesh.py literature --unindexed` lists them by source)" if nref > nidx else "") + "\n")
     print(f"{'concept':34} {'read':>5} {'cited':>6} {'queued':>7}  thinnest first")

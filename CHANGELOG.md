@@ -2,6 +2,16 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.31.0 (2026-11-27)
+
+Three more things `health` can see, all of them kinds of drift a card cannot show on its own.
+
+- **Hypotheses the brain has moved past.** A hypothesis carries `deepened::` once `hypothesis deepen` has brought the brain to it. The queue lists any hypothesis never deepened, or deepened before the newest evidence card that shares a concept with it — the same staleness rule already used for concept hubs and mined cards. Until now a hypothesis was only asked about when a registered experiment sat on it.
+- **Studies whose data or code moved after they were sealed.** `check` verifies a *run's* data against the checksums on its data-set cards. This queue covers the gap before the run: a registered experiment whose `uses::` data-set or code card has been updated since the seal, so the plan is sealed but what it would run on is not.
+- **Citation-index entries whose work has since been read.** An indexed abstract is superseded the moment its work is read as a source; the entry should be retired so nothing rests on the authors' summary of themselves when the text is in the brain.
+
+Also: `literature` counted indexed works over a different population from the one it reported them against (retired and now-read works included in one count and not the other), so a vault could be told that more works were indexed than are cited.
+
 ## 1.30.0 (2026-11-27)
 
 **Computational studies: specified from the whole ontology, sealed before they run, and documented line by line afterwards.**

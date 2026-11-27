@@ -5,7 +5,7 @@ description: "Use a brain mesh to specify, register, run and document studies, c
 
 # Brain mesh: experiments
 
-Read `brain-mesh` first, and its FORMATS.md before writing or changing a card. Find the vault and run `python3 tools/mesh.py build`.
+Read `brain-mesh` first, and its FORMATS.md before writing or changing a card, and `brain-mesh-access` for syncing. Find the vault and run `python3 tools/mesh.py build`.
 
 This is what the brain is for. Every choice made here should trace back to cards, and every result should flow back into them.
 

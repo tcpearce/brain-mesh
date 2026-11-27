@@ -26,7 +26,8 @@ Always read `skills/brain-mesh/SKILL.md` first. It is the map: card families, id
 | Add many papers at once, with agents in parallel | `skills/brain-mesh-batch/SKILL.md` |
 | Scan some or all sources for every concept; card each fact with the works the paper cites for it | `skills/brain-mesh-concept-scan/SKILL.md` |
 | Knowledge gaps, papers to read next, the research-gaps document | `skills/brain-mesh-gaps/SKILL.md` |
-| Hypotheses, experiment design, registered predictions, judging outcomes | `skills/brain-mesh-experiment/SKILL.md` |
+| Index the cited works the brain has not read: abstracts, claims, where it rests on unread literature | `skills/brain-mesh-citation-index/SKILL.md` |
+| Specifying, registering, running and documenting studies; sealed analysis plans, run records, judging outcomes | `skills/brain-mesh-experiment/SKILL.md` |
 | New hypotheses and links: mining the ontology, theories, analogies, seeds, rechecks | `skills/brain-mesh-discover/SKILL.md` |
 | A discovery campaign: competing agents, hourly meetings, referees, proofs of concept | `skills/brain-mesh-campaign/SKILL.md` |
 | What the ontology lacks: terms with no concept, tools and concepts from other fields, comparison with Wikipedia, MeSH, a review or the literature around the sources | `skills/brain-mesh-beyond/SKILL.md` |

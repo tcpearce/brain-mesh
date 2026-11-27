@@ -31,3 +31,6 @@ Evidence published 2021 to 2026; newest: [[P003-own-2026-heat-cool-cycle-results
 ## Codes
 - id:: batch-rebinding-assay
 - kind:: technique
+
+## Linked from
+- mentioned_in:: [[H001-loss-is-reversible-swelling|The loss of binding capacity on heating in water is reversible swelling, not damage]]

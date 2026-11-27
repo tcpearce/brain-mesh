@@ -31,5 +31,6 @@ Evidence published 2023 to 2026; newest: [[P003-own-2026-heat-cool-cycle-results
 - kind:: entity
 
 ## Linked from
+- mentioned_in:: [[H001-loss-is-reversible-swelling|The loss of binding capacity on heating in water is reversible swelling, not damage]]
 - mentioned_in:: [[P002-garcia-2023-binding-retained-acetonitrile|Garcia & Chen (2023) Imprinted polymer films retain analyte X binding at elevated tempera…]]
 - mentioned_in:: [[P002-claims|P002 claims: temperature alone does not degrade the imprinted cavities]]

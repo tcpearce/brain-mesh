@@ -24,3 +24,4 @@ After heating to 45 °C and cooling back to 25 °C in [[water]], the [[binding-c
 - closes:: [[G001-is-capacity-loss-reversible-on-cooling|Is the loss of binding capacity on heating in water reversible on cooling?]]
 - in_source:: [[P003-own-2026-heat-cool-cycle-results|Own result (2026) Heat-then-cool cycle in water and acetonitrile, experiment E001]]
 - mentioned_in:: [[E001-heat-cool-cycle-two-solvents|Heat-then-cool cycle in water and acetonitrile with one assay]]
+- mentioned_in:: [[H001-loss-is-reversible-swelling|The loss of binding capacity on heating in water is reversible swelling, not damage]]

@@ -30,3 +30,6 @@ Evidence published 2021 to 2023; newest: [[P002-garcia-2023-binding-retained-ace
 - kind:: variable
 - unit:: nm
 - related:: [[swelling]]
+
+## Linked from
+- mentioned_in:: [[H001-loss-is-reversible-swelling|The loss of binding capacity on heating in water is reversible swelling, not damage]]

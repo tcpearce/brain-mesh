@@ -21,3 +21,6 @@ Evidence published 2021; newest: [[P001-smith-2021-temperature-binding-water|P00
 - id:: equilibration-time
 - kind:: variable
 - unit:: min
+
+## Linked from
+- mentioned_in:: [[H001-loss-is-reversible-swelling|The loss of binding capacity on heating in water is reversible swelling, not damage]]

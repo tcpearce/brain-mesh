@@ -116,7 +116,8 @@ have not changed for two meetings, or when the budget is spent.
 2. Put the slate to the user, three to seven proposals, in the format of `brain-mesh-discover` section 5, adding each
    proposal's scores, its proof of concept and replication, and its novelty verdict. Put the download requests to them
    separately, each with what it would settle.
-3. Write what the user accepts (`brain-mesh-discover` section 6, `- miner:: campaign`, `- from::` the cards it rests on,
+3. A proposal the user wants carried out becomes a study: `python3 tools/mesh.py experiment new --from-proposal <id>` takes its hypothesis, what it rests on, its prior and its decisive experiment into a hypothesis and an experiment card, swept against the whole ontology (`brain-mesh-experiment`). Only accepted proposals are promoted.
+4. Write what the user accepts (`brain-mesh-discover` section 6, `- miner:: campaign`, `- from::` the cards it rests on,
    and a line in the prose naming the campaign file). A proof of concept the user wants kept becomes an own result
    (`brain-mesh-add-paper`, **Own results**). Approved downloads go to the reading queue or straight to `brain-mesh-add-paper`.
 4. `sync "campaign <name>: closed; <n> accepted"`.

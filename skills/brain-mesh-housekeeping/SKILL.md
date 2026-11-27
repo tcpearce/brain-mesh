@@ -10,7 +10,7 @@ description: "Keep a brain mesh healthy as it grows: health report, stale concep
 > them. Settle what has moved on with `- superseded_by:: [[card]] — <what changed>`; that is progress, not a
 > contradiction, and must not go on the contradictions register.
 
-Read `brain-mesh` first, and its FORMATS.md before writing or changing a card. Find the vault.
+Read `brain-mesh` first, its FORMATS.md before writing or changing a card, and `brain-mesh-access` for syncing. Find the vault.
 
 A vault that only ever grows drifts: hubs fall behind their evidence, findings keep grades they no longer deserve, searches age, and small extraction errors accumulate. Housekeeping is the work that keeps the brain trustworthy enough to design experiments from.
 

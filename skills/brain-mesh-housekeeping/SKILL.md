@@ -47,7 +47,7 @@ Work through the results in this order. Fix what is clear. Bring to the user any
 
 20. **Hypotheses the brain has moved past.** A hypothesis never deepened, or deepened before the newest evidence that shares a concept with it, is being tested against a brain that has since changed. Run `python3 tools/mesh.py hypothesis deepen <H###> --write`, judge the new lines, and rewrite the rationale, the rivals and the predictions against what they say (`brain-mesh-experiment`, section 2.1). Deepen before registering an experiment, never after.
 21. **Studies whose data or code moved after they were sealed.** The analysis plan is sealed; its inputs are not. Check that the study still runs on what it registered: if the data-set or code card changed in a way that matters, write it under `## Amendments` on the experiment card before the run, or re-register.
-22. **Citation-index entries whose work has since been read.** Retire the indexed claim (`- retired:: read as P0xx`): an abstract is the authors' summary of themselves, and nothing should rest on it once the text is in the brain and carded.
+22. **Citation-index entries whose work has since been read.** Remove the index from the reference card (its `## Abstract`, `## What it claims`, `- concepts::` and `- indexed::`), as add-paper step 8 says: an abstract is the authors' summary of themselves, and nothing should rest on it once the text is in the brain and carded. Do not retire the reference card itself: it carries the work's `cited_by::` lines and the links of every card that cites it.
 
 Finish with `build`, then `python3 tools/mesh.py log "housekeeping: <what was done>"`.
 

@@ -333,10 +333,12 @@ Vaults do not live in this repository. Each vault is its own folder, or its own 
 
 ## Changing the method
 
-1. Edit the document under `skills/`, or `tools/mesh.py`.
-2. Run `bash tests/run.sh`. Add a test for anything new that the tooling enforces.
-3. Raise the version in `VERSION` and in `tools/mesh.py` together, and add a line to `CHANGELOG.md`.
-4. Commit and push.
+1. Open an issue saying what goes wrong or is missing (`gh issue create -R tcpearce/brain-mesh`).
+2. `git fetch`, and branch from the newest release: `origin/main`, or the branch of an open release pull request the change builds on. Several sessions release in parallel, so a branch made from a stale clone collides.
+3. Edit the document under `skills/`, or `tools/mesh.py`.
+4. Run `bash tests/run.sh`. Add a test for anything new that the tooling enforces. On Windows, `python3` must be a Python with PyMuPDF, and `PYTHONUTF8=1` is set by the script.
+5. Number the release from what is on GitHub, not from the clone: raise the version in `VERSION` and in `tools/mesh.py` together, above every version on `origin/main` and on open release branches, and add an entry to `CHANGELOG.md`. Run `python3 tools/mesh.py upgrade demo-vault` and rebuild it.
+6. Push the branch and open a pull request whose commit or description says `fixes #N`. The owner merges it; never merge it yourself.
 
 Each Claude session picks the change up at its next pull. A vault picks up new tooling with `python3 tools/mesh.py upgrade <vault>` run from this repository, followed by `build` in the vault. The loader skill only needs re-saving in Claude if this repository moves or is renamed.
 

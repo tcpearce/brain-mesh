@@ -2167,6 +2167,11 @@ grep -q "binding-capacity + temperature" lp.txt && fail "pairs lists a pair the 
 sed -i 's/^# Capacity of imprinted films in hot water$/# Capacity of imprinted films in hot water: α-phase → β/' references/R0901-*.md
 sed -i 's/^- title:: Capacity of imprinted films in hot water$/- title:: Capacity of imprinted films in hot water: α-phase → β/' references/R0901-*.md
 PYTHONIOENCODING=cp1252 PYTHONUTF8=0 python3 tools/mesh.py literature --against K001 > enc.txt 2>&1 && grep -q "hot water: ?-phase ? ?" enc.txt && pass "a console whose code page lacks a character prints it as ? and finishes (issue #64)" || { cat enc.txt | tail -3; fail "console encoding"; }
+sed -i 's/^# Capacity of imprinted films in hot water: α-phase → β$/# Doe (2021) Capacity of imprinted films. J. Test 3, 1-9 (2021)/' references/R0901-*.md
+python3 tools/mesh.py build > b.txt 2>&1; grep -q "R0901: heading does not end with its title:: line; set it to '# Doe (2021) Capacity of imprinted films in hot water" b.txt && pass "a reference heading left behind its corrected title is flagged, with the heading to use" || { grep R0901 b.txt; fail "heading check"; }
+grep -q "R0902: heading does not end" b.txt && fail "a heading that ends with its title is flagged" || pass "a heading that matches its title is left alone"
+sed -i 's/^- id:: R0902$/- id:: R0902\n- held:: [[P001]]/; s/^status: not-held$/status: held/' references/R0902-*.md
+python3 tools/mesh.py build > b.txt 2>&1; grep -q "R0902: held as P001, which cites it" b.txt && pass "a work marked held by the very source that cites it is flagged" || { grep R0902 b.txt; fail "self-held check"; }
 
 # 43. the citation index feeds discovery: abstracts raise terms the brain cannot name, and a high-priority work heads the reading list
 cp -r "$ROOT/demo-vault" "$T/cid"; cd "$T/cid"; cp "$MESH" tools/mesh.py; mkdir -p references

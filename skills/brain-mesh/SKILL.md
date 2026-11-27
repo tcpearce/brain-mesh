@@ -112,7 +112,7 @@ Every card has properties, a title stating its point as a sentence, plain prose,
 
 ## Priority
 
-Every card is `high`, `normal` (the default) or `low`. Priority is the user's statement of interest: attention, never evidence. The research profile (`PROFILE.md`, `mesh.py profile`) is its companion: the user's statement of what they can do, which marks every discovery opportunity in reach, with a partner or out of reach. Only the user sets it (`priority <id> <level> "<why>"`); it spreads one link as *elevated*; `MAP.md` opens with the **Focus**. Details in FORMATS.md.
+Every card is `high`, `normal` (the default) or `low`. Priority is the user's statement of interest: attention, never evidence. The research profile (`PROFILE.md`, `mesh.py profile`) is its companion: the user's statement of what they can do, which marks every discovery opportunity in reach, with a partner or out of reach. Only the user sets it (`priority <id> <level> "<why>"`), with one exception: the priority of a cited work the brain has not read is the indexer's to judge (`brain-mesh-citation-index`, section 4a); it spreads one link as *elevated*; `MAP.md` opens with the **Focus**. Details in FORMATS.md.
 
 ## Links
 

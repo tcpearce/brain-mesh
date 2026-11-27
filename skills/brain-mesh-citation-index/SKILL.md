@@ -33,7 +33,7 @@ In this order, stopping at the first that works:
 **Check what came back before pasting it.** A service can return the wrong thing with complete confidence:
 
 - **The same work?** Its title, first author and year must match the card. A DOI taken from elsewhere on the card (a link in a citing passage, a related paper) names a different work.
-- **An abstract?** Reject page furniture ("Get PDF Email Share …"), a bare citation line ("(2000). Perceptual learning … pp. 295-302"), and the opening paragraph of a letter, comment or review, which reads as an introduction and cites numbered references ("(1, 2)") or authors in brackets. A letter or a news piece usually has no abstract: say so instead.
+- **An abstract?** Reject page furniture ("Get PDF Email Share …"), a bare citation line ("(2000). Perceptual learning … pp. 295-302"), and the opening paragraph of a letter, comment or review, which reads as an introduction and cites numbered references ("(1, 2)") or authors in brackets. A letter or a news piece usually has no abstract: say so instead. A Crossref abstract can be an editor's teaser or a graphical-abstract caption rather than the authors' abstract; when it is short or reads like publicity, prefer PubMed or Europe PMC.
 - **Fix the card while you are there.** A DOI or PubMed id the service confirmed and the card lacks goes in `## Codes`; a `kind::` that is plainly wrong (a *Science* article marked `book`) is corrected.
 
 Paste the abstract **verbatim**. Do not paraphrase it, do not translate it, and do not shorten it. If it is structured (Background/Methods/Results), keep the structure. Record where it came from on the `- indexed::` line.
@@ -128,7 +128,7 @@ Write each candidate with: the concept and its read-against-cited counts; the th
 
 ## 6. Working in agents
 
-With more than about fifty works to index, split them between agents as `brain-mesh-batch` does. Each agent takes a block of reference ids, writes **only** in `references/`, touches no other folder, and never runs `build`, `sync` or `cite`. Give each agent its list explicitly, so two never take the same card. The launching session builds, checks and syncs when they are done, adopts or rejects the proposed concepts, and writes the gap cards from the candidates the agents reported (section 5a).
+With more than about fifty works to index, split them between agents as `brain-mesh-batch` does. Each agent takes a block of reference ids, writes **only** in `references/`, touches no other folder, and never runs `build`, `sync` or `cite`. Give each agent its list explicitly, so two never take the same card. The services' allowances are shared: OpenAlex's daily allowance is spent by all the agents together, so give each agent the order to try them in and tell it to record on the card any service it could not reach. Each agent writes its fetch scripts and downloads in a scratch folder of its own, outside the vault. The launching session builds, checks and syncs when they are done, adopts or rejects the proposed concepts, and writes the gap cards from the candidates the agents reported (section 5a).
 
 ## 7. The synthesis pass: read the index as a whole
 
@@ -173,7 +173,7 @@ The ontology (the concepts, their names and definitions, and how they relate) is
    ```
    - Does adaptation reshape odour responses in the olfactory bulb itself? Four cited works claim so, none read: [[R0656]], [[R1054]], [[R1275]], [[R1278]]
    ```
-   Queue the clearest of those works.
+   Credit the works in the hub's Codes as well (`- cites:: [[R0656]] — named as a reason to ask: <the question> (indexed, not read)`), since `check` asks for a `cites::` line for every cited work a hub's text names. Queue the clearest of those works.
 
 New concepts, definition changes, splits, merges and every priority on a concept are the user's call. Gather them into **one numbered list of decisions**, each with your recommendation and the counts behind it, so the user can answer "yes to all" or name the numbers to change. Act on the answer.
 

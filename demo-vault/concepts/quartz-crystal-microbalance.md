@@ -10,6 +10,7 @@ updated: 2026-11-20
 ## Where it appears
 <!--AUTO:START-->
 **Evidence: 1 cards from 1 sources** (method 1)
+Evidence published 2023; newest: [[P002-garcia-2023-binding-retained-acetonitrile|P002 Garcia & Chen (2023) Imprinted polymer films retain analyte X binding at elevated temperature in acetonitrile]] (2023). `mesh.py chronology quartz-crystal-microbalance` checks what has a shelf life.
 - [[P002-001-capacity-measured-by-qcm|Binding capacity was measured with a quartz crystal microbalance]] · method
 
 **Linked from other concepts**
@@ -25,4 +26,3 @@ updated: 2026-11-20
 
 ## Linked from
 - mentioned_in:: [[H001-loss-is-reversible-swelling|The loss of binding capacity on heating in water is reversible swelling, not damage]]
-- mentioned_in:: [[P002-garcia-2023-binding-retained-acetonitrile|Garcia & Chen (2023) Imprinted polymer films retain analyte X binding at elevated tempera…]]

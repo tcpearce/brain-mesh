@@ -77,7 +77,7 @@ After you adopt or hand-make a concept, run `scan <concept>` to find it in the p
 2. **Brain gap:** the literature has it, the brain does not. It goes on the reading list.
 3. **Research gap:** a logged search finds nothing. Only now is it a gap to do science on.
 
-Skipping a rung is the usual mistake: proposing an experiment that page 7 of a paper in the vault already answers. `ledger/reading-queue.md` ranks what to read next by how much each cited work bears on your gaps, tensions and high-priority cards. Read from the top, then go back to stage 1.
+Skipping a rung is the usual mistake: proposing an experiment that page 7 of a paper in the vault already answers. `ledger/reading-queue.md` ranks what to read next: the papers every skill suggested (`queue add`, the one route in), the recent works citing your sources (`forward`, from OpenAlex), and the works your sources cite, by how much each bears on your gaps, tensions and high-priority cards. It is generated in full, and `sync` ends with a line saying how current it is. Read from the top, then go back to stage 1.
 
 ### 4. Mine for ideas
 
@@ -251,7 +251,7 @@ A report is a snapshot: run it again when the brain changes, and never treat it 
 |---|---|
 | Every session | `sync` first and last |
 | Once, and when your lab changes | The research profile (`profile`) |
-| Every paper or batch | Stages 1 and 2, then `discover --recheck` (your earlier ideas, the routes and the leads from outside that the papers moved) and `report changes` |
+| Every paper or batch | Stages 1 and 2, then `discover --recheck` (your earlier ideas, the routes and the leads from outside that the papers moved) and `report changes`; the new reference cards indexed from their abstracts and `forward` for the new papers, before `sync` |
 | Every five to ten papers, or monthly | `health`, `gaps`, the reading queue, `report frontier` and `report robustness`; a discovery session on the hottest topic; `beyond terms`, and that topic compared with an outside map; `routes --readiness` |
 | When a question is worth a few hours of agent time | A campaign on it (`campaign init … close`), after reading `obvious` on the same scope |
 | Now and then | An audit: `sample P012 10` puts ten cards beside their source text, to check meaning rather than typing |
@@ -333,10 +333,12 @@ Vaults do not live in this repository. Each vault is its own folder, or its own 
 
 ## Changing the method
 
-1. Edit the document under `skills/`, or `tools/mesh.py`.
-2. Run `bash tests/run.sh`. Add a test for anything new that the tooling enforces.
-3. Raise the version in `VERSION` and in `tools/mesh.py` together, and add a line to `CHANGELOG.md`.
-4. Commit and push.
+1. Open an issue saying what goes wrong or is missing (`gh issue create -R tcpearce/brain-mesh`).
+2. `git fetch`, and branch from the newest release: `origin/main`, or the branch of an open release pull request the change builds on. Several sessions release in parallel, so a branch made from a stale clone collides.
+3. Edit the document under `skills/`, or `tools/mesh.py`.
+4. Run `bash tests/run.sh`. Add a test for anything new that the tooling enforces. On Windows, `python3` must be a Python with PyMuPDF, and `PYTHONUTF8=1` is set by the script.
+5. Number the release from what is on GitHub, not from the clone: raise the version in `VERSION` and in `tools/mesh.py` together, above every version on `origin/main` and on open release branches, and add an entry to `CHANGELOG.md`. Run `python3 tools/mesh.py upgrade demo-vault` and rebuild it.
+6. Push the branch and open a pull request whose commit or description says `fixes #N`. The owner merges it; never merge it yourself.
 
 Each Claude session picks the change up at its next pull. A vault picks up new tooling with `python3 tools/mesh.py upgrade <vault>` run from this repository, followed by `build` in the vault. The loader skill only needs re-saving in Claude if this repository moves or is renamed.
 

@@ -14,6 +14,7 @@ updated: 2026-11-20
 - [[X001-does-heat-or-solvent-uptake-lower-capacity|X001 Does heating itself lower binding capacity, or only heating in water?]] · explained
 
 **Evidence: 2 cards from 2 sources** (limitation 1, observation 1)
+Evidence published 2021 to 2023; newest: [[P002-garcia-2023-binding-retained-acetonitrile|P002 Garcia & Chen (2023) Imprinted polymer films retain analyte X binding at elevated temperature in acetonitrile]] (2023). `mesh.py chronology film-thickness` checks what has a shelf life.
 - [[P001-005-film-thickens-18-percent|The film thickens by 18% between 25 and 45 °C in water]] · observation
 - [[P002-007-single-film-thickness-tested|Only one film thickness, 200 nm, was tested]] · limitation
 

@@ -2,7 +2,80 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
-## 1.31.0 (2026-11-27)
+## 1.33.0 (2026-11-27)
+
+**The citation index read as a whole, and the method brought into line with how it is practised.**
+
+Built on 1.32.0 (the reading queue, PR #60), with main's 1.31.0 (drift health can see) merged in.
+
+### The synthesis pass (issue #63)
+
+Indexing put each cited work on its hubs; nothing read the hundreds of abstracts together against the brain's own conclusions or its vocabulary.
+
+- `literature --against [K014 X001 … | all] [--all]` sets every finding, tension, gap, contradiction and hypothesis against the indexed works that bear on it: works sharing its concepts, at least one of them specific (carried by no more than 3 per cent of indexed works, `literature_specific_share`), ranked by rarity, with the claims that name them. Without ids, a table of every synthesis card: bearing works, last check, works indexed since.
+- `- literature_checked:: <date> — n read; agree [[R…]]; disagree [[R…]] (queued); answer …` records the check on the card. `literature` says how many cards have bearing works never checked, or indexed since their check.
+- `literature --pairs [<concept> …] [--min n]` lists pairs of concepts that several abstracts claim together and no evidence card names together: relations the literature draws and the brain holds no evidence on, each a candidate open question for both hubs.
+- `brain-mesh-citation-index` section 7: judge each bearing work (agrees, disagrees, answers, does not bear); queue what disagrees or answers at high priority; never change a card from an abstract; the ontology (missing concepts, definitions that do not fit their use, splits, merges, relations) proposed to the user as one numbered list; patterns no card holds reported, never written as findings.
+- Section 2 names the open indexes (OpenAlex, Europe PMC, Semantic Scholar), says to record which services were reached, and says how to check a result before pasting it: the same work, and an abstract rather than page furniture, a citation line, a letter's opening paragraph or an editor's teaser.
+
+### Console encoding (issue #64)
+
+On a Windows console any command printing a character outside the code page crashed with `UnicodeEncodeError`, `sync` included, part-way and before its push. Standard output and error now print such characters as `?`.
+
+### Checks
+
+- A reference card whose heading no longer ends with its `title::` (the fields were corrected, the heading was not) is flagged, with the heading to use.
+- A reference card held as the very source that cites it is flagged: a DOI swallowed from the citing paper's page footer makes a cited work look like the paper citing it.
+- Contradictions may be of kind `attribution`: a source credits another work with something that work does not show.
+
+### The skills, aligned with practice
+
+Two audits of the session logs (2026-11-21 to 27) compared what was done by hand with what the skills say. The skills now say:
+
+- add-paper: index every new cited work, not a selection; when a newly read work is already credited by other sources, check each credit against what it shows (contradiction kind `attribution`), and retire its indexed abstract.
+- housekeeping: refreshing many hubs with agents (drafts outside the vault, applied by the session, definitions unchanged); merging concepts only after checking how the literature uses each; reference cards merged only when one work; undoing a wrong merge; leftover links to merged cards; a retracted cited work; and auditing practice against the skills after a long session.
+- access: local edits left in the stash by a clashing pull; the Windows encoding crash; Windows scripting notes; Obsidian saving a stale copy over an edit; definitions, splits, merges and concept priorities are the user's, put as one numbered list; parallel agents draft outside the vault and start no agents of their own; the indexer may set a cited work's priority (as citation-index 4a already said, now consistent in brain-mesh, access and the vault `CLAUDE.md`).
+- batch: no agents or forks inside an agent; a scratch folder per agent; a handover in the progress note under fixed headings (hub facts, key figures, contradictions, links, concepts proposed, condition values missing); write a card before linking it; resume a stopped agent by message; carry an approved run through without stopping between batches.
+- FORMATS: `literature_checked::`; a pooled acquisition-software card where a vault's rules ask for one.
+- README: the release process as practised: an issue, a branch from the newest release, numbering from GitHub, `upgrade demo-vault`, a pull request the owner merges.
+
+## 1.32.0 (2026-11-27)
+
+**One reading queue that every skill feeds, that looks forward as well as back, and that cannot go stale unnoticed; and the faults a batch of 35 papers found in the checker, the scan, the reference reader and the anchor.**
+
+Built on 1.31.0 (chronology), which is built on main at 1.30.0 (computational studies).
+
+### The reading queue (issue #56)
+
+The queue only looked backwards: built from the reference lists of the sources already held, every suggestion was older than the paper citing it. The foundational exemption kept the classics at its head, the skills recommended papers through two hand routes that nothing checked (and some through none), and the hand-written table at its top rotted: a paper sat there as a high-priority read three days after it became a source.
+
+- **`mesh.py queue add <doi | R id | "author year title"> --why "<what it would fill>" --from <skill or card id> [--high]`** is the one route onto the queue, for every skill. It finds the reference card by id, DOI, or first author, year and title, or makes one (from OpenAlex or Crossref when online, else from what it is given), sets the new status **`suggested`** (a skill recommends it; the user has not decided) unless the user has queued or skipped it, and appends `- suggested_by:: <date> [high] <who> — <why>`. Suggestions accumulate, and their number raises the work. `queue mark <ref> queued|skip` records the user's decision with its date; `queue` lists what is suggested and queued.
+- **`outside add --found`** puts every DOI and reference card it names on the queue, with the check's note as the reason.
+- **`mesh.py forward [P### …] [--since YEAR] [--max N] [--all]`** asks OpenAlex (free, no key; only DOIs and OpenAlex ids leave the machine) for the works citing each source, and keeps them in `ledger/forward.json` with the date of each source's search. Each work's reference list says which of the brain's sources it cites. With no source named it searches those never searched or searched over 30 days ago. Tested with stored fixtures (`BRAIN_MESH_FIXTURES`).
+- **The whole of `ledger/reading-queue.md` is generated**, in three parts: **Suggested by the skills** (each work with every reason and who gave it, queued first), **Forward** (recent citing works the brain neither holds nor has decided on, ranked by the sources they cite, the concepts their titles name and their recency) and **Backward** (the lists as before). `build` turns each row of the old hand-written table into a suggestion on a reference card (`hand-written table`), drops a row naming a source already held, and keeps a row it cannot read at the top, which `check` names.
+- **The foundational exemption is capped.** A work foundational only because two sources cite it, or one source in two paragraphs where its results rest, keeps at most half its score once older than two half-lives, and goes to a short list of its own, **Classics the brain cites but has not read**. A work someone marked (`foundational::`, `cited_count::`, priority high) keeps full weight.
+- **Held means held.** `build` marks a suggested or queued work held, as well as a cited one, when a source has its DOI or its first author, year and title, so a reference card with a title mangled by a mis-parsed list no longer keeps a held paper on the queue. `check` warns of two reference cards for one work by first author, year and title when no identifier joins them, and `merge` carries the suggestions over.
+- **Staleness is said.** `health`, and the last line of every `sync`, give one line: sources not searched forward, suggestions undecided and works queued with no PDF for over 30 days, and cited works not yet indexed from their abstracts. The queue opens with the same line, and MAP's Focus line gives the date of the last forward search.
+- **Every skill uses `queue add` and nothing else**: access (section 3 and "At the end"), gaps rung 2, discover's outside checks and the genealogy miner, beyond, campaign downloads, citation-index, write and report; housekeeping uses `queue mark`.
+
+### Indexing new reference cards before the sync
+
+`cite` makes a card for every work a new paper cites, and those cards stayed unindexed until someone remembered the citation index. add-paper step 10 and the batch Close step now index the new reference cards from their abstracts (`literature --unindexed`; `brain-mesh-citation-index`) and run `forward` for the new papers before syncing; the access skill's "At the end" says so for every session; and the staleness line counts the cited works still unindexed.
+
+### Fixes
+
+- **#48** `check` called every `cites:: ref N` line an error although brain-mesh-batch prescribes the form until the merge runs `cite`; it is now one warning per source naming the cards and the remedy. Tests section 48.
+- **#50** The duplicate check read a range as its lower bound, so `= 1 neuron` and `= 1 to 11 …` collided as an error that blocked the sync. A value line's ranges are kept whole, and `contradictions dismiss values:A~B "<why>"` records a judged non-duplicate of one source, which `check` honours. Tests section 50.
+- **#53** `adopt <name> into <concept>` keeps each concept once on a line and drops empty items; `check` warns of a repeated or empty item on any link line; `tidy [P###|<id>]` mends cards already affected. Tests section 53.
+- **#52** The scan reads the Methods after a reference list (the list's region ran on through a Methods heading glued to a running head), says it matches names and aliases only, and concept-scan tells a sweep agent to read a source's headings and methods list; `adopt` warns of an alias another concept owns or a two-letter acronym. Tests section 52.
+- **#54** A concept with an ambiguous everyday name can be named narrowly: `propose` and `adopt` add only the aliases given, `- scan_names:: aliases` leaves the slug and title out of the scan, an alias written `=OR families` is exact, and a bracket in a name is a qualifier unless it holds an acronym. Tests section 54.
+- **#49** `refs` reads Cell-style entries, numbered or not: the title to its full stop, the journal, volume and pages (with an `.eN` suffix) in their own fields, `et al.` kept, and `kind` inferred (preprint, software, book); Cell Press page furniture is stripped. Tests section 49.
+- **#47 (in part)** `anchor` reads a two-column page whose lines sit at the same heights column by column, keeping full-width lines whole. Three-column pages, and the anchored text of a source already carded, are left open on the issue. Tests section 47.
+- Tests section 56.
+
+## 1.31.0 (2026-11-27): drift health can see
+
+(Released on main while chronology, also numbered 1.31.0, waited in PR #51; both are merged here.)
 
 Three more things `health` can see, all of them kinds of drift a card cannot show on its own.
 
@@ -11,6 +84,24 @@ Three more things `health` can see, all of them kinds of drift a card cannot sho
 - **Citation-index entries whose work has since been read.** An indexed abstract is superseded the moment its work is read as a source; the entry should be retired so nothing rests on the authors' summary of themselves when the text is in the brain.
 
 Also: `literature` counted indexed works over a different population from the one it reported them against (retired and now-read works included in one count and not the other), so a vault could be told that more works were indexed than are cited.
+
+## 1.31.0 (2026-11-27)
+
+**Knowledge has a date: the brain stops asserting what was only true when it was written.**
+
+(Branched at 1.27.0 as 1.28.0, and renumbered twice as discovery campaigns (1.28.0) and the planning pack (1.29.0) reached main first under the numbers it had; built on main at 1.30.0, computational studies. A vault upgraded from main lost the `chronology` command and the `superseded_by`, `supersedes`, `asof` and `chronology_checked` handling while its cards kept those lines; upgrading to 1.31.0 restores them.)
+
+A claim that no structure exists, that something has never been measured, or that a paper is the first of its kind is true as of its source's year and no later. The brain stored all of it flatly, so it went on asserting absences the field had since filled. Three of the vault this was built for turned out to be answered already, two of them by papers published within three years of the question.
+
+- **`mesh.py chronology`** lists the claims with a shelf life, oldest first, read from the cards' own words: absences, firsts, limits of the day and counts of the day. Beside each it names the sources the brain has read **since**, that share most of what the claim is about. It also lists open contradictions whose two sides are years apart, which are progress before they are disputes, and the concepts whose evidence stops long ago. Only `claim`, `question`, `limitation`, `assumption` and `cited` cards are read: a method or an observation records what was done and does not expire.
+- **`- superseded_by:: [[card]] — <what changed>`** settles one: the claim was right when written and later work overtook it. Not a contradiction, and it must not go on that register — nobody was wrong, the field moved. The inverse is `supersedes`, and the claim stays on its card, readable, no longer asserted.
+- **`- asof:: <year>`** where a claim is older than the paper reporting it, so a review giving the state of play of an earlier year does not backdate everything it repeats to its own.
+- **Every concept hub's generated block now gives the span of years its evidence covers and the newest source bearing on it**, so a hub reads as an arc rather than a heap.
+- `chronology_stale_years` in MESH.json, 8 by default: five years is a long time in receptor structures and nothing at all in psychophysics.
+- Hooked into the pipeline: `brain-mesh-add-paper` marks a shelf life as it cards one, `brain-mesh-gaps` dates a gap's framing before carding it, and `brain-mesh-housekeeping` runs `chronology` in the health check.
+- **A card resting on a settled claim is warned about**, until `- chronology_checked:: <card> — <what changed>` records that it was reviewed. Settling a dated claim says the brain no longer asserts it; a finding that cites it as support does not stop resting on it by itself. This mirrors the retraction-dependants check, which exists for the same reason.
+- **The synthesis layer has a date too.** `chronology` lists the findings, tensions, gaps and hypotheses whose newest evidence predates a source since read that bears on the same concepts. Not stale by itself — the newer source may say nothing about it — but not yet read against it either.
+- Tests section 45.
 
 ## 1.30.0 (2026-11-27)
 

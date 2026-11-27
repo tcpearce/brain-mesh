@@ -15,6 +15,16 @@ The aim: for every source in scope, everything the paper says about any concept 
 2. Take the sources the user named, or all of them if they said all. Work high-priority sources first, then those with most to do.
 3. One source at a time, start to finish. With more than about five sources, split them between agents as in `brain-mesh-batch`, which also keeps each source's reading out of the main conversation: each agent writes only in its own source's folder (new evidence cards, `cites::` lines on that source's cards, `P012_scan.md`, proposals with `propose --from P012`) and returns a short summary: cards added, citations added, hub lines it proposes, contradictions it found, with card ids. The launching session does steps 5 to 8 from those summaries.
 
+### After a batch of adoptions
+
+Adopting many concepts at once — as happens when a batch of papers is merged and the user judges their proposals together — leaves every one of them on the cards of the paper that proposed it and nowhere else. The other sources may discuss the same thing with no link, because the word did not exist when they were carded. A concept in that state is half a concept: its hub shows one source, every miner sees one source, and `literature` reports the brain as having read one paper on it.
+
+So a sweep follows an adoption batch, and it is divided **by source, never by concept**. One agent takes whole sources and works every new concept within them, which keeps it inside its own folder; dividing the other way would have several agents writing into every paper's folder at once, which the batch rules forbid for good reason.
+
+Two things make such a sweep cheaper than it looks. Most newly adopted concepts are specific and will be found in one or two sources beyond their own, where the answer is usually a `decided::` line rather than a card. A handful are load-bearing and will be found nearly everywhere — those deserve the careful pass, and are worth naming in each agent's brief so they are not skimmed.
+
+**`scan` finds names, not ideas.** It matches each concept's slug, title and aliases (and word stems for high-priority concepts and sources), against brackets, dashes, slashes and commas as well as spaces. A paper that states a concept in other words is invisible to it: a role given only as a residue number (`W254(6.48)` for a toggle switch), a procedure described but never named, a product name used throughout for a general method (GloSensor for a cAMP reporter assay). So "nothing to do" means no unlinked passage *names* the concept, not that none is *about* it, and after an adoption batch the second is the common case. Each sweep agent, besides working the worklist, reads the source's own section headings, methods list and figure titles for the concepts in its brief, and cards or decides what it finds there as in step 2.
+
 ## 2. Work one source: `python3 tools/mesh.py scan P012`
 
 `scan` prints, for each concept, every passage that names it and that no card of the source covers, with the sentence and the works the paper cites in that sentence (numbered and author-year styles). It writes the same worklist, without the paper's text, to `P012_scan.md`. A passage counts as covered when a card of P012 anchored there links the concept.

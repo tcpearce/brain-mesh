@@ -70,7 +70,7 @@ hypotheses/H###  experiments/E###          the workbench
 theories/T###  analogies/A###  seeds/S###  discovery cards
 data-sets/D###  code/C###                  what the studies use
 reports/<date>-<kind>.md                   dated snapshots, never sources
-ledger/                                    changelog, reading queue, contradictions register, checksums, removed ids, rejected signals and concepts,
+ledger/                                    changelog, reading queue and forward searches, contradictions register, checksums, removed ids, rejected signals and concepts,
                                            explored branches, the routes record, outside checks
 index/                                     generated tables: cards.tsv, edges.tsv, coverage.tsv, priority.tsv, marks.json
 tools/mesh.py  .brain-mesh/                the tooling (a copy) and an offline copy of these instructions
@@ -112,7 +112,7 @@ Every card has properties, a title stating its point as a sentence, plain prose,
 
 ## Priority
 
-Every card is `high`, `normal` (the default) or `low`. Priority is the user's statement of interest: attention, never evidence. The research profile (`PROFILE.md`, `mesh.py profile`) is its companion: the user's statement of what they can do, which marks every discovery opportunity in reach, with a partner or out of reach. Only the user sets it (`priority <id> <level> "<why>"`); it spreads one link as *elevated*; `MAP.md` opens with the **Focus**. Details in FORMATS.md.
+Every card is `high`, `normal` (the default) or `low`. Priority is the user's statement of interest: attention, never evidence. The research profile (`PROFILE.md`, `mesh.py profile`) is its companion: the user's statement of what they can do, which marks every discovery opportunity in reach, with a partner or out of reach. Only the user sets it (`priority <id> <level> "<why>"`), with one exception: the priority of a cited work the brain has not read is the indexer's to judge (`brain-mesh-citation-index`, section 4a); it spreads one link as *elevated*; `MAP.md` opens with the **Focus**. Details in FORMATS.md.
 
 ## Links
 

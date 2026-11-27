@@ -5,6 +5,12 @@ description: "Add a paper, PDF, preprint, thesis or own result to a brain mesh a
 
 # Brain mesh: add a source
 
+> **Mark what has a shelf life as you card it.** Where the paper says no structure exists, that something has never
+> been measured, that it is the first to do something, or what was then out of reach, that claim is true as of this
+> paper's year only. Card it in the paper's own terms, then check it against the sources already in the brain: where a
+> newer one has overtaken it, add `- superseded_by:: [[card]] — <what changed>`. Never log that as a contradiction.
+> Where the paper reports an earlier state of play rather than its own, add `- asof:: <year>`.
+
 Read `brain-mesh` and its FORMATS.md first; this skill assumes their card formats, ids and link types, and `brain-mesh-access` for syncing. Find the vault and run `python3 tools/mesh.py build` so the index is current. If there is no vault, use `brain-mesh-setup`.
 
 Work through the steps in order for one source at a time. With several papers, finish steps 1 to 7 for one and integrate it before starting the next, so that later papers link to earlier ones. With more than about five papers to add, read `brain-mesh-batch`: extraction then runs in parallel agents.
@@ -39,7 +45,7 @@ Ask the user to put new papers and their supplementary files in the vault's `ing
 
 1. **Is it already here?** `python3 tools/mesh.py find <DOI>` and `find <distinctive title words>`. A preprint and its published version are one source: keep the published one and note the other in its Citation line.
 2. `python3 tools/mesh.py id P` gives the id, say `P012`.
-3. `python3 tools/mesh.py anchor P012 <file.pdf>` copies the PDF in as `P012.pdf`, records its checksum so that any later change to the file is caught, and writes `P012_text.md`, the text split into numbered paragraphs (`^b0001` ...). Check the page count and skim the file. Garbled or missing text means a scan: OCR it and rerun with `--force`. Anchors are permanent once any card cites them, so never re-anchor after that. The new source lives in a plain `sources/P012/` folder until its source card exists; the next `build` then renames the folder after the card (`sources/P012-smith-2021-film-temperature/`). Links are unaffected.
+3. `python3 tools/mesh.py anchor P012 <file.pdf>` copies the PDF in as `P012.pdf`, records its checksum so that any later change to the file is caught, and writes `P012_text.md`, the text split into numbered paragraphs (`^b0001` ...). Check the page count and skim the file. Garbled or missing text means a scan: OCR it and rerun with `--force`. A two-column page drawn line by line across both columns (Cell, Nature and Science before about 2000) is read column by column; if a page still reads as two texts spliced line by line ("recent eviIsolation of OR cDNAs dence from"), say so before carding it, and write `P012_refs.md` by hand if `refs` cannot read the list. Anchors are permanent once any card cites them, so never re-anchor after that. The new source lives in a plain `sources/P012/` folder until its source card exists; the next `build` then renames the folder after the card (`sources/P012-smith-2021-film-temperature/`). Links are unaffected.
 4. Notes and other plain-text sources anchor the same way.
 5. Supplementary material: `python3 tools/mesh.py anchor P012 --si <files...>` (step 0).
 6. **References.** `python3 tools/mesh.py refs P012` finds the reference list and writes `P012_refs.md`: one entry per reference with its authors, year, title, journal, volume, pages, DOI and kind, and `cited_at::`, the paragraphs that cite it. Citations are traced from the PDF's fonts (superscript numbers in Nature and Cell style, italic bracketed numbers in Science style), so a count in brackets is not taken for a citation. Then check the file against the paper's list: the count, and every entry it names under "check by hand". Fill in what the paper leaves out, chiefly titles and DOIs (Science prints no titles): look them up in PubMed for biomedical work, or with a web search, and copy only what a record confirms; never type one from memory. Then `python3 tools/mesh.py cite P012` turns each entry into a reference card, or adds this source to the card that already exists for the same work (matched by DOI, PubMed id, arXiv id, or first author with year, volume and page). A list in author-year style is not parsed yet: write `P012_refs.md` by hand in the same format. `refs` will not overwrite a checked file without `--force`.
@@ -153,6 +159,8 @@ The test every new card must pass: it adds a new statement, a new source for a s
 
 The tooling enforces these at three points: `split` refuses a same-source duplicate; `python3 tools/mesh.py neighbours P012` lists, for each new card, the most similar existing cards and what each calls for; `build` reports same-source near-duplicates, unlinked parallel results from different sources, repeated background claims, near-identical concept names and overlapping findings. Clear every one, or state why it stands.
 
+A same-source duplicate is judged on the variable, the conditions and the numbers of the value line; a range (`1 to 33`, `1–33`, `between 1 and 33`) counts as its two ends, never as its lower bound. Where two cards of one source share a number but state different things (different samples, different comparisons), record the judgement with `python3 tools/mesh.py contradictions dismiss values:P012-035~P012-054 "<why they differ>"`. Never reword a value line to get past the check.
+
 ## 6. Link
 
 The web grows from the bottom up, card to card.
@@ -218,7 +226,9 @@ Then:
 - **Decide on every open gap, tension, contradiction and hypothesis the source bears on** (below).
 - **Write the claims card** (below).
 - **Recheck the discovery cards.** Run `python3 tools/mesh.py discover --recheck` and take every dissolved, strengthened, weakened or re-opened item to the user (`brain-mesh-discover` section 8). It ends with what the new source moved among the routes: opportunities it brought, ingredients that arrived or went, and signals set aside that it reopens. Check too whether the source answers an outside lead or search already on record (`mesh.py outside`). A new paper that answers a seed is often the most useful thing it does.
-- If the source was in `ledger/reading-queue.md`, `build` marks its reference card held by itself (by DOI, or first author, year, volume and page; set `status: held` and `held:: [[P012]]` by hand if it did not match). Revisit the gap or tension it was queued for.
+- **Check what the brain already credited to it.** If other sources cite this work (its reference card has `cited_by::` lines), read each card that credits it (`- cites::` lines naming it, and the hub lines that credit it) against what the source actually shows now that it is read. A credit it does not support (a number it never measured, a claim it never made) is a contradiction of kind `attribution`: log it with `contradictions add <citing card> <this source's card> "<what is credited and what the source shows>"`. Once read, the work's indexed abstract is superseded: remove its `## Abstract`, `## What it claims`, `- concepts::` and `- indexed::` (`health` lists any left).
+- If the source was in `ledger/reading-queue.md`, `build` marks its reference card held by itself (by DOI, by first author, year, volume and page, or by first author, year and title; set `status: held` and `held:: [[P012]]` by hand if it did not match). Revisit the gap or tension it was suggested for: its `suggested_by::` lines say which.
+- A paper the source sends you to (a work it leans on, a result it says is elsewhere) goes on the queue with `python3 tools/mesh.py queue add <doi or R id> --why "<what it would fill>" --from P012`, never as a note.
 
 ### Decisions on gaps, tensions and hypotheses
 
@@ -280,9 +290,14 @@ This is what the user reads, so it is not optional. For every concept the source
 
 ## 10. Close
 
-Set the source card's status to `integrated`. Rewrite the Overview in `MAP.md` if the picture has changed. Run `python3 tools/mesh.py build` until there are no errors (the decisions on gaps and tensions and the claims card are checked from here on), then `python3 tools/mesh.py log "add P012 <authors year> (<n> cards); <findings, tensions and gaps changed>"` and `python3 tools/mesh.py sync "add P012"`.
+Set the source card's status to `integrated`. Rewrite the Overview in `MAP.md` if the picture has changed. Then, before syncing, keep the reading queue current (issue #56):
 
-Report to the user in a few lines: the paper's main claim and how far its evidence carries it; cards by type; the contradictions it logged, explained or resolved; what the concept scan added (new facts by concept, citations added); the concepts proposed, for the user to adopt, fold or reject, one line each with its definition; findings added or re-graded; gaps closed or narrowed and tensions explained or resolved; new tensions and gaps; data sets and code carded; hubs updated; anything bearing on their hypotheses or experiments; what was not extracted and why; and the top of the reading queue: the ★ works bearing on research gaps, then works cited where open gaps and tensions rest, with their years and DOIs (the queue puts recent work first and marks foundational old works ⌛). If the session's files are temporary, hand back the vault archive.
+1. **Index the new reference cards.** `cite` made a card for every work this paper cites that the brain had not met. `python3 tools/mesh.py literature --unindexed` lists them under P012: index every one from its abstract (`brain-mesh-citation-index`), without waiting to be asked: the user wants every cited work downloaded and meshed, not a selection. With more than about fifty, split them between agents (citation-index section 6). Only if the session must stop early, index first those the paper leans on (its methods and the works cited where its claims rest) and say in the report how many are left. The count of works still unindexed is on the last line of `sync`.
+2. **Search forward.** `python3 tools/mesh.py forward P012` asks OpenAlex for the works that cite the new paper (it needs a DOI on the source card and a network) and stamps the date; `build` ranks them in the queue's Forward section. With no network, say so in the report: `sync` will go on counting the paper among those not searched forward.
+
+Run `python3 tools/mesh.py build` until there are no errors (the decisions on gaps and tensions and the claims card are checked from here on), then `python3 tools/mesh.py log "add P012 <authors year> (<n> cards); <findings, tensions and gaps changed>"` and `python3 tools/mesh.py sync "add P012"`.
+
+Report to the user in a few lines: the paper's main claim and how far its evidence carries it; cards by type; the contradictions it logged, explained or resolved; what the concept scan added (new facts by concept, citations added); the concepts proposed, for the user to adopt, fold or reject, one line each with its definition; findings added or re-graded; gaps closed or narrowed and tensions explained or resolved; new tensions and gaps; data sets and code carded; hubs updated; anything bearing on their hypotheses or experiments; what was not extracted and why; the reference cards indexed and those left; and the top of the reading queue: what the skills suggested, the best of the Forward section, then the ★ works bearing on research gaps and the works cited where open gaps and tensions rest, with their years and DOIs (the queue puts recent work first and lists the old classics apart). If the session's files are temporary, hand back the vault archive.
 
 ## Lens pass: re-reading sources for a new question
 

@@ -10,7 +10,7 @@ What it says: binding capacity of the imprinted film falls about threefold on he
 Start with a concept below, for example [[binding-capacity|Binding capacity]] or [[temperature|Temperature]].
 
 <!--AUTO:START (rebuilt by `mesh.py build`; do not edit by hand)-->
-**Focus** (high priority, set by you): [[G001-is-capacity-loss-reversible-on-cooling|G001]]. Elevated: 4 cards; low: 0.
+**Focus** (high priority, set by you): [[G001-is-capacity-loss-reversible-on-cooling|G001]]. Elevated: 4 cards; low: 0. Last forward search: never (`mesh.py forward`; [[reading-queue]]).
 
 **Counts:** 3 sources · 23 evidence cards (observation 10, method 4, claim 3, limitation 2, assumption 1, cited 1, oddity 1, question 1) · 12 concepts · K 1 · X 1 · G 2 · H 1 · E 1
 

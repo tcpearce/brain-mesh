@@ -13,6 +13,7 @@ updated: 2026-11-20
 - [[E001-heat-cool-cycle-two-solvents|E001 Heat-then-cool cycle in water and acetonitrile with one assay]] · done
 
 **Evidence: 6 cards from 2 sources** (observation 3, method 2, assumption 1)
+Evidence published 2021 to 2026; newest: [[P003-own-2026-heat-cool-cycle-results|P003 Own result (2026) Heat-then-cool cycle in water and acetonitrile, experiment E001]] (2026). `mesh.py chronology batch-rebinding-assay` checks what has a shelf life.
 - [[P003-001-capacity-4-0-at-25c-water|Own films: binding capacity is 4.0 at 25 °C in water]] · observation
 - [[P003-002-capacity-1-4-at-45c-water|Own films: binding capacity falls to 1.4 at 45 °C in water]] · observation
 - [[P003-004-capacity-3-9-at-25c-acetonitrile|Own films: binding capacity is 3.9 at 25 °C in acetonitrile by batch rebinding]] · observation

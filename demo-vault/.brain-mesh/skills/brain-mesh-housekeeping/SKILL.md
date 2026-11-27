@@ -5,6 +5,11 @@ description: "Keep a brain mesh healthy as it grows: health report, stale concep
 
 # Brain mesh: housekeeping
 
+> Part of every health check: `mesh.py chronology`. It lists the claims the brain asserts that have a shelf life —
+> absences, firsts, limits of the day, counts of the day — oldest first, with the sources read since that bear on
+> them. Settle what has moved on with `- superseded_by:: [[card]] — <what changed>`; that is progress, not a
+> contradiction, and must not go on the contradictions register.
+
 Read `brain-mesh` first, its FORMATS.md before writing or changing a card, and `brain-mesh-access` for syncing. Find the vault.
 
 A vault that only ever grows drifts: hubs fall behind their evidence, findings keep grades they no longer deserve, searches age, and small extraction errors accumulate. Housekeeping is the work that keeps the brain trustworthy enough to design experiments from.
@@ -23,13 +28,13 @@ Work through the results in this order. Fix what is clear. Bring to the user any
 1. **Errors from `build`.** Broken links, missing codes, anchors that do not exist, a source file whose checksum no longer matches. Fix all of them. A changed source file is restored from a backup or from git, never re-sealed, unless the user confirms that the registered file was the wrong one.
 2. **Cards with only a page-level marker.** Their `loc` phrase was not found on the PDF page. Correct the phrase or the anchor so the card sits on its passage.
 3. **Duplicate warnings.** Same-source near-duplicates, parallel results from different sources left unlinked, repeated background claims, near-identical concept names, overlapping findings. Apply the duplicate rules in `brain-mesh-add-paper`; merge as described below.
-4. **Concept hubs older than their newest card.** Reread the cards listed under **Where it appears**, then bring **What is known**, **Relationships** and **Open questions** up to date and set `updated`. The hubs are what the user reads, so a stale hub misleads even when every card beneath it is right.
+4. **Concept hubs older than their newest card.** Reread the cards listed under **Where it appears**, then bring **What is known**, **Relationships** and **Open questions** up to date and set `updated`. The hubs are what the user reads, so a stale hub misleads even when every card beneath it is right. A hub with a definition and nothing else is the stalest of all: count those too. **Many hubs at once, with agents:** hubs are shared files, so agents never write them. Each agent takes a list of hubs and writes a draft of each hub's hand-written sections into a folder outside the vault that the session names (its scratch or temporary directory). The session then puts each draft in place by hand or with a short script that keeps the live front matter, the generated block between `<!--AUTO:START-->` and `<!--AUTO:END-->`, `## Linked from` and the Codes, refuses a draft whose definition differs from the live one (a definition change is the user's call), and sets `updated`. Then `build`, and read the hub checks it reports (lines whose evidence cites works the line does not credit, issue #61).
 5. **Findings whose status no longer matches their evidence.** Re-grade: still `single-source` after a second source supports it, still `established` after counter-evidence arrived, graded above `single-source` on one paper.
 6. **Old gap searches.** Repeat them with `brain-mesh-gaps`. A confirmed research gap is only as good as its last search.
 7. **Claims, observations and models cited by nothing.** Either integrate them into a finding or a tension, or leave them deliberately. Not every card needs a finding, but a paper's main results do.
 8. **Flagged cards.** Go back to the PDF page, resolve the doubt and remove the flag, or keep it with a clearer note.
 9. **Concepts used by at most one card.** Fold them into a broader concept as an alias, or leave them if more sources on the topic are coming.
-10. **References.** `check` warns when a source's reference list is extracted but not turned into cards (`cite P012`), when two reference cards look like the same work (merge them: the survivor takes over every `cited_by::` line), and when a card has no year or a malformed DOI. `health` counts the papers whose reference list was never extracted: run `refs` on them (add-paper step 1). Read the generated list in `ledger/reading-queue.md` and set statuses on the reference cards: `queued` for what the user is fetching, `skip` for what will not be read, so the list stays short. Cards a later source has made `held` need nothing.
+10. **References.** `check` warns when a source's reference list is extracted but not turned into cards (`cite P012`), when two reference cards look like the same work (merge them: the survivor takes over every `cited_by::` line), and when a card has no year or a malformed DOI. `health` counts the papers whose reference list was never extracted: run `refs` on them (add-paper step 1). Read `ledger/reading-queue.md` with the user and record each decision with `queue mark <ref> queued` (they are fetching it) or `queue mark <ref> skip` (it will not be read), so the list stays short. Cards a later source has made `held` need nothing. `health`, and the last line of `sync`, say how current the queue is: sources not searched forward (`forward`), suggestions undecided or works queued with no PDF for over 30 days, and cited works not yet indexed (`brain-mesh-citation-index`). Work them off here.
 11. **Undecided gaps, tensions and hypotheses.** `check` lists each open one that an integrated paper bears on without a recorded decision. Decide as add-paper step 8 says: a status change with its `graded::` line, or `- reviewed:: <date> P012 — untouched: <why>`. It also flags experiments still planned against a closed gap and hypotheses explaining a resolved tension: amend, abandon or re-grade them.
 12. **Claims, data sets and code.** Integrated papers without a claims card; claims linked to findings that no longer cite their evidence; data-set and code cards with no study (`used_by::`), no location, or a summary too thin to stand in for a README; two cards for one data set or repository (merge them).
 13. **Priority.** `health` opens with the focus (the cards the user set high, and how many cards each lifts) and orders its queues by effective priority; low-priority sources drop out of the unused-evidence list. Work high items first. It also lists high cards untouched for 90 days (ask the user to confirm them or set them back to normal), disagreements on high concepts (tension candidates) and lens passes worth making for high concepts. In periodic audits, sample high-priority cards at twice the rate.
@@ -42,7 +47,7 @@ Work through the results in this order. Fix what is clear. Bring to the user any
 
 20. **Hypotheses the brain has moved past.** A hypothesis never deepened, or deepened before the newest evidence that shares a concept with it, is being tested against a brain that has since changed. Run `python3 tools/mesh.py hypothesis deepen <H###> --write`, judge the new lines, and rewrite the rationale, the rivals and the predictions against what they say (`brain-mesh-experiment`, section 2.1). Deepen before registering an experiment, never after.
 21. **Studies whose data or code moved after they were sealed.** The analysis plan is sealed; its inputs are not. Check that the study still runs on what it registered: if the data-set or code card changed in a way that matters, write it under `## Amendments` on the experiment card before the run, or re-register.
-22. **Citation-index entries whose work has since been read.** Retire the indexed claim (`- retired:: read as P0xx`): an abstract is the authors' summary of themselves, and nothing should rest on it once the text is in the brain and carded.
+22. **Citation-index entries whose work has since been read.** Remove the index from the reference card (its `## Abstract`, `## What it claims`, `- concepts::` and `- indexed::`), as add-paper step 8 says: an abstract is the authors' summary of themselves, and nothing should rest on it once the text is in the brain and carded. Do not retire the reference card itself: it carries the work's `cited_by::` lines and the links of every card that cites it.
 
 Finish with `build`, then `python3 tools/mesh.py log "housekeeping: <what was done>"`.
 
@@ -68,6 +73,11 @@ Never delete a card file; other cards and the user's own notes may point at it.
 
 Two cards from different sources that say the same thing are not duplicates. They are independent evidence and stay separate, linked by `replicates`.
 
+- **Two concepts the papers seem to use as one.** Before merging, read how the cited literature uses each (their hubs list the indexed works, with what each claims). If the meanings differ even slightly, put the choice to the user with the difference stated: merge, keep both and link them, or make one an alias. Merging concepts, splitting them and changing a definition are the user's decisions, like a new concept.
+- **Reference cards are merged only when they are one work.** Two entries one source cites under different numbers are two works (issue #62), even when their titles are close; compare authors, year, journal and pages, not title words alone.
+- **Undoing a wrong merge.** Remove the `- retired:: merged into …` line from the dropped card, restore what it lost (for a reference card, its `- cited_by::` lines, read again from each citing source's `P###_refs.md`), and re-point the links `merge` redirected that belonged to it: `python3 tools/mesh.py impact <survivor>` lists what links the survivor. If the dropped card has a true twin elsewhere, merge it into that twin instead. Then `build`, and log it.
+- **Links left pointing at a merged-away card.** Re-running `merge <keep> <drop>` redirects them again, so run it once more for any merged pair a later edit or a late agent linked to the old id.
+
 ## Corrections and retractions
 
 `python3 tools/mesh.py impact <card id or P###>` lists everything that rests, directly or through other cards, on a card or on a whole source: the claims built on an observation, the findings that cite it, the hypotheses those findings prompted, the experiments testing them, and the concept relations that cite it.
@@ -79,6 +89,8 @@ Two cards from different sources that say the same thing are not duplicates. The
   - the source's marked PDF carries a RETRACTED banner on its first page, and concept hubs label its cards **retracted**;
   - `health` lists retracted sources with the number of dependants still to review.
 
+- **A retracted cited work.** When a work the brain cites but has not read is retracted (an index such as PubMed marks it so), add `- retracted:: <date and reason>` to its reference card, then run `impact` on every evidence card that cites it (`- cites::`) and on the hubs whose lines credit it: state the retraction on each card that repeats the work's result, and record the review with `- retraction_checked:: R0123 — <what changed>`.
+
 Tell the user what changed in the brain's conclusions, not only which cards were edited.
 
 ## Edits made in Obsidian
@@ -89,6 +101,7 @@ The user is free to edit prose. After they have, `build` shows what moved: a val
 - Where the intent is unclear, ask. Never silently revert a user's edit.
 - A note the user made in `concepts/` becomes a concept card at the next `build` (`brain-mesh` FORMATS.md, **Concept cards**). Check its kind and aliases with them, then `scan <concept>` to find it in the sources already in the brain.
 - A renamed file gets its id back automatically. If a card was renamed but kept its id at the start, `build` re-points the links. If the id was dropped, `build` restores it from the card's `- id::` line, keeps the user's wording as the slug, and rewrites the links Obsidian had pointed at the new name. A renamed concept keeps its old file name, which is its id, and gains the user's new name as an alias.
+- A link list in Codes that names one card twice or has an empty item (`- concepts:: [[a]], [[a]], , [[b]]`), left by a hand edit or an older fold, is a `check` warning: each item would be counted twice, or as nothing, wherever links are counted. `python3 tools/mesh.py tidy [P012|<id>]` keeps each link once and drops the empty items, and changes nothing else. `adopt <name> into <concept>` does this itself on the lines it rewrites.
 - Edits inside `## Linked from` or an AUTO block are overwritten by the next `build`. Move anything of value into the card's own prose first.
 - The user's own highlights and notes on a marked PDF are saved by `build` to `P012_annotations.json` (committed; the marked copy is not) and drawn again each time the copy is rebuilt, on every computer. Annotations on an original PDF change its checksum: move them to the marked copy and restore the original.
 
@@ -101,6 +114,8 @@ Run `python3 tools/mesh.py routes --readiness` as part of each audit: it says ho
 Where the session can start subagents, give each source's sample to one; it returns only the cards that need correcting, with what is wrong and the page, so the main conversation does not hold every card read.
 
 Log the result, for example `audit: 30 cards across P004, P011, P019; 1 corrected`. If more than about one card in twenty needs correcting in a source, re-verify that source in full.
+
+**Practice against the skills.** After a long session, or one that needed scripts of its own, compare what was done by hand with what the skills and `mesh.py` say. Every ad hoc script, workaround and correction the user gave is either a gap in the method or a departure from it. File each gap as an issue on the method's repository and close it there with a test (`brain-mesh-access`, section 8), and fix any departure in the vault. The user asked for this on 2026-11-27: practice that lives only in one session's scripts is lost to the next.
 
 ## Versioning and safety
 

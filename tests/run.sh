@@ -948,7 +948,7 @@ for f in ("concepts/swelling.md", "concepts/binding-capacity.md"):
     open(f, "w").write(t)
 PY
 python3 tools/mesh.py build > build.txt; grep -q "check: 0 errors, 0 warnings" build.txt && pass "citing the work in the hub line clears it" || { cat build.txt; fail "hub line cleared"; }
-python3 tools/mesh.py propose cavity-collapse "Loss of the imprinted cavities' shape on heating." --from P001 --alias "collapsed cavities" > p.txt && grep -q "^=== cavity-collapse$" $S1/P001_concepts.md && grep -q '^aliases: \["Cavity collapse", "collapsed cavities"\]$' $S1/P001_concepts.md && grep -q "^- proposed:: P001 " $S1/P001_concepts.md && pass "propose writes a concept proposal in the paper's own folder" || { cat p.txt; fail "propose"; }
+python3 tools/mesh.py propose cavity-collapse "Loss of the imprinted cavities' shape on heating." --from P001 --alias "collapsed cavities" > p.txt && grep -q "^=== cavity-collapse$" $S1/P001_concepts.md && grep -q '^aliases: \["collapsed cavities"\]$' $S1/P001_concepts.md && grep -q "^- proposed:: P001 " $S1/P001_concepts.md && pass "propose writes a concept proposal in the paper's own folder" || { cat p.txt; fail "propose"; }
 python3 tools/mesh.py propose wet-swelling "dup" --alias "Swelling" > p.txt 2>&1 && fail "propose accepted an existing concept's name" || grep -q "already the concept \[\[swelling\]\]" p.txt && pass "propose refuses a name an existing concept has" || fail "propose existing"
 python3 tools/mesh.py propose cavity-shape-loss "Cavities lose their shape." > /dev/null && grep -q "^=== cavity-shape-loss" ledger/concept-proposals.md && pass "a proposal with no source goes to the ledger" || fail "ledger proposal"
 python3 tools/mesh.py adopt cavity-shape-loss into cavity-collapse > a.txt && grep -q "folded into the proposal 'cavity-collapse', which stays a proposal" a.txt && [ ! -f concepts/cavity-collapse.md ] && [ ! -f ledger/concept-proposals.md ] && grep -q '"cavity shape loss"' $S1/P001_concepts.md && pass "adopt into another proposal folds it without making a card" || { cat a.txt; fail "fold into proposal"; }
@@ -2109,6 +2109,70 @@ sed -i 's/^- id:: R0900$/- id:: R0900\n- indexed:: 2026-11-23 — from the publi
 sed -i 's/^- The films swell by 12 per cent over the same range (\[\[swelling\]\])$/- The films swell by 12 per cent over the same range/' references/R0900-*.md
 python3 tools/mesh.py build > b.txt 2>&1
 grep -q "R0900: 1 of 2 claims from the abstract name no concept" b.txt && pass "claims that name no concept are flagged, counted, one line a card" || { grep "R0900" b.txt; fail "claim no concept"; }
+# 57. the synthesis pass: findings and gaps read against the indexed works that bear on them, the check dated, concept pairs the literature draws (issue #63)
+cp -r "$ROOT/demo-vault" "$T/syn"; cd "$T/syn"; cp "$MESH" tools/mesh.py; mkdir -p references
+mkref() { cat > "references/$1.md" <<REF
+---
+type: reference
+status: not-held
+updated: 2026-11-23
+---
+# $2
+
+## Abstract
+
+$3
+
+## What it claims
+$4
+
+## Notes
+
+## Codes
+- id:: ${1%%-*}
+- authors:: Doe, J.
+- year:: 2021
+- title:: $2
+- journal:: J. Test
+- kind:: article
+- concepts:: $5
+- indexed:: 2026-11-23 — abstract from the publisher's page
+- cited_by:: [[P001]] ref 1 — b0004
+REF
+}
+mkref R0901-doe-2021-capacity-water "Capacity of imprinted films in hot water" "Films lost a third of their capacity in water between 25 and 45 degrees." "- Binding capacity falls with temperature in water ([[binding-capacity]], [[temperature]], [[water]])" "[[binding-capacity]], [[temperature]], [[water]]"
+mkref R0902-doe-2021-swelling-solvent "Swelling in acetonitrile" "Films swell in acetonitrile." "- Films swell in acetonitrile ([[swelling]], [[acetonitrile]])" "[[swelling]], [[acetonitrile]]"
+mkref R0903-doe-2021-retired-twin "A retired twin" "Films lost capacity." "- Capacity falls ([[binding-capacity]], [[temperature]], [[water]])" "[[binding-capacity]], [[temperature]], [[water]]"
+sed -i 's/^- id:: R0903$/- id:: R0903\n- retired:: merged into [[R0901-doe-2021-capacity-water]]/' references/R0903-*.md
+python3 tools/mesh.py build > b.txt 2>&1; grep -q "check: 0 errors" b.txt && pass "a vault with indexed works builds clean before the synthesis pass" || { grep -E "^ERROR" b.txt | head -4; fail "synthesis build"; }
+python3 tools/mesh.py literature > lit.txt 2>&1
+grep -q "Citation index: 2 of 2 cited works indexed" lit.txt && pass "a retired indexed work counts on neither side of the citation index" || { head -3 lit.txt; fail "literature count with retired"; }
+grep -q "^Synthesis against the index: .* have bearing works never checked .*literature --against" lit.txt && pass "literature says how many synthesis cards have bearing works never checked" || { cat lit.txt; fail "literature synthesis line"; }
+python3 tools/mesh.py literature --against > la.txt 2>&1
+grep -qE "^K001 +1 +never" la.txt && pass "literature --against lists each synthesis card with its bearing works and when it was checked" || { cat la.txt; fail "against summary"; }
+python3 tools/mesh.py literature --against K001 > lk.txt 2>&1
+grep -q "^  R0901 " lk.txt && grep -q "shares: binding-capacity, temperature, water" lk.txt && grep -q "      - Binding capacity falls with temperature in water$" lk.txt && ! grep -q "R0902\|R0903" lk.txt && pass "literature --against K001 lists the work sharing its concepts, with its claim, and not one sharing none or a retired twin" || { cat lk.txt; fail "against one card"; }
+python3 tools/mesh.py literature --against R0901 > /dev/null 2>&1 && fail "against a reference" || pass "literature --against refuses a card that is not a synthesis card"
+K=$(ls findings/K001-*.md); grep -q "^- id:: K001$" "$K" || fail "test setup: K001 has no id line"
+sed -i 's/^- id:: K001$/- id:: K001\n- literature_checked:: 2026-11-01 — 1 indexed works read; agree [[R0901-doe-2021-capacity-water]]/' "$K"
+python3 tools/mesh.py build > b.txt 2>&1; grep -q "check: 0 errors" b.txt && pass "a literature_checked line builds clean" || { grep -E "^ERROR" b.txt | head -4; fail "literature_checked build"; }
+python3 tools/mesh.py literature --against > la.txt 2>&1
+grep -qE "^K001 +1 +2026-11-01 +1 " la.txt && pass "a work indexed after the check makes the card stale" || { cat la.txt; fail "against stale"; }
+python3 tools/mesh.py literature --against K001 | grep -q "R0901 .*\[new since check\]" && pass "the work indexed since the check is marked" || { python3 tools/mesh.py literature --against K001; fail "new since check"; }
+sed -i 's/^- literature_checked:: 2026-11-01/- literature_checked:: 2026-12-01/' "$K"; python3 tools/mesh.py build > /dev/null 2>&1
+python3 tools/mesh.py literature --against | grep -qE "^K001 +1 +2026-12-01 +0 " && pass "a check after the last indexing leaves the card current" || { python3 tools/mesh.py literature --against; fail "against current"; }
+python3 tools/mesh.py literature --pairs --min 1 > lp.txt 2>&1
+grep -q "acetonitrile + swelling: 1 works — R0902" lp.txt && ! grep -q "R0903" lp.txt && pass "literature --pairs lists concept pairs the abstracts claim together and no evidence card names together" || { cat lp.txt; fail "pairs"; }
+grep -q "binding-capacity + temperature" lp.txt && fail "pairs lists a pair the brain's evidence already names together" || pass "a pair the brain's evidence names together is not listed"
+sed -i 's/^# Capacity of imprinted films in hot water$/# Capacity of imprinted films in hot water: α-phase → β/' references/R0901-*.md
+sed -i 's/^- title:: Capacity of imprinted films in hot water$/- title:: Capacity of imprinted films in hot water: α-phase → β/' references/R0901-*.md
+PYTHONIOENCODING=cp1252 PYTHONUTF8=0 python3 tools/mesh.py literature --against K001 > enc.txt 2>&1 && grep -q "hot water: ?-phase ? ?" enc.txt && pass "a console whose code page lacks a character prints it as ? and finishes (issue #64)" || { cat enc.txt | tail -3; fail "console encoding"; }
+sed -i 's/^# Capacity of imprinted films in hot water: α-phase → β$/# Doe (2021) Capacity of imprinted films. J. Test 3, 1-9 (2021)/' references/R0901-*.md
+python3 tools/mesh.py build > b.txt 2>&1; grep -q "R0901: heading does not end with its title:: line; set it to '# Doe (2021) Capacity of imprinted films in hot water" b.txt && pass "a reference heading left behind its corrected title is flagged, with the heading to use" || { grep R0901 b.txt; fail "heading check"; }
+grep -q "R0902: heading does not end" b.txt && fail "a heading that ends with its title is flagged" || pass "a heading that matches its title is left alone"
+sed -i 's/^- id:: R0902$/- id:: R0902\n- held:: [[P001]]/; s/^status: not-held$/status: held/' references/R0902-*.md
+python3 tools/mesh.py build > b.txt 2>&1; grep -q "R0902: held as P001, which cites it" b.txt && pass "a work marked held by the very source that cites it is flagged" || { grep R0902 b.txt; fail "self-held check"; }
+
 # 43. the citation index feeds discovery: abstracts raise terms the brain cannot name, and a high-priority work heads the reading list
 cp -r "$ROOT/demo-vault" "$T/cid"; cd "$T/cid"; cp "$MESH" tools/mesh.py; mkdir -p references
 cat > references/R0901-doe-2019-capacity-of-imprinted-films.md <<'REF'
@@ -2366,7 +2430,59 @@ grep -A3 "equilibration-time: 3 cited works" lg.txt | grep -q "R0911" && pass "t
 ! grep -q "^  binding-capacity:" lg.txt && pass "a concept a gap card already covers is not raised again" || { cat lg.txt; fail "gap candidate duplicates a gap card"; }
 python3 tools/mesh.py literature > lit.txt 2>&1
 ! grep -q "cited works against" lit.txt && pass "the gap candidates stay behind --gaps, off the plain literature view" || { cat lit.txt; fail "gaps leaked into literature"; }
-# campaigns: competing discovery agents, blind scores, pairwise ranking, registered proofs of concept, meetings, the report (1.28.0)
+# 45. chronology: a claim with a shelf life, the sources read since, and progress that is not a contradiction
+cp -r "$ROOT/demo-vault" "$T/ch"; cd "$T/ch"; cp "$MESH" tools/mesh.py
+S1=$(ls -d sources/P001*); S2=$(ls -d sources/P002*)
+cat > $S1/P001-900-no-film-has-been-imaged-in-acetonitrile.md <<'CARD'
+---
+type: claim
+status: asserted
+updated: 2026-11-24
+---
+# No film has been imaged in acetonitrile, so the swelling is inferred rather than seen
+
+No measurement of film swelling in acetonitrile has been reported, and the authors say the figure is inferred from capacity alone. ^b0004
+
+## Codes
+- id:: P001-900
+- concepts:: [[swelling]], [[acetonitrile]]
+- anchor:: [[P001_text#^b0004]]
+- loc:: "imprinted polymer films"
+CARD
+cat > $S2/P002-900-films-imaged-in-acetonitrile.md <<'CARD'
+---
+type: observation
+status: measured
+updated: 2026-11-24
+---
+# Films were imaged in acetonitrile and swelled by 12 per cent
+
+Direct imaging gave a swelling of 12 per cent in acetonitrile. ^b0004
+
+## Codes
+- id:: P002-900
+- concepts:: [[swelling]], [[acetonitrile]]
+- value:: [[swelling]] = 12 per cent in acetonitrile
+- anchor:: [[P002_text#^b0004]]
+- loc:: "imprinted polymer films"
+CARD
+python3 - <<'PY'
+import json
+c = json.load(open("MESH.json", encoding="utf-8")); c["chronology_stale_years"] = 1
+json.dump(c, open("MESH.json", "w", encoding="utf-8"), indent=1)
+PY
+python3 tools/mesh.py build > b.txt 2>&1; grep -q "check: 0 errors" b.txt && pass "a vault with a dated claim builds clean" || { grep -E "^ERROR" b.txt | head -3; fail "chronology build"; }
+python3 tools/mesh.py chronology > ch.txt 2>&1
+grep -q "P001-900" ch.txt && pass "a claim that no measurement exists is raised as having a shelf life" || { cat ch.txt; fail "perishable not raised"; }
+grep -A1 "P001-900" ch.txt | grep -q "P002" && pass "the source read since, on the same concepts, is named beside it" || { cat ch.txt; fail "later source not named"; }
+! grep -q "P002-900" ch.txt && pass "a measurement is not a dated claim: only the types that carry one are read" || { cat ch.txt; fail "observation raised"; }
+sed -i 's|^- loc:: "imprinted polymer films"$|- loc:: "imprinted polymer films"\n- superseded_by:: [[P002-900]] — imaged directly in 2023|' $S1/P001-900-*.md
+python3 tools/mesh.py build > b2.txt 2>&1; grep -q "check: 0 errors" b2.txt && pass "superseded_by is a link the tooling knows" || { grep -E "^ERROR|superseded" b2.txt | head -3; fail "superseded_by unknown"; }
+python3 tools/mesh.py chronology > ch2.txt 2>&1
+! grep -qE "P001-900 \([0-9]{4}, (absence|first)" ch2.txt && grep -q "Already settled as superseded" ch2.txt && pass "once settled, the claim leaves the list and is counted as superseded" || { cat ch2.txt; fail "superseded not settled"; }
+grep -q "supersedes" $S2/P002-900-*.md && pass "the newer card gains the inverse link" || { grep -n "" $S2/P002-900-*.md | tail -5; fail "inverse link"; }
+grep -q "Evidence published" concepts/swelling.md && pass "the hub says across what years its evidence was published" || { grep -A2 "Evidence:" concepts/swelling.md; fail "hub span"; }
+# 46. campaigns: competing discovery agents, blind scores, pairwise ranking, registered proofs of concept, meetings, the report (1.28.0)
 rm -rf "$T/cmp"; cp -r "$ROOT/demo-vault" "$T/cmp"; cd "$T/cmp"; python3 "$MESH" upgrade . > /dev/null; python3 tools/mesh.py build > /dev/null
 python3 tools/mesh.py campaign init "Heat and capacity" --scope topic:nonsense > out.txt 2>&1 && fail "campaign init took an unknown topic" || pass "campaign init refuses an unknown topic"
 python3 tools/mesh.py campaign init "Heat and capacity" --scope topic:binding-capacity --rank composite --constraint "no field work" > out.txt
@@ -2687,8 +2803,296 @@ awk '/^## Connections/{c=1} /^## Codes/{c=0} c' $H | grep -q "bears: the mechani
 python3 tools/mesh.py hypothesis deepen --text "solvent uptake sets the capacity lost on heating" > dp.txt
 grep -q "pertinent cards in" dp.txt && pass "deepen also works on a claim that has no card yet" || { head -5 dp.txt; fail "deepen --text"; }
 python3 tools/mesh.py hypothesis deepen K001 > out.txt 2>&1 && fail "deepen accepted a card that is not a hypothesis" || pass "deepen needs a hypothesis card or a claim"
+# 48. a citation by number waiting for cite is pending, not broken (issue #48)
+cp -r "$ROOT/demo-vault" "$T/pc"; cd "$T/pc"; cp "$MESH" tools/mesh.py; S1=$(ls -d sources/P001*)
+E=$(ls $S1/P001-003-*.md); sed -i 's/^- id:: P001-003$/- id:: P001-003\n- cites:: ref 12 — the capacity method/' $E
+E2=$(ls $S1/P001-004-*.md); sed -i 's/^- id:: P001-004$/- id:: P001-004\n- cites:: ref 12 — the same method/' $E2
+ok=0; python3 tools/mesh.py check P001 > k.txt 2>&1 || ok=$?
+[ $ok = 0 ] && ! grep -q "'cites::' has no card link" k.txt && pass "check passes a source whose cards cite by number before cite has run" || { cat k.txt; fail "pending cites:: ref N is an error"; }
+grep -q "P001: 2 'cites:: ref N' lines are not linked yet (P001-003, P001-004); run \`mesh.py cite P001\` at the merge" k.txt && pass "the pending citations are named, with the remedy" || { cat k.txt; fail "pending citations not named"; }
+E3=$(ls $S1/P001-005-*.md); sed -i 's/^- id:: P001-005$/- id:: P001-005\n- cites:: Smith said so/' $E3
+python3 tools/mesh.py check P001 > k.txt 2>&1 && fail "a malformed cites:: line passed check" || { grep -q "ERROR P001-005: 'cites::' has no card link" k.txt && pass "a cites:: line that is neither a link, ref N nor none is still an error" || { cat k.txt; fail "malformed cites"; }; }
+sed -i '/^- cites:: Smith said so$/d' $E3
+cat > $S1/P001_refs.md <<'REFS'
+# P001 reference list
 
+## 12
+- raw:: K. Lee, J. Park, J. Appl. Polym. Sci. 98, 101–109 (2015).
+- authors:: Lee, K.; Park, J.
+- year:: 2015
+- title:: Hydrogel swelling scales with temperature
+- journal:: J. Appl. Polym. Sci.
+- volume:: 98
+- pages:: 101--109
+- kind:: article
+- cited_at:: b0004
+REFS
+python3 tools/mesh.py cite P001 > c.txt 2>&1; python3 tools/mesh.py build > b.txt 2>&1
+grep -q "check: 0 errors" b.txt && ! grep -q "cites:: ref N" b.txt && grep -q "^- cites:: \[\[R0" $E && pass "after cite, neither warning nor error" || { cat c.txt; grep -E "ERROR|cites:: ref" b.txt; fail "after cite"; }
+# 50. a range is not its lower bound, and a judged non-duplicate is recorded rather than recoded (issue #50)
+cp -r "$ROOT/demo-vault" "$T/rg"; cd "$T/rg"; cp "$MESH" tools/mesh.py; S1=$(ls -d sources/P001*)
+mk() { printf -- "---\ntype: observation\nstatus: measured\nupdated: 2026-11-26\n---\n# Capacity reading %s\n\nAt 60 °C in [[water]] the [[binding-capacity|binding capacity]] was %s.\n\n## Codes\n- id:: P001-0%s\n- value:: [[binding-capacity]] = %s\n- when:: [[temperature]] = 60 degC\n- when:: [[solvent]] = [[water]]\n- anchor:: [[P001_text#^b0004]]\n- loc:: \"At 25 °C the binding capacity was 4.2\"\n" "$1" "$2" "$1" "$2" > $S1/P001-0$1-capacity-reading-$1.md; }
+mk 20 "1 neuron for cadaverine"; mk 21 "1 to 11 for alcohols, 1 to 7 for esters, 2–33 for aldehydes"
+python3 tools/mesh.py build > b.txt 2>&1; ! grep -q "P001-021: duplicates P001-020" b.txt && pass "a range and a single value that share its lower bound are not duplicates" || { grep -E "^ERROR" b.txt | head; fail "range read as its lower bound"; }
+mk 22 "between 1 and 11 for alcohols, 1–7 for esters, 2 to 33 for aldehydes"
+python3 tools/mesh.py build > b.txt 2>&1; grep -q "P001-022: duplicates P001-021" b.txt && pass "two lines stating the same ranges, written differently, are" || { grep -E "^ERROR" b.txt | head; fail "same ranges"; }
+rm $S1/P001-022-*.md; mk 22 "1 to 33 neurons"
+python3 tools/mesh.py build > b.txt 2>&1; ! grep -q "P001-022: duplicates P001-021" b.txt && ! grep -q "P001-022: duplicates P001-020" b.txt && pass "ranges with other endpoints are not" || { grep -E "^ERROR" b.txt | head; fail "different ranges"; }
+rm $S1/P001-02[012]-*.md
+mk 23 "0.58 ± 0.15 (n = 23) after ten to thirty days"; mk 24 "0.58 ± 0.21 (n = 18) across five sessions"
+python3 tools/mesh.py build > b.txt 2>&1; grep -q "P001-024: duplicates P001-023" b.txt && grep -q "contradictions dismiss values:P001-023~P001-024" b.txt && pass "two cards sharing a headline number still collide, and the error says how to record that they differ" || { grep -E "^ERROR" b.txt | head; fail "same headline number"; }
+python3 tools/mesh.py contradictions dismiss values:P001-024~P001-023 "different samples and comparisons; only the headline number is shared" > d.txt 2>&1 && grep -q "values:P001-023~P001-024 — " ledger/contradictions.md && pass "contradictions dismiss records a judged non-duplicate of one source" || { cat d.txt; fail "dismiss same source"; }
+python3 tools/mesh.py build > b.txt 2>&1; ! grep -q "P001-024: duplicates P001-023" b.txt && grep -q "check: 0 errors" b.txt && pass "check honours the judgement, and the value lines stay as written" || { grep -E "^ERROR" b.txt | head; fail "dismissed duplicate"; }
+# 53. folding a proposal into a concept leaves each concept once on a line, and check flags a repeated or empty item (issue #53)
+cp -r "$ROOT/demo-vault" "$T/dd"; cd "$T/dd"; cp "$MESH" tools/mesh.py; S1=$(ls -d sources/P001*)
+python3 tools/mesh.py propose cavity-distortion "The distortion of the imprinted cavities as the network swells." --from P001 > /dev/null
+E=$(ls $S1/P001-010-*.md); sed -i 's/^- concepts:: \[\[swelling\]\], \[\[temperature\]\]$/- concepts:: [[swelling]], [[cavity-distortion]], [[temperature]]/' $E
+E2=$(ls $S1/P001-007-*.md); sed -i 's/^- id:: P001-007$/- id:: P001-007\n- concepts:: [[cavity-distortion]], , [[swelling]]/' $E2
+grep -q "^- concepts:: \[\[swelling\]\], \[\[cavity-distortion\]\], \[\[temperature\]\]$" $E || fail "setup: the card does not link the proposal"
+python3 tools/mesh.py adopt cavity-distortion into swelling > a.txt 2>&1
+grep -q "^- concepts:: \[\[swelling\]\], \[\[temperature\]\]$" $E && pass "adopt into rewrites a line that linked both names to carry the concept once" || { cat a.txt; grep concepts $E; fail "fold left a repeated concept"; }
+! grep -E -q "^- concepts::.*(, ,|^- concepts:: ,|, *$)" $E2 && grep -q "^- concepts:: \[\[swelling\]\]$" $E2 && pass "and drops the empty items a fold leaves" || { grep concepts $E2; fail "fold left an empty item"; }
+python3 tools/mesh.py build > b.txt 2>&1; grep -q "check: 0 errors" b.txt && ! grep -q "repeats \[\[" b.txt && pass "the folded vault builds clean" || { grep -E "^ERROR|repeats" b.txt | head; fail "build after fold"; }
+E3=$(ls $S1/P001-005-*.md); sed -i 's/^- id:: P001-005$/- id:: P001-005\n- based_on:: , [[P001-003-capacity-4-2-at-25c-water]]\n- concepts:: [[temperature]], [[swelling]], [[temperature|Temperature]]/' $E3
+python3 tools/mesh.py check P001 > k.txt 2>&1 || true
+grep -q "P001-005: 'concepts::' repeats \[\[temperature\]\]" k.txt && pass "check flags a concept repeated on one line" || { cat k.txt; fail "repeated item not flagged"; }
+grep -q "P001-005: 'based_on::' has an empty item" k.txt && pass "check flags an empty item on any link line" || { cat k.txt; fail "empty item not flagged"; }
+python3 tools/mesh.py tidy P001 > t.txt 2>&1; grep -q "^- concepts:: \[\[temperature\]\], \[\[swelling\]\]$" $E3 && grep -q "^- based_on:: \[\[P001-003-capacity-4-2-at-25c-water\]\]$" $E3 && grep -q "^- anchor:: \[\[P001_text#^b0004\]\], \[\[P001_text#^b0002\]\]$" $(ls $S1/P001-003-*.md) && pass "tidy keeps each link once and drops empty items, and leaves two anchors in one file alone" || { cat t.txt; grep -E "concepts|based_on" $E3; fail "tidy"; }
+python3 tools/mesh.py check P001 > k.txt 2>&1 || true; ! grep -E -q "repeats \[\[|has an empty item" k.txt && pass "after tidy, check flags nothing" || { grep -E "repeats|empty item" k.txt; fail "after tidy"; }
+# 52. the Methods after a reference list are text the scan reads; names against punctuation match; scan says what it matches (issue #52)
+cp -r "$ROOT/demo-vault" "$T/sm"; cd "$T/sm"; cp "$MESH" tools/mesh.py; S1=$(ls -d sources/P001*)
+cat > concepts/membrane-phospholipid.md <<'CON'
+---
+type: concept
+aliases: ["Membrane phospholipid", "POPC"]
+updated: 2026-11-26
+---
+# Membrane phospholipid
 
+**Definition.** A phospholipid of the bilayer in which a receptor sits.
+
+## Where it appears
+<!--AUTO:START-->
+<!--AUTO:END-->
+
+## Codes
+- id:: membrane-phospholipid
+- kind:: entity
+CON
+rm -f $S1/P001_refs.md
+printf '\nReferences ^b0300\n\n1. Lee, K. & Park, J. Hydrogel swelling scales with temperature. J. Appl. Polym. Sci. 98, 101-109 (2015). 2. Novak, P. Imprinted films in water. Eur. Polym. J. 41, 230-238 (2005). ^b0301\n\nArticle Methods ^b0302\n\nFilms were cast on a 75%% palmitoyl-oleoyl-phosphatidylcholine (POPC)–25%% cholesterol layer, and then POPC–CHSD and POPC, in turn, were allowed to move freely. ^b0303\n\n3. Chen, D. Binding retained in acetonitrile. Polymer Sensing Letters 4, 55-60 (2023). ^b0304\n' >> $S1/P001_text.md
+python3 tools/mesh.py scan P001 > s.txt 2>&1
+grep -A3 "^\[\[membrane-phospholipid\]\]" s.txt | grep -q "b0303" && pass "a methods paragraph after the reference list, under a running head ('Article Methods'), is scanned" || { cat s.txt; fail "methods after the reference list skipped"; }
+python3 - <<'PY'
+import importlib.util
+spec = importlib.util.spec_from_file_location("mesh", "tools/mesh.py"); mesh = importlib.util.module_from_spec(spec); spec.loader.exec_module(mesh)
+m = mesh.Mesh(".")
+rx, _k = mesh.concept_rx(m.cards["membrane-phospholipid"])
+t = "Films were cast on a 75% palmitoyl-oleoyl-phosphatidylcholine (POPC)–25% cholesterol layer, and then POPC–CHSD and POPC, in turn, POPC/POPE, were allowed to move."
+assert len(rx.findall(t)) == 4, rx.findall(t)
+assert not rx.search("the POPCX lipid and xPOPC"), "a longer word matched"
+print("punctuation ok")
+PY
+[ $? = 0 ] && pass "a name against a bracket, a dash, a slash or a comma is matched, and not inside a longer word" || fail "punctuation"
+grep -q "names and aliases only" s.txt && grep -q "names and aliases only" $S1/P001_scan.md && pass "scan says it matches names and aliases only, in its output and its file" || { tail -5 s.txt; fail "scan does not say what it matches"; }
+python3 tools/mesh.py refs P001 --force > r.txt 2>&1; grep -q "P001: 3 references (numbered list)" r.txt && grep -A3 "^## 3$" $S1/P001_refs.md | grep -q "Binding retained in acetonitrile" && pass "refs still reads a numbered list that the Methods interrupt, from where its numbering resumes" || { cat r.txt; grep "^## " $S1/P001_refs.md; fail "refs across the Methods"; }
+python3 tools/mesh.py propose odotope "The part of an odorant a receptor recognises." --from P001 --alias "osmophore" > /dev/null
+python3 tools/mesh.py propose osmophore-group "A molecular group carrying an odour." --from P002 --alias "osmophore" > /dev/null 2>&1 || true
+python3 tools/mesh.py adopt odotope > a1.txt 2>&1; python3 tools/mesh.py adopt osmophore-group > a2.txt 2>&1
+grep -q "osmophore.*already.*odotope" a2.txt && pass "adopting a concept whose alias another concept already holds is warned about" || { cat a1.txt a2.txt; fail "alias collision at adoption"; }
+# 54. a concept whose everyday name is ambiguous can be given names the scan reads narrowly (issue #54)
+cp -r "$ROOT/demo-vault" "$T/nn"; cd "$T/nn"; cp "$MESH" tools/mesh.py
+python3 tools/mesh.py propose or-family "Receptors sharing 40 per cent identity." --from P001 --alias "OR families" > p.txt 2>&1
+grep -A4 "^=== or-family$" sources/P001*/P001_concepts.md | grep -q '^aliases: \["OR families"\]$' && grep -q "title" p.txt && pass "propose writes only the aliases given, not a title that is the slug in other case, and says so" || { cat p.txt; grep -A4 "^=== or-family" sources/P001*/P001_concepts.md; fail "propose added the slug title as an alias"; }
+python3 tools/mesh.py propose principal-odor-map "A map of odour percepts." --from P001 --title "Principal odor map" > /dev/null
+grep -A4 "^=== principal-odor-map$" sources/P001*/P001_concepts.md | grep -q '^aliases: \[\]$' && pass "nor one that differs only in case" || { grep -A4 "^=== principal-odor-map" sources/P001*/P001_concepts.md; fail "case-only title"; }
+python3 tools/mesh.py propose odour-receptor-gene "A gene of the receptor family." --from P001 --title "Receptor gene of the family" > /dev/null
+grep -A4 "^=== odour-receptor-gene$" sources/P001*/P001_concepts.md | grep -q '^aliases: \["Receptor gene of the family"\]$' && pass "a title in other words is kept as a name" || { grep -A4 "^=== odour-receptor-gene" sources/P001*/P001_concepts.md; fail "other title dropped"; }
+mkc() { printf -- "---\ntype: concept\naliases: [%s]\nupdated: 2026-11-26\n---\n# %s\n\n**Definition.** %s\n\n## Where it appears\n<!--AUTO:START-->\n<!--AUTO:END-->\n\n## Codes\n- id:: %s\n- kind:: concept\n%b" "$2" "$3" "A test concept for issue 54." "$1" "$4" > concepts/$1.md; }
+mkc or-family-level '' 'OR family (40% level)' ''
+mkc receptor-clade '"=OR families"' 'Receptor clade' ''
+mkc or-clan '"OR clan"' 'OR clan' '- scan_names:: aliases\n'
+mkc pom-map '"Principal odour map (POM)"' 'Pom map' ''
+S1=$(ls -d sources/P001*)
+printf '\nThe OR family is large, and the OR families OR1 to OR14 are smaller; an OR clan sits within one, and the POM and the principal odour map were used. ^b0400\n' >> $S1/P001_text.md
+python3 - <<'PY'
+import importlib.util
+spec = importlib.util.spec_from_file_location("mesh", "tools/mesh.py"); mesh = importlib.util.module_from_spec(spec); spec.loader.exec_module(mesh)
+m = mesh.Mesh(".")
+t = "The OR family is large, and the OR families OR1 to OR14 are smaller; an OR clan sits within one."
+def hits(cid):
+    rx, _k = mesh.concept_rx(m.cards[cid]); return [x.group(0) for x in rx.finditer(t)] if rx else []
+assert hits("or-family-level") == [], ("a bracketed qualifier is matched", hits("or-family-level"))
+assert hits("receptor-clade") == ["OR families"], ("an exact alias", hits("receptor-clade"))
+assert hits("or-clan") == ["OR clan"], ("scan_names:: aliases still reads the aliases", hits("or-clan"))
+m.cards["or-clan"].fm["aliases"] = []
+assert hits("or-clan") == [], ("scan_names:: aliases reads neither the id nor the title", hits("or-clan"))
+rx, _k = mesh.concept_rx(m.cards["pom-map"]); got = [x.group(0) for x in rx.finditer("the POM and the principal odour map")]
+assert got == ["POM", "principal odour map"], ("a bracketed acronym still gives both names", got)
+assert m.resolve("receptor-clade") and m.alias.get("or families") == "receptor-clade", "an exact alias still names its concept"
+print("names ok")
+PY
+[ $? = 0 ] && pass "a bracketed qualifier, an exact plural alias and id matching switched off none match 'the OR family'" || fail "narrow names"
+python3 tools/mesh.py build > b.txt 2>&1; grep -q "check: 0 errors" b.txt && pass "a vault with exact aliases and scan_names builds clean" || { grep -E "^ERROR" b.txt | head; fail "build with narrow names"; }
+# 49. a Cell-style reference list, numbered or not: the year after the authors, the title to its full stop, the journal, volume and pages in their own fields (issue #49)
+cp -r "$ROOT/demo-vault" "$T/ce"; cd "$T/ce"; cp "$MESH" tools/mesh.py; S1=$(ls -d sources/P001*)
+rm -f $S1/P001_refs.md
+cat >> $S1/P001_text.md <<'TXT'
+
+REFERENCES ^b0500
+
+1. Pfister, P., Smith, B.C., Evans, B.J., Brann, J.H., Trimmer, C., Sheikh, M., Arroyave, R., Reddy, G., Jeong, H.-Y., Raps, D.A., et al. (2020). Odorant receptor inhibition is fundamental to odor encoding. Curr. Biol. 30, 2574–2587.e6. ^b0501
+
+2. Buck, L., and Axel, R. (1991). A novel multigene family may encode odorant receptors: a molecular basis for odor recognition. Cell 65, 175–187. ^b0502
+
+3. Zak, J.D., Reddy, G., Vergassola, M., and Murthy, V.N. (2019). Antagonistic odor interactions in olfactory sensory neurons are widespread in freely breathing mice. bioRxiv. https:// doi.org/10.1101/847525. ^b0503
+
+4. Wickham, H. (2017). tidyverse: Easily Install and Load the ‘Tidyverse’, R package version 1.2.1 (Vienna, Austria: R Core Team). ^b0504
+
+5. Peterlin, Z., Li, Y., Sun, G., Shah, R., Firestein, S., and Ryan, K. (2008). The importance of odorant conformation to the binding and activation of a representative olfactory receptor. ll OPEN ACCESS Current Biology 30, 2574–2587, July 6, 2020 2585 Article Chem. Biol. 15, 1317–1327. ^b0505
+
+6. Shepherd, G.M. (1988). Neurobiology (New York: Oxford University Press). ll OPEN ACCESS 2587 Current Biology 30, 2574–2587, July 6, 2020 Article STAR+METHODS KEY RESOURCES TABLE REAGENT or RESOURCE SOURCE IDENTIFIER Forskolin Sigma Cat# F3917 ^b0506
+TXT
+python3 tools/mesh.py refs P001 > r.txt 2>&1; grep -q "P001: 6 references" r.txt || { cat r.txt; fail "Cell-style list not read"; }
+f() { grep -A14 "^## $1$" $S1/P001_refs.md | sed '/^$/q' | grep -q "^- $2:: $3$"; }
+f 1 title "Odorant receptor inhibition is fundamental to odor encoding" && f 1 journal "Curr. Biol." && f 1 volume 30 && f 1 year 2020 && f 1 kind article && pass "a ten-author entry: the title ends where the title ends, with journal, volume and year in their own fields" || { grep -A12 "^## 1$" $S1/P001_refs.md; fail "Cell entry 1"; }
+grep -A14 "^## 1$" $S1/P001_refs.md | grep -q "^- pages:: 2574.*e6$" && grep -A14 "^## 1$" $S1/P001_refs.md | grep -q "^- authors:: Pfister, P\.; .*Raps, D\.A\.; others$" && pass "the .eN page suffix stays with the pages, and et al. is kept as others" || { grep -A12 "^## 1$" $S1/P001_refs.md; fail "Cell pages or et al."; }
+f 2 title "A novel multigene family may encode odorant receptors: a molecular basis for odor recognition" && f 2 journal "Cell" && f 2 volume 65 && f 2 authors "Buck, L.; Axel, R." && pass "a two-author entry, 'and' not taken into a name" || { grep -A12 "^## 2$" $S1/P001_refs.md; fail "Cell entry 2"; }
+f 3 kind preprint && f 3 title "Antagonistic odor interactions in olfactory sensory neurons are widespread in freely breathing mice" && f 3 doi "10.1101/847525" && pass "a bioRxiv entry is a preprint, its title without the server's name" || { grep -A12 "^## 3$" $S1/P001_refs.md; fail "Cell preprint"; }
+f 4 kind software && grep -A14 "^## 4$" $S1/P001_refs.md | grep -q "^- title:: tidyverse: Easily Install and Load" && pass "an R package with no journal is software" || { grep -A12 "^## 4$" $S1/P001_refs.md; fail "Cell software"; }
+f 5 journal "Chem. Biol." && f 5 volume 15 && f 5 title "The importance of odorant conformation to the binding and activation of a representative olfactory receptor" && ! grep -A14 "^## 5$" $S1/P001_refs.md | grep -q "OPEN ACCESS\|July 6" && pass "a Cell Press page footer that falls mid-entry is stripped" || { grep -A12 "^## 5$" $S1/P001_refs.md; fail "Cell footer"; }
+f 6 kind book && f 6 title "Neurobiology" && f 6 publisher "Oxford University Press" && ! grep -A14 "^## 6$" $S1/P001_refs.md | grep -q "KEY RESOURCES" && pass "a book gives its publisher, and the STAR Methods table after the last entry is not taken into it" || { grep -A12 "^## 6$" $S1/P001_refs.md; fail "Cell book"; }
+python3 tools/mesh.py cite P001 > c.txt 2>&1; python3 tools/mesh.py build > b.txt 2>&1; grep -q "check: 0 errors" b.txt && grep -q "^@misc{" references/library.bib && pass "the cards are made and the vault builds clean; a preprint and software are @misc in BibTeX" || { grep -E "^ERROR" b.txt | head; fail "Cell cite"; }
+# 47. a two-column page whose lines sit at the same heights is anchored column by column (issue #47)
+if python3 -c "import pymupdf" 2>/dev/null || python3 -c "import fitz" 2>/dev/null; then
+python3 "$MESH" init "$T/tc" "Columns" "two-column test" > /dev/null; cd "$T/tc"
+python3 - <<'PY'
+try: import pymupdf as fitz
+except ImportError: import fitz
+L = ("The left column opens the methods here. Neurons were taken from the septum of adult mice and dissociated in a buffer "
+     "without calcium. Each cell was loaded with a dye and imaged under a microscope at room temperature. Responses were read "
+     "as the fall in emission under violet light, and a cell counted as responsive when the change exceeded half of that to "
+     "potassium. The left column ends its paragraph here.").split()
+R = ("Adrian, E.D. (1950). Sensory discrimination with some recent evidence from the olfactory organ. Br. Med. Bull. 6, 330-333. "
+     "Amoore, J. (1970). Molecular Basis of Odor (New York: Charles C. Thomas). "
+     "Buck, L., and Axel, R. (1991). A novel multigene family may encode odorant receptors. Cell 65, 175-187.").split()
+def wrap(ws, width=40):
+    out, cur = [], ""
+    for w in ws:
+        if cur and len(cur) + len(w) + 1 > width: out.append(cur); cur = w
+        else: cur = (cur + " " + w).strip()
+    return out + [cur]
+doc = fitz.open(); pg = doc.new_page(width=612, height=792)
+lw, rw = wrap(L), wrap(R)
+for i in range(max(len(lw), len(rw))):  # drawn line by line across the page, as old journal PDFs are
+    if i < len(lw): pg.insert_text((60, 100 + 11 * i), lw[i], fontsize=9)
+    if i < len(rw): pg.insert_text((320, 100 + 11 * i), rw[i], fontsize=9)
+pg.insert_text((60, 100 + 11 * max(len(lw), len(rw)) + 20), "Figure 1. A caption that runs the full width of the page across both columns, and must stay whole.", fontsize=9)
+one = doc.new_page(width=612, height=792)  # a one-column page, read as before
+one.insert_text((60, 100), "A single column of text on the second page.", fontsize=9)
+doc.save("two.pdf")
+d = fitz.open("two.pdf"); blocks = [b[4] for b in d[0].get_text("blocks") if b[6] == 0]
+assert any("left column opens" in b and "Adrian" in b for b in blocks), "the fixture should interleave the columns in one block"
+PY
+python3 tools/mesh.py anchor P001 two.pdf > a.txt 2>&1 || { cat a.txt; fail "anchor two-column"; }
+TX=sources/P001/P001_text.md
+python3 - "$TX" <<'PY'
+import sys, re
+t = open(sys.argv[1], encoding="utf-8").read()
+paras = [re.sub(r" \^b\d{4}$", "", l) for l in t.splitlines() if re.search(r"\^b\d{4}$", l)]
+body = " ".join(paras)
+left = "The left column opens the methods here. Neurons were taken from the septum of adult mice and dissociated in a buffer without calcium."
+assert left in body, ("the left column's sentences are not whole", paras)
+assert body.index("The left column ends its paragraph here.") < body.index("Adrian, E.D. (1950)"), ("the right column began before the left one ended", paras)
+assert "Sensory discrimination with some recent evidence from the olfactory organ." in body, ("a reference was spliced", paras)
+assert body.index("Adrian, E.D.") < body.index("Amoore, J.") < body.index("Buck, L., and Axel"), paras
+cap = "Figure 1. A caption that runs the full width of the page across both columns, and must stay whole."
+assert cap in paras, ("the full-width caption was split or merged", paras)
+assert paras.index(cap) == len(paras) - 2 and paras[-1] == "A single column of text on the second page.", paras
+print("columns ok")
+PY
+[ $? = 0 ] && pass "anchor reads a two-column page column by column: the left column whole and first, a full-width caption one block" || fail "two-column anchoring"
+else echo "skip 47: PyMuPDF not installed"; fi
+# 56. one reading queue that every skill feeds: queue add, the old table migrated, forward citations from OpenAlex (stored fixtures), and staleness said in health, sync and MAP (issue #56)
+cp -r "$ROOT/demo-vault" "$T/rq"; cd "$T/rq"; cp "$MESH" tools/mesh.py; export BRAIN_MESH_NO_MARK=1; D=$(date +%F)
+cat > ledger/reading-queue.md <<EOF
+# Reading queue (papers found that are not yet in the brain)
+
+Updated 2026-11-20: a note written by hand.
+
+| ref | would fill | priority | access | status |
+|---|---|---|---|---|
+| [Haupt et al. 2019, *Swelling of imprinted films under heat cycles*, J. Test. Mater. 20, 10-19](https://doi.org/10.5555/haupt.2019) | G001: whether swelling recovers on cooling | high | open access | found 2025-01-01, outside check |
+| [Garcia 2023, *Imprinted polymer films retain analyte X binding at elevated temperature in acetonitrile*](https://doi.org/10.0000/psl.2023.014) | the acetonitrile control | normal | open access | found 2026-11-01 |
+| A talk somebody mentioned | the swelling question | normal | unknown | asked for |
+| [Kraft 2000, *Odds and Trends: Recent Developments in the Chemistry of Odorants*, Angew. Chem. Int. Ed. 39, 2980-3010](https://doi.org/10.1002/1521-3773(20000901)39:17<2980::AID-ANIE2980>3.0.CO;2-%23) | a DOI with brackets and a hash | normal | paywalled | queued $D |
+EOF
+python3 tools/mesh.py build > b.txt 2>&1 || true
+R1=$(ls references/R0001-*.md); R2=$(ls references/R0002-*.md)
+grep -q "^- suggested_by:: 2025-01-01 high hand-written table — G001: whether swelling recovers on cooling (access: open access) \[found 2025-01-01, outside check\]$" $R1 && grep -q "^status: suggested$" $R1 && grep -q "^- doi:: 10.5555/haupt.2019$" $R1 && grep -q "^- journal:: J. Test. Mater.$" $R1 && pass "build turns a row of the hand-written table into a suggestion on a reference card, with its reason, date and priority" || { cat b.txt; cat $R1; fail "table row migrated"; }
+grep -q "1 named a source already in the brain" b.txt && ! grep -q "retain analyte X binding" ledger/reading-queue.md && pass "a row naming a source already in the brain is dropped" || { cat b.txt; fail "held row dropped"; }
+grep -q "^status: queued$" $R2 && grep -q "^- queued:: $D — hand-written table$" $R2 && grep -q "^- doi:: 10.1002/1521-3773(20000901)39:17<2980::aid-anie2980>3.0.co;2-#$" $R2 && grep -q "(https://doi.org/10.1002/1521-3773(20000901)39:17%3C2980::aid-anie2980%3E3.0.co;2-%23)" ledger/reading-queue.md && pass "a queued row stays queued from its date, and a DOI with brackets, angles and a hash survives in the card and the link" || { grep -E "status|queued|doi" $R2; fail "queued row"; }
+grep -q "^| A talk somebody mentioned " ledger/reading-queue.md && grep -q "ledger/reading-queue.md: 1 row of the old hand-written table could not be read" b.txt && pass "a row it cannot read stays at the top, and check names it" || { cat b.txt; fail "unread row kept"; }
+! grep -q "^Updated 2026-11-20" ledger/reading-queue.md && grep -q "^## Suggested by the skills (2)$" ledger/reading-queue.md && grep -q "^## Forward: recent works citing the brain's sources (0; last search never)$" ledger/reading-queue.md && grep -q "^## Backward: what the brain's sources cite$" ledger/reading-queue.md && pass "the rest of the file is generated: suggested by the skills, forward, backward" || { cat ledger/reading-queue.md; fail "queue generated"; }
+cp ledger/reading-queue.md rq1.md; python3 tools/mesh.py build > /dev/null 2>&1 || true
+cmp -s rq1.md ledger/reading-queue.md && [ "$(ls references/R*.md | wc -l)" = 2 ] && pass "building again migrates nothing twice and changes nothing" || { diff rq1.md ledger/reading-queue.md; ls references; fail "migration idempotent"; }
+sed -i '/^| A talk somebody mentioned /d' ledger/reading-queue.md; python3 tools/mesh.py build > b.txt 2>&1 || true
+! grep -q "^## Rows of the old hand-written table" ledger/reading-queue.md && grep -q "check: 0 errors, 0 warnings" b.txt && pass "with the last unread row gone, the whole file is generated and check is quiet" || { cat b.txt; fail "unread rows cleared"; }
+python3 tools/mesh.py health > h.txt; grep -q "^Reading queue: 2 sources never searched forward (run \`mesh.py forward\`); 1 suggestion undecided for over 30 days (\`mesh.py queue\`); 2 cited works not yet indexed from their abstracts (\`mesh.py literature --unindexed\`)\. Last forward search: never\.$" h.txt && pass "health says how stale the queue is: sources never searched forward, suggestions left undecided, cited works not yet indexed" || { grep "Reading queue" h.txt; fail "health staleness"; }
+cat > "$T/rq-fx.json" <<'EOF'
+{
+ "api.openalex.org/works/doi:10.5555/new.2025": {"id": "https://openalex.org/W900", "doi": "https://doi.org/10.5555/new.2025", "title": "Cooling restores binding capacity in swollen imprinted films", "publication_year": 2025, "type": "article", "authorships": [{"author": {"display_name": "Mei Lin Tanaka"}}, {"author": {"display_name": "Oskar Berg"}}], "primary_location": {"source": {"display_name": "Polymer Sensing Letters"}}, "biblio": {"volume": "6", "first_page": "1", "last_page": "9"}},
+ "api.openalex.org/works/doi:10.5555/fwd.2025": {"id": "https://openalex.org/W501", "doi": "https://doi.org/10.5555/fwd.2025", "title": "Recovery of imprinted films after heating", "publication_year": 2025, "type": "article", "authorships": [{"author": {"display_name": "Ana Ruiz"}}]},
+ "api.openalex.org/works/doi:10.0000/jtm.2021.001": {"id": "https://openalex.org/W1", "publication_year": 2021},
+ "api.openalex.org/works/doi:10.0000/psl.2023.014": {"id": "https://openalex.org/W2", "publication_year": 2023},
+ "filter=cites:W1,": {"meta": {"count": 4, "next_cursor": null}, "results": [
+   {"id": "https://openalex.org/W501", "doi": "https://doi.org/10.5555/fwd.2025", "title": "Recovery of imprinted films after heating", "publication_year": 2025, "type": "article", "authorships": [{"author": {"display_name": "Ana Ruiz"}}], "referenced_works": ["https://openalex.org/W1"]},
+   {"id": "https://openalex.org/W503", "doi": "https://doi.org/10.5555/fwd.2026", "title": "Swelling and binding capacity of imprinted films at high temperature", "publication_year": 2026, "type": "article", "authorships": [{"author": {"display_name": "Ines Ortega"}}], "primary_location": {"source": {"display_name": "Journal of Test Materials"}}, "referenced_works": ["https://openalex.org/W1", "https://openalex.org/W2", "https://openalex.org/W77"]},
+   {"id": "https://openalex.org/W502", "doi": "https://doi.org/10.5555/fwd.2024", "title": "A survey of sensors", "publication_year": 2024, "type": "article", "authorships": [{"author": {"display_name": "Bo Chen"}}], "referenced_works": ["https://openalex.org/W1"]},
+   {"id": "https://openalex.org/W2", "doi": "https://doi.org/10.0000/psl.2023.014", "title": "Imprinted polymer films retain analyte X binding at elevated temperature in acetonitrile", "publication_year": 2023, "type": "article", "authorships": [{"author": {"display_name": "Carla Garcia"}}], "referenced_works": ["https://openalex.org/W1"]}
+ ]},
+ "filter=cites:W2,": {"meta": {"count": 1, "next_cursor": null}, "results": [
+   {"id": "https://openalex.org/W503", "doi": "https://doi.org/10.5555/fwd.2026", "title": "Swelling and binding capacity of imprinted films at high temperature", "publication_year": 2026, "type": "article", "authorships": [{"author": {"display_name": "Ines Ortega"}}], "referenced_works": ["https://openalex.org/W1", "https://openalex.org/W2"]}
+ ]}
+}
+EOF
+export BRAIN_MESH_FIXTURES="$T/rq-fx.json"
+python3 tools/mesh.py queue add 10.5555/new.2025 --why "would show whether cooling restores capacity" --from gaps:G001 > q.txt; R3=$(ls references/R0003-*.md)
+grep -q "R0003 Tanaka & Berg (2025) Cooling restores binding capacity.*: new reference card, suggested; 1 suggestion on record" q.txt && grep -q "^- authors:: Tanaka, M. L.; Berg, O.$" $R3 && grep -q "^- title:: Cooling restores binding capacity in swollen imprinted films$" $R3 && grep -q "^- pages:: 1--9$" $R3 && grep -q "^- suggested_by:: $D gaps:G001 — would show whether cooling restores capacity$" $R3 && pass "queue add makes a reference card from OpenAlex's record of a DOI, and records who suggested it and why" || { cat q.txt $R3; fail "queue add new"; }
+python3 tools/mesh.py queue add https://doi.org/10.5555/NEW.2025 --why "the recovery question" --from outside --high > q.txt
+grep -q "suggested; 2 suggestions on record" q.txt && [ "$(ls references/R0003-*.md references/R0004-*.md 2>/dev/null | wc -l)" = 1 ] && grep -q "^- suggested_by:: $D high outside — the recovery question$" $R3 && pass "a second suggestion of the same work, by its link, accumulates on the one card" || { cat q.txt; ls references; fail "queue add accumulates"; }
+python3 tools/mesh.py queue add 10.5555/new.2025 --why "the recovery question" --from outside --high > q.txt; grep -q "already suggested by outside for that reason" q.txt && [ "$(grep -c '^- suggested_by::' $R3)" = 2 ] && pass "the same suggestion twice in a day is kept once" || { cat q.txt; fail "queue add twice"; }
+python3 tools/mesh.py queue add 10.0000/psl.2023.014 --why "the control" --from report > q.txt; grep -q "^P002 .* is already a source in the brain: nothing to queue$" q.txt && pass "queue add will not queue a source already in the brain" || { cat q.txt; fail "queue add held"; }
+BRAIN_MESH_FIXTURES= BRAIN_MESH_OFFLINE=1 python3 tools/mesh.py queue add "Haupt 2000 Molecular imprinting for sensors and their thermal limits" --why "the original statement of the method" --from write > q.txt; R4=$(ls references/R0004-*.md)
+grep -q "^- authors:: Haupt$" $R4 && grep -q "^- year:: 2000$" $R4 && grep -q "^- title:: Molecular imprinting for sensors and their thermal limits$" $R4 && pass "with no network, queue add makes the card from 'author year title'" || { cat q.txt $R4; fail "queue add offline"; }
+python3 tools/mesh.py queue add --why "a reason" --from write > q.txt 2>&1 && fail "queue add with no work named went through" || pass "queue add with no work named stops"
+python3 tools/mesh.py queue add 10.5555/x.1 --from write > q.txt 2>&1 && fail "queue add with no reason went through" || { grep -q "say what it would fill" q.txt && pass "queue add needs what the work would fill and who suggests it"; } || { cat q.txt; fail "queue add reason"; }
+python3 tools/mesh.py outside add G001 answered --where "OpenAlex" --found "10.5555/fwd.2025, doi:10.5555/new.2025" --note "a 2025 study measured recovery on cooling" > o.txt; R5=$(ls references/R0005-*.md)
+grep -q "^- suggested_by:: $D outside G001 — a 2025 study measured recovery on cooling$" $R5 && grep -q "^- title:: Recovery of imprinted films after heating$" $R5 && grep -q "^- suggested_by:: $D outside G001 — a 2025 study measured recovery on cooling$" $R3 && grep -q "queue: R0005" o.txt && grep -q "The works found are on the reading queue" o.txt && pass "outside add --found puts each DOI it names on the queue, with the check's note as the reason" || { cat o.txt; fail "outside feeds the queue"; }
+python3 tools/mesh.py queue mark R0004 skip "not needed after all" > /dev/null && python3 tools/mesh.py queue mark 10.5555/new.2025 queued > /dev/null && grep -q "^status: skip$" $R4 && grep -q "^- skipped:: $D — not needed after all$" $R4 && grep -q "^status: queued$" $R3 && grep -q "^- queued:: $D$" $R3 && pass "queue mark records the user's decision, by id or by DOI" || { grep -E "status|queued|skipped" $R3 $R4; fail "queue mark"; }
+python3 tools/mesh.py forward > f.txt; grep -q "^forward: no DOI on P003" f.txt && grep -q "^P001: 4 works citing it since 2021, 4 new to the log$" f.txt && grep -q "^P002: 1 work citing it since 2023, 0 new to the log$" f.txt && grep -q "\"P001\": {\"date\": \"$D\"" ledger/forward.json && grep -q "\"P001\": \"W1\"" ledger/forward.json && pass "forward asks OpenAlex for the works citing each source, and stamps the date of each source's search" || { cat f.txt; cat ledger/forward.json; fail "forward"; }
+python3 tools/mesh.py forward > f2.txt; grep -q "every source with a DOI was searched within the last 30 days" f2.txt && pass "forward run again leaves sources searched in the last 30 days alone" || { cat f2.txt; fail "forward again"; }
+python3 tools/mesh.py build > b.txt 2>&1 || true; sed -n '/^## Forward/,/^## Backward/p' ledger/reading-queue.md > fw.txt
+grep -q "^## Forward: recent works citing the brain's sources (2; last search $D)$" fw.txt && grep -q "^- \[ \] Ortega (2026) Swelling and binding capacity of imprinted films at high temperature · \[doi:10.5555/fwd.2026\].* — cites P001, P002; about .*\[\[binding-capacity\]\].*\[\[swelling\]\]" fw.txt && [ "$(grep -n 'Ortega' fw.txt | cut -d: -f1)" -lt "$(grep -n 'Chen (2024)' fw.txt | cut -d: -f1)" ] && pass "the Forward section ranks a recent work citing two sources on the brain's concepts above one citing one" || { cat fw.txt; fail "forward section"; }
+! grep -q "retain analyte X binding" fw.txt && ! grep -q "Recovery of imprinted films" fw.txt && pass "and leaves out a source already in the brain and a work already suggested" || { cat fw.txt; fail "forward exclusions"; }
+grep -q "Last forward search: $D (\`mesh.py forward\`" MAP.md && pass "MAP's Focus gives the date of the last forward search" || { grep -n Focus MAP.md; fail "MAP forward date"; }
+sed -n '/^## Suggested by the skills/,/^## Forward/p' ledger/reading-queue.md > sg.txt
+[ "$(grep -n 'R0002-kraft' sg.txt | cut -d: -f1)" -lt "$(grep -n 'R0001-haupt' sg.txt | cut -d: -f1)" ] && grep -q "^- \[~\] \[\[R0003-tanaka-2025.*— queued $D — 3 suggestions$" sg.txt && grep -q "^  - $D outside G001: a 2025 study measured recovery on cooling$" sg.txt && ! grep -q "R0004" sg.txt && pass "Suggested by the skills: the queued first, each with every reason and who gave it; a skipped work leaves" || { cat sg.txt; fail "suggested section"; }
+printf -- '---\ntype: reference\nstatus: suggested\nupdated: 2026-11-21\n---\n# Smith (2021) mangled\n\n<!--AUTO:START-->\n<!--AUTO:END-->\n\n## Codes\n- id:: R0099\n- authors:: Smith, A.\n- year:: 2021\n- title:: Smith A, Jones B. Temperature dependence of analyte X binding by an imprinted polymer film. J. Test. Mater. 12\n- kind:: article\n- suggested_by:: 2026-11-21 hand-written table — the founding study\n' > references/R0099-smith-2021-mangled.md
+python3 tools/mesh.py build > b.txt 2>&1 || true; grep -q "R0099 is now a source in the brain (P001): marked held" b.txt && grep -q "^status: held$" references/R0099-*.md && ! grep -q "R0099" ledger/reading-queue.md && pass "a suggested work whose first author, year and title match a source is marked held, its title mangled or not, and leaves the queue" || { cat b.txt; fail "fuzzy held"; }
+for yn in "1990 1" "2020 2"; do y=${yn% *}; n=${yn#* }; printf -- '---\ntype: reference\nstatus: not-held\nupdated: 2026-11-21\n---\n# Old (%s) A work both sources cite\n\n<!--AUTO:START-->\n<!--AUTO:END-->\n\n## Codes\n- id:: R009%s\n- authors:: Old, A.\n- year:: %s\n- title:: A work both sources cite from %s\n- journal:: J. Test.\n- kind:: article\n- cited_by:: [[P001]] ref 9%s\n- cited_by:: [[P002]] ref 9%s\n' "$y" "$n" "$y" "$y" "$n" "$n" > "references/R009$n-old-$y-work.md"; done
+python3 tools/mesh.py build > b.txt 2>&1 || true; q=ledger/reading-queue.md
+sed -n '/^### ⌛ Classics/,$p' $q | grep -q "R0091-old-1990" && ! sed -n '/^### Cited by more than one/,/^### ⌛ Classics/p' $q | grep -q "R0091-old-1990" && sed -n '/^### Cited by more than one/,/^### ⌛ Classics/p' $q | grep -q "R0092-old-2020" && pass "an old work foundational only because two sources cite it goes to the classics, out of the main lists" || { sed -n '/^## Backward/,$p' $q; fail "classics"; }
+printf -- '---\ntype: reference\nstatus: not-held\nupdated: 2026-11-21\n---\n# Lin (2018) drift\n\n<!--AUTO:START-->\n<!--AUTO:END-->\n\n## Codes\n- id:: R0081\n- authors:: Lindgren, Q.; Wernersson, R.\n- year:: 2018\n- title:: Thermal drift in quartz crystal microbalance sensors\n- journal:: Sens. Act.\n- doi:: 10.5555/lin.2018\n- kind:: article\n- cited_by:: [[P001]] ref 81\n' > references/R0081-lin-2018-drift.md
+printf -- '---\ntype: reference\nstatus: suggested\nupdated: 2026-11-21\n---\n# Lin (2018) mangled\n\n<!--AUTO:START-->\n<!--AUTO:END-->\n\n## Codes\n- id:: R0082\n- authors:: Lindgren, Q.\n- year:: 2018\n- title:: Lindgren Q, Wernersson R. Thermal drift in quartz crystal microbalance sensors. Sens. Act. 9, 1-5\n- kind:: article\n- suggested_by:: 2026-11-21 report — the drift control\n' > references/R0082-lin-2018-mangled.md
+python3 tools/mesh.py check > k.txt 2>&1 || true; grep -q "R0082 and R0081 look like the same work (first author, year and title)" k.txt && pass "check finds two reference cards for one work by first author, year and title when no identifier joins them" || { grep -E "R008[12]" k.txt; fail "fuzzy reference duplicates"; }
+python3 tools/mesh.py merge R0081 R0082 > /dev/null && grep -q "^- suggested_by:: 2026-11-21 report — the drift control$" references/R0081-*.md && grep -q "^- retired:: merged into" references/R0082-*.md && pass "merge folds them, and the survivor keeps every suggestion" || { cat references/R0081-*.md; fail "merge keeps suggestions"; }
+if command -v git > /dev/null; then
+  git init -q -b main . ; git config user.email t@t; git config user.name t
+  python3 tools/mesh.py sync "the reading queue" > s.txt 2>&1; tail -1 s.txt | grep -q "^Reading queue: .*Last forward search: $D\.$" && pass "sync ends with the queue's staleness line" || { cat s.txt; fail "sync staleness"; }
+fi
+
+cd "$T/xp"  # the vault of the 1.30.0 hypothesis-deepen section above
 # 1.31.0: three more health queues — a hypothesis the brain has moved past, a study whose inputs moved after sealing, an index entry whose work has been read
 python3 tools/mesh.py health > hl.txt
 grep -q "Hypotheses the brain has moved past" hl.txt && pass "health asks after hypotheses the brain has moved past" || fail "no hypothesis queue"
@@ -2722,5 +3126,5 @@ sed -i.bak 's/^updated: 2099-12-31/updated: 2026-11-20/' data-sets/D001-*.md; rm
 python3 tools/mesh.py build > /dev/null; python3 tools/mesh.py health > hl.txt
 grep -A3 "changed after they were sealed" hl.txt | grep -q "$EID" && fail "still listed once the data card is older than the seal" || pass "the sealed-inputs queue clears when nothing moved"
 grep -q "Citation-index entries whose work has since been read" hl.txt && pass "health asks after index entries whose work has been read" || fail "no citation-index queue"
-
+unset BRAIN_MESH_FIXTURES BRAIN_MESH_NO_MARK
 echo "ALL TESTS PASSED"

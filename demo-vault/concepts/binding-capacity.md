@@ -31,6 +31,7 @@ updated: 2026-11-20
 - [[X001-does-heat-or-solvent-uptake-lower-capacity|X001 Does heating itself lower binding capacity, or only heating in water?]] · explained
 
 **Evidence: 18 cards from 3 sources** (observation 9, claim 3, method 3, assumption 1, oddity 1, question 1)
+Evidence published 2021 to 2026; newest: [[P003-own-2026-heat-cool-cycle-results|P003 Own result (2026) Heat-then-cool cycle in water and acetonitrile, experiment E001]] (2026). `mesh.py chronology binding-capacity` checks what has a shelf life.
 - [[P001-003-capacity-4-2-at-25c-water|Binding capacity for analyte X is 4.2 at 25 °C in water]] · observation
 - [[P001-004-capacity-1-3-at-45c-water|Binding capacity for analyte X falls to 1.3 at 45 °C in water]] · observation
 - [[P002-002-capacity-3-9-at-25c-acetonitrile|Binding capacity for analyte X is 3.9 at 25 °C in acetonitrile]] · observation

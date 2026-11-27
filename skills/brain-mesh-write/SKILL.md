@@ -33,7 +33,7 @@ Part A writes text from the brain. Part B checks text the user wrote against it.
 
    State the scope: the species, system, conditions and range on the cards' `when::` lines. Do not generalise past them.
 4. **Contradictions are shown, not smoothed.** Where the register holds a contradiction or a tension on the point, the text says that the sources disagree, and how.
-5. **Second-hand citations are marked.** A `cited` card records what one paper says of another work. If that work is not itself a source in the brain, write "as cited in", or cite the paper that was read, and set the work's reference card to `queued` so it appears in the reading queue. Never cite it as if it had been read.
+5. **Second-hand citations are marked.** A `cited` card records what one paper says of another work. If that work is not itself a source in the brain, write "as cited in", or cite the paper that was read, and put the work on the reading queue: `python3 tools/mesh.py queue add <R id> --why "<the claim it would check>" --from write`. Never cite it as if it had been read.
 6. **A draft is not a source.** Nothing from the user's draft enters a card. If they want its content in the brain, it goes in as their own source (`brain-mesh-access`, section 3).
 
 ## Part A. Write from the brain
@@ -62,7 +62,7 @@ Part A writes text from the brain. Part B checks text the user wrote against it.
    | not in the brain | no card bears on it: the cited work is not a source, or its passage is not carded. Check the source's `coverage::` lines first; if the section was not read closely, read it (a lens pass) before giving this verdict |
 
    Check, for each: the number, with its unit, uncertainty and n; the population and scope; causal wording against the basis of the relation; attribution (did the cited paper find this, or cite someone else for it?); and whether the citation supports the whole sentence.
-4. **Second-hand citations.** Where a claim rests on a work the brain knows only through another paper, say so in the table, suggest "as cited in" or reading the original, and set the reference card to `queued`.
+4. **Second-hand citations.** Where a claim rests on a work the brain knows only through another paper, say so in the table, suggest "as cited in" or reading the original, and put the original on the reading queue (`queue add <R id> --why "..." --from write`).
 5. **The audit table,** errors that change the argument first: contradicted claims, then overstated ones that carry a conclusion, then the rest. Supported claims can be counted in one line.
 
    | Draft claim | Cited | The brain: cards and page | Verdict | Suggested correction |

@@ -19,16 +19,19 @@ Read `brain-mesh` for the map of the brain, and its FORMATS.md before writing or
 
 **At the end**
 
-6. `python3 tools/mesh.py sync "<what changed, in a line>"`. Every local change ends up on GitHub before the session ends. Never leave uncommitted work, and never force-push.
-7. Tell the user what changed, in a few lines.
+6. Before syncing, keep the reading queue current, so that it does not go stale:
+   - Any paper the session found worth reading (in a search, an outside check, a campaign, a draft, a report, a source's own pointers) has gone on it with `python3 tools/mesh.py queue add <doi | R id | "author year title"> --why "<what it would fill>" --from <skill or card id>`. That is the only route in: never a note, a table or a status set by hand.
+   - If sources were added, `python3 tools/mesh.py forward P012 …` was run for them (it needs a network and a DOI on the source card), and the reference cards `cite` made for them are indexed from their abstracts (`literature --unindexed` lists them; `brain-mesh-citation-index`). What could not be done is said in the report.
+7. `python3 tools/mesh.py sync "<what changed, in a line>"`. Every local change ends up on GitHub before the session ends. Never leave uncommitted work, and never force-push. Its last line says how current the reading queue is: sources not searched forward, suggestions left undecided or queued with no PDF for over 30 days, and cited works not yet indexed. Pass it on to the user when it names anything.
+8. Tell the user what changed, in a few lines.
 
-**Extraction agents in a batch** (`brain-mesh-batch`) are the one exception to steps 3 and 6. They write only inside their own paper's folder and never sync or build; the session that launched them does both.
+**Extraction agents in a batch** (`brain-mesh-batch`) are the one exception to steps 3, 6 and 7. They write only inside their own paper's folder and never sync, build or run `queue add`; they name the papers worth reading in their reports, and the session that launched them puts those on the queue, builds and syncs.
 
 **Read-only sessions.** A session that only answers questions, or a scheduled report, runs `git pull` at the start (or nothing at all, if told not to touch the repository) and commits nothing.
 
 **When `sync` stops.**
 - The pull fails on a conflict:
-  - In generated files (`index/`, `MAP.md`, AUTO blocks, `## Linked from`, `*.bib`, the generated part of the reading queue), take either side; the next build regenerates them.
+  - In generated files (`index/`, `MAP.md`, AUTO blocks, `## Linked from`, `*.bib`, `ledger/reading-queue.md`), take either side; the next build regenerates them.
   - In cards, keep both contributions.
   - Then `git add -A`, `git rebase --continue`, and sync again.
 - The build has errors: fix them first. `sync` will not commit a broken vault.
@@ -108,7 +111,7 @@ Choose the home by what the material is. Everything that enters keeps its proven
 | An idea that would explain something | A hypothesis (`brain-mesh-experiment`) |
 | Something nobody knows | A gap (`brain-mesh-gaps`) |
 | Two cards, or a card and a concept fact, that cannot both hold | The contradictions register: `contradictions add <card> <card> "<the clash>" --by "<who found it>"` (`brain-mesh` FORMATS.md, **Contradiction**). Never resolve a clash by editing one side away. |
-| A paper to read | Set its reference card's status to `queued`, or add a row to the table in `ledger/reading-queue.md` |
+| A paper to read | `python3 tools/mesh.py queue add <doi \| R id \| "author year title"> --why "<what it would fill>" --from <skill or card id>`: the one route onto the reading queue, which is generated from the reference cards. The user's decision: `queue mark <ref> queued\|skip` |
 | Free-form thinking, to-dos, meeting notes | `notes/`. The tooling ignores it; notes may link to any card. |
 | A correction to a card | Edit the card (section 4), or follow housekeeping for published corrections |
 
@@ -122,7 +125,7 @@ Every fact entered from a source carries the works the source cites for it (`cit
 
 - Edit the prose and the Codes together, so they still agree, and set `updated` to today.
 - A status change on a finding, tension, gap or hypothesis gets a `- graded:: <date> <status> — <why>` line.
-- Never edit generated parts: anything between the AUTO markers, `## Linked from` sections, `index/`, `MAP.md` below its marker, the generated part of the reading queue. Change the card they come from and rebuild.
+- Never edit generated parts: anything between the AUTO markers, `## Linked from` sections, `index/`, `MAP.md` below its marker, `ledger/reading-queue.md`. Change the card they come from and rebuild.
 - Never rename a card file. If one was renamed (Obsidian makes this easy), `build` restores the id from the card's `- id::` line.
 - Two cards that turn out to be one: `merge <keep> <drop>`.
 - After any change: `python3 tools/mesh.py build`, then fix every error.

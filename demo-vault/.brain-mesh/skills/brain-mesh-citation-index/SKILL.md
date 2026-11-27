@@ -57,7 +57,7 @@ Under `## What it claims`, two to eight lines, each one statement the abstract m
 
 `concepts::` is what the work is **about**, three to six concepts, not every term the abstract mentions. These put the card on those hubs, so be strict: a work that merely mentions mixtures in passing is not about mixtures.
 
-Set `status: queued` if the work now looks worth reading in full, and say why in `## Notes`.
+If the work now looks worth reading in full, put it on the reading queue: `python3 tools/mesh.py queue add R0266 --why "<what reading it would settle>" --from citation-index`. That records why on the card and lists it under **Suggested by the skills**; `queued` is the user's word that they are fetching it (`queue mark`).
 
 Some works bear on no concept this vault has, and should not grow one: a generic method or optimiser, a piece of tooling, a study in another field the paper cites in passing. Index it for the record and say so, rather than stretching for a concept or inventing one:
 

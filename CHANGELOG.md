@@ -2,7 +2,7 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
-## 1.30.0 (2026-11-26)
+## 1.30.0 (2026-11-27)
 
 **Computational studies: specified from the whole ontology, sealed before they run, and documented line by line afterwards.**
 

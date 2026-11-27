@@ -5,7 +5,7 @@ description: "Find what a brain mesh's ontology lacks by comparing it with somet
 
 # Brain mesh: beyond the ontology
 
-Read `brain-mesh` first. Find the vault and run `python3 tools/mesh.py build`.
+Read `brain-mesh` first, and `brain-mesh-access` for syncing. Find the vault and run `python3 tools/mesh.py build`.
 
 Every miner, route and verdict works on what the ontology can name. A concept the sources use and no card names, a link the field makes and no card holds, a technique from another field: none of these can be mined, because they are not there. This document finds them. The method is always the same: take a frame from outside the ontology, compare, sort the difference by where it stands in the brain, and judge it with the user.
 

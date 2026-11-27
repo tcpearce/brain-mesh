@@ -59,16 +59,66 @@ Under `## What it claims`, two to eight lines, each one statement the abstract m
 
 Set `status: queued` if the work now looks worth reading in full, and say why in `## Notes`.
 
+Some works bear on no concept this vault has, and should not grow one: a generic method or optimiser, a piece of tooling, a study in another field the paper cites in passing. Index it for the record and say so, rather than stretching for a concept or inventing one:
+
+```
+- concepts:: none — a generic machine-learning optimiser, not odour coding
+```
+
+The reason is required. `check` then leaves the card alone and it reaches no hub, which is correct: it is in the index, and in no part of the ontology.
+
+## 4a. Set its priority: this one is yours to judge
+
+A concept is the user's call, but **the priority of a cited work is the indexer's**. Set it as you index, with the reason on the card:
+
+```
+python3 tools/mesh.py priority R0266 high "3,000 mouse sensory neurons against 125 odorants: the measurement the brain's combinatorial-code cards assume but do not rest on"
+```
+
+- **high** — the work is significant in its field (a first measurement, a method everything else uses, a result others argue with), **or** central to what this vault is about, **or** it would fill a hole the brain plainly has: a concept carried by many cited works and few read sources, an open gap, a contradiction that turns on it, a finding stuck at single-source.
+- **low** — the brain cites it only for a method, a reagent or a passing fact, and reading it would change nothing.
+- **normal** — everything else; leave it alone rather than setting it.
+
+Be sparing with high: it is a reading list, not a bibliography. A handful per hundred works is right. Say which of the three reasons applies, in a few words, so the user can judge the call.
+
+## 4b. Watch for concepts the brain is missing
+
+The abstracts are where a missing concept shows itself. As you read them, note any term that keeps recurring across works and that `concept <name>` does not find. Report those in your summary with the ids that use them, and propose the clearest few (`propose <slug> "<definition>" --from <a citing source>`). After a run, `mesh.py beyond` raises the same candidates from the abstracts automatically, and the user decides.
+
 ## 5. What the index is for
 
 After a run, `python3 tools/mesh.py build` then:
 
 - `python3 tools/mesh.py literature` ranks concepts by cited works against sources read. A concept carried by many cited works and few read sources is where the brain rests on literature it has not read.
 - Each concept hub now lists the indexed works about it, with what each claims.
+- `python3 tools/mesh.py literature --gaps` names the thin concepts no gap card covers; section 5a says what to do with them.
 - `ledger/reading-queue.md` and the gap cards can then be argued from evidence: a gap that a dozen indexed works bear on is a reading list, not a research gap (`brain-mesh-gaps`, rung 2).
 
-Report to the user: how many works indexed, the concepts that gained most, the concepts where reading is thinnest, any work that turned out to be already held, and the handful you would read next, with the reason.
+Report to the user: how many works indexed, the concepts that gained most, the concepts where reading is thinnest, any work that turned out to be already held, the gap candidates from section 5a with their verdicts, and the handful you would read next, with the reason.
+
+## 5a. Turn thin coverage into gap candidates
+
+This is the step that makes the index pay. An index that nothing acts on is a bibliography.
+
+`python3 tools/mesh.py literature --gaps` lists the concepts where the cited literature far outweighs the sources read and no gap card covers it yet. Work through that list. A thin concept is **not** automatically a gap: it is a gap only where the brain cannot state something it needs to state.
+
+For each candidate, in this order:
+
+1. **Ask the brain first.** `python3 tools/mesh.py ask "<the question the concept raises>"` and `python3 tools/mesh.py concept <slug>`. If the brain can already answer from evidence it holds, there is no gap: the literature simply repeats what is known. Say so and move on.
+2. **Check it is not already carded.** Read the existing gap cards' titles (`gaps/`) and `ledger/` for a signal already judged. Never raise a second gap for the same hole; add to the one that exists.
+3. **Decide which kind it is**, because this is the distinction that matters and the one the index is uniquely able to settle:
+   - **Fillable** — the field has written the answer and this brain has not read it. A dozen indexed works bearing on the concept is the evidence for that. The outcome is a reading list, not a research gap.
+   - **A research gap** — the indexed works circle the concept without answering it. Say what each of the closest three or four *does* say and where each stops, which is what shows the hole is real.
+
+Write each candidate with: the concept and its read-against-cited counts; the three or four cited works that carry the weight, by id, with what each claims; what the brain cannot currently state; why it matters; and your verdict, fillable or research gap, with the reason. That is the material a gap card is made of, assembled from the index.
+
+**Where the candidate goes.** `gaps/` is shared, like `concepts/` and `ledger/`. So:
+
+- **In an agent, in a run with other agents:** write the candidates into your own report and nowhere else. The launching session writes the cards, exactly as it adopts the proposed concepts.
+- **Alone in the vault, with no other agent running:** write the gap cards yourself, following `brain-mesh-gaps`, and say in your report which ids you took.
+
+**Never set a gap's priority.** A cited work's priority is yours to judge (section 4a); a gap's is the user's, like a concept's. Write the card without a priority and let the user rank it.
 
 ## 6. Working in agents
 
-With more than about fifty works to index, split them between agents as `brain-mesh-batch` does. Each agent takes a block of reference ids, writes **only** in `references/`, touches no other folder, and never runs `build`, `sync` or `cite`. Give each agent its list explicitly, so two never take the same card. The launching session builds, checks and syncs when they are done.
+With more than about fifty works to index, split them between agents as `brain-mesh-batch` does. Each agent takes a block of reference ids, writes **only** in `references/`, touches no other folder, and never runs `build`, `sync` or `cite`. Give each agent its list explicitly, so two never take the same card. The launching session builds, checks and syncs when they are done, adopts or rejects the proposed concepts, and writes the gap cards from the candidates the agents reported (section 5a).

@@ -44,7 +44,7 @@ The brain answers in layers. Go down them as far as the question needs, and say 
 4. **Evidence cards.** One statement each, from one source, with its exact anchor.
 5. **The page.** Each evidence card's **open page** link lands on its highlight in the marked PDF. Go there whenever a value or wording matters.
 
-**To explore rather than answer, start with `zoom`** (`brain-mesh-discover`, **Working top-down**): it shows the brain as topics ranked by need to know, and each step down shows one topic, concept or card.
+**To explore rather than answer, start with `zoom`** (`brain-mesh-discover`, **How a discovery session runs**): it shows the brain as topics ranked by need to know, and each step down shows one topic, concept or card.
 
 **To answer, start with `ask`.** `python3 tools/mesh.py ask "<the question>"` returns, within about 2,500 tokens, what the brain holds on the question, best first: the cards it names, the brain's conclusions (findings, tensions, contradictions, gaps, hypotheses, theories) with their grades, the hub facts on its concepts, the relations among them with their basis, the most relevant evidence cards, and the parts of sources not read in full. Every line carries an id; open only the cards the answer needs. `--budget 6000` gives more, `--concepts a b` names concepts the question's words miss, `--source P012` keeps to one source.
 

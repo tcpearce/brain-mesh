@@ -9535,6 +9535,20 @@ sections **Novelty**, **Proofs of concept** and **Credibility checks**. Give `--
 EXP_SECTIONS = ["Question", "Data", "Code", "Analysis plan", "Leakage and circularity controls", "Pipeline null",
                 "Registered predictions", "Decision rule", "Risks and controls", "Amendments", "Outcome and assessment"]
 FROZEN = ("Analysis plan", "Registered predictions", "Decision rule")  # sealed by `experiment register`; later changes go under Amendments
+RECORD_KEYS = {  # Codes lines the tooling writes itself; they record what was done, so they are never written by hand
+    "swept": "experiment: the date and the dimensions of the ontology `experiment new` swept into '## What the brain brings'",
+    "from_proposal": "experiment: the campaign proposal the user accepted, which this study was promoted from",
+    "registered": "experiment: the date and time its analysis plan, predictions and decision rule were sealed",
+    "results": "experiment: the own-result source card its run was sealed as",
+    "deepened": "hypothesis: the date `hypothesis deepen` last filled '## Connections', with how many cards and concepts",
+    "run_of": "own-result source: the experiment card this run ran (`experiment run`)",
+    "ran": "own-result source: when the run finished, and how long it took",
+    "commit": "own-result source: the git commit of the code that ran, or 'none'",
+    "environment": "own-result source: the interpreter and packages the run used",
+    "files": "own-result source: how many files were sealed into it",
+    "coverage": "own-result source: how much of the output is anchored",
+}
+
 TEMPLATE_LINES = ("The one number the decision rests on, and how it is computed.", "Anything else reported, named here as secondary",
                   "What counts as support, as refutation and as inconclusive.", "the expected value of the primary statistic.",
                   "the expected value, which must differ", "Fixed in advance: which result supports, which refutes, which leaves the question open.")
@@ -10578,7 +10592,7 @@ def main():
     if c == "version": print(VERSION); return
     if c == "upgrade": return cmd_upgrade(a[0])
     if c == "schema":
-        print(json.dumps({"schema": SCHEMA, "study_designs (what each can establish)": {d: t for d, (t, _b) in DESIGNS.items()}, "relation_basis": BASES, "evidence_types": EVIDENCE_TYPES, "evidence_status": EVIDENCE_STATUS, "origin (default authors)": ORIGIN, "via (default text)": VIA, "evidence_relations": EVIDENCE_RELS, "pages (folder, type, status, link keys)": PAGES, "gap_kinds": GAP_KINDS, "concept_kinds": CONCEPT_KINDS, "concept_relations": CONCEPT_RELS, "inverse_labels_in_linked_from": INVERSE, "source_status": SOURCE_STATUS, "coverage_depths": DEPTHS, "source_kinds": SOURCE_KINDS, "reference_status": REF_STATUS, "reference_fields": REF_FIELDS, "priority": PRIORITY, "data_and_code_status": ACCESS, "claims_status": CLAIMS_STATUS}, indent=1)); return
+        print(json.dumps({"schema": SCHEMA, "study_designs (what each can establish)": {d: t for d, (t, _b) in DESIGNS.items()}, "relation_basis": BASES, "evidence_types": EVIDENCE_TYPES, "evidence_status": EVIDENCE_STATUS, "origin (default authors)": ORIGIN, "via (default text)": VIA, "evidence_relations": EVIDENCE_RELS, "pages (folder, type, status, link keys)": PAGES, "gap_kinds": GAP_KINDS, "concept_kinds": CONCEPT_KINDS, "concept_relations": CONCEPT_RELS, "inverse_labels_in_linked_from": INVERSE, "source_status": SOURCE_STATUS, "coverage_depths": DEPTHS, "source_kinds": SOURCE_KINDS, "reference_status": REF_STATUS, "reference_fields": REF_FIELDS, "priority": PRIORITY, "data_and_code_status": ACCESS, "claims_status": CLAIMS_STATUS, "record_lines (written by the tooling, never by hand)": RECORD_KEYS}, indent=1)); return
     if c == "repoinfo": return cmd_repoinfo(a[0])
     root = find_root()
     if c == "build": return cmd_build(root)

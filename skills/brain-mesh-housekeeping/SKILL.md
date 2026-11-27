@@ -5,7 +5,7 @@ description: "Keep a brain mesh healthy as it grows: health report, stale concep
 
 # Brain mesh: housekeeping
 
-Read `brain-mesh` first, and its FORMATS.md before writing or changing a card. Find the vault.
+Read `brain-mesh` first, its FORMATS.md before writing or changing a card, and `brain-mesh-access` for syncing. Find the vault.
 
 A vault that only ever grows drifts: hubs fall behind their evidence, findings keep grades they no longer deserve, searches age, and small extraction errors accumulate. Housekeeping is the work that keeps the brain trustworthy enough to design experiments from.
 

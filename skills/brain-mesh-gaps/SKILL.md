@@ -5,7 +5,7 @@ description: "Find the key knowledge gaps in a brain mesh, search for papers tha
 
 # Brain mesh: gaps
 
-Read `brain-mesh` first, and its FORMATS.md before writing or changing a card. Find the vault and run `python3 tools/mesh.py build`.
+Read `brain-mesh` first, and its FORMATS.md before writing or changing a card, and `brain-mesh-access` for syncing. Find the vault and run `python3 tools/mesh.py build`.
 
 ## The ladder
 

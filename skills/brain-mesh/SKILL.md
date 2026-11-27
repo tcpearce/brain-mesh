@@ -36,6 +36,7 @@ These instructions and the tooling live in the GitHub repository `tcpearce/brain
 | Add many papers at once, with agents working in parallel | `brain-mesh-batch` |
 | Look for every concept across some or all sources and card each new fact with the works the paper cites for it; backfill after a new concept | `brain-mesh-concept-scan` |
 | Find knowledge gaps, hunt papers that fill them, maintain the research-gaps document | `brain-mesh-gaps` |
+| Index the works the brain cites but has not read: abstracts, what each claims, where the brain rests on unread literature | `brain-mesh-citation-index` |
 | Specifying, registering, running and documenting a study, computational above all; judging its outcome | `brain-mesh-experiment` |
 | Mine the brain for new hypotheses and links with the user; theory, analogy and seed cards; recheck them as sources arrive | `brain-mesh-discover` |
 | A discovery campaign: competing agents with hourly meetings, blind referees, registered proofs of concept, download requests | `brain-mesh-campaign` |

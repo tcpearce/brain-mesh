@@ -14,6 +14,7 @@ updated: 2026-11-20
 - [[K001-capacity-falls-on-heating-in-water|K001 In water, binding capacity of the imprinted film for analyte X falls about threefold between 25 and 45 °C]] · probable
 
 **Evidence: 18 cards from 3 sources** (observation 10, method 4, claim 2, limitation 1, oddity 1)
+Evidence published 2021 to 2026; newest: [[P003-own-2026-heat-cool-cycle-results|P003 Own result (2026) Heat-then-cool cycle in water and acetonitrile, experiment E001]] (2026). `mesh.py chronology imprinted-polymer-film` checks what has a shelf life.
 - [[P001-003-capacity-4-2-at-25c-water|Binding capacity for analyte X is 4.2 at 25 °C in water]] · observation
 - [[P001-004-capacity-1-3-at-45c-water|Binding capacity for analyte X falls to 1.3 at 45 °C in water]] · observation
 - [[P001-005-film-thickens-18-percent|The film thickens by 18% between 25 and 45 °C in water]] · observation

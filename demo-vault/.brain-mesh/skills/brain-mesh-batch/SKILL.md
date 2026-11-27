@@ -22,7 +22,7 @@ Each paper's own folder (`sources/P012-<slug>/`) can be written by one agent wit
 Agents multiply token use. One unplanned fan-out of agents has already used up a whole week's token limit. So before launching:
 
 - Tell the user how many papers, how many agents, how many batches, and an estimate of the tokens: extract the first paper in this session, note what it used, and multiply. Ask the user to confirm.
-- Run 5 to 8 agents per batch, not all papers at once. Ask again before each batch unless the user approved the whole run.
+- Run 5 to 8 agents per batch, not all papers at once. Ask again before each batch unless the user approved the whole run. Once the user has asked for the papers to be carded, carry every registered paper through extraction, merge and integration without stopping between batches, and keep working on the merge while agents run; stop only for a decision that is the user's.
 - Agents run in the background. Do not poll them; their reports arrive when they finish.
 
 ## Phase 1: prepare
@@ -40,6 +40,7 @@ Agents multiply token use. One unplanned fan-out of agents has already used up a
 Give each agent, in its prompt:
 
 - The vault's path, its paper's id and title, and where the clone of `tcpearce/brain-mesh` is (or how to get it).
+- "Work directly: do not start agents or forks of your own." And a scratch folder of its own, outside the vault (`<session scratch>/P012/`), for any script or download: agents that share one scratch folder overwrite each other's files.
 - "Read `skills/brain-mesh/SKILL.md`, then `skills/brain-mesh-add-paper/SKILL.md`. Carry out steps 2 to 7 for P012 only. Step 8 (integration) is done later by the session that launched you."
 - **May write only** inside its own source folder (`sources/P012-<slug>/`, or `sources/P012/` before its source card exists): its evidence cards, figure files (`P012-F2.webp`, `P012-F2.csv`), `P012_refs.md`, `P012-claims.md`, `P012_concepts.md`, `P012_scan.md` and `P012_progress.md`.
 - **Must not write** `concepts/`, `findings/`, `tensions/`, `gaps/`, `hypotheses/`, `experiments/`, `index/`, `MAP.md`, `ledger/`, or another source's folder. Must not run `build`, `mark`, `log`, `anchor`, `seal`, `upgrade`, `sync` or `remove`, which write shared files or the repository.
@@ -54,7 +55,8 @@ Give each agent, in its prompt:
 - **Concept scan.** Once the paper is carded, run `scan P012` and work through it as `brain-mesh-concept-scan` says: card each new fact about an existing concept, add a repeated passage to the card that already states it, or write why there is nothing new on the concept's `decided::` line.
 - **Vault rules.** Read the vault's `CLAUDE.md`, including the rules the user set below its generated part, and follow them within these limits. Where a rule asks for a shared change, propose it in your own files: a concept the rules say must be low priority is proposed with `--low "<the rule's reason>"`, and the merging session adopts it as such. Never run `sync`, `build` or `priority`: `CLAUDE.md` exempts extraction agents from its sync rule.
 - **Contradictions.** Where a card of the paper cannot hold together with a card of a paper already integrated, or with a hub's facts, link it `contradicts::` with the reason and list it in the progress note. The merging session logs it on the register (`ledger/` is shared).
-- **Links to other papers.** Typed links with reasons are welcome from its own cards to cards of papers already integrated. Never edit another paper's cards. Candidate links to papers in the same batch go in the progress note.
+- **Links to other papers.** Typed links with reasons are welcome from its own cards to cards of papers already integrated. Never edit another paper's cards. Write a card before linking to it from another of its own cards: a link to an id not yet written blocks `build` if the agent stops in between. Candidate links to papers in the same batch go in the progress note.
+- **Handover for the merge.** In `P012_progress.md`, under these headings, list what the merging session must write in shared files: `## Hub facts` (`- [[concept]] :: <fact> — [[P012-031]] — cites [[R0042]]`), `## Key figures` (the figure files a hub should show), `## Contradictions` (card, other card, the clash), `## Links to papers in this batch`, `## Concepts proposed`, `## Condition values missing` (a variable the paper fixes but does not state). The merging session works through each heading in Phase 3.
 - **Progress note.** After each section of the paper, append to `P012_progress.md`: the date, the section done, the last card id, and anything open (figures still to read, flags, questions for the user). A resumed agent starts with `python3 tools/mesh.py progress P012` and then reads the note.
 - **Finish** when `check P012` shows no errors and no warnings other than proposed concepts and the `'cites:: ref N' lines are not linked yet` line (pending until the merge runs `cite`), and `scan P012` has nothing left to do. **Report back in at most ten lines:** cards by type, proposed concepts, flagged cards, `missing::` lines, figures read, and suggested links to other papers.
 
@@ -72,7 +74,7 @@ If the vault is a git repository and agents can be given their own worktree, giv
 
 ### When an agent stops
 
-Launch a new agent with the same brief plus "Resume: run `progress P012` first and continue from the progress note." Never run two agents on the same paper at once.
+Launch a new agent with the same brief plus "Resume: run `progress P012` first and continue from the progress note." Never run two agents on the same paper at once. An agent stopped by a usage limit keeps its context: where the session can message it (SendMessage), tell it to continue rather than starting a new one.
 
 ## Phase 3: merge
 

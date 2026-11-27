@@ -2,6 +2,43 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.33.0 (2026-11-27)
+
+**The citation index read as a whole, and the method brought into line with how it is practised.**
+
+Built on 1.32.0 (the reading queue, PR #60), with main's 1.31.0 (drift health can see) merged in.
+
+### The synthesis pass (issue #63)
+
+Indexing put each cited work on its hubs; nothing read the hundreds of abstracts together against the brain's own conclusions or its vocabulary.
+
+- `literature --against [K014 X001 … | all] [--all]` sets every finding, tension, gap, contradiction and hypothesis against the indexed works that bear on it: works sharing its concepts, at least one of them specific (carried by no more than 3 per cent of indexed works, `literature_specific_share`), ranked by rarity, with the claims that name them. Without ids, a table of every synthesis card: bearing works, last check, works indexed since.
+- `- literature_checked:: <date> — n read; agree [[R…]]; disagree [[R…]] (queued); answer …` records the check on the card. `literature` says how many cards have bearing works never checked, or indexed since their check.
+- `literature --pairs [<concept> …] [--min n]` lists pairs of concepts that several abstracts claim together and no evidence card names together: relations the literature draws and the brain holds no evidence on, each a candidate open question for both hubs.
+- `brain-mesh-citation-index` section 7: judge each bearing work (agrees, disagrees, answers, does not bear); queue what disagrees or answers at high priority; never change a card from an abstract; the ontology (missing concepts, definitions that do not fit their use, splits, merges, relations) proposed to the user as one numbered list; patterns no card holds reported, never written as findings.
+- Section 2 names the open indexes (OpenAlex, Europe PMC, Semantic Scholar), says to record which services were reached, and says how to check a result before pasting it: the same work, and an abstract rather than page furniture, a citation line, a letter's opening paragraph or an editor's teaser.
+
+### Console encoding (issue #64)
+
+On a Windows console any command printing a character outside the code page crashed with `UnicodeEncodeError`, `sync` included, part-way and before its push. Standard output and error now print such characters as `?`.
+
+### Checks
+
+- A reference card whose heading no longer ends with its `title::` (the fields were corrected, the heading was not) is flagged, with the heading to use.
+- A reference card held as the very source that cites it is flagged: a DOI swallowed from the citing paper's page footer makes a cited work look like the paper citing it.
+- Contradictions may be of kind `attribution`: a source credits another work with something that work does not show.
+
+### The skills, aligned with practice
+
+Two audits of the session logs (2026-11-21 to 27) compared what was done by hand with what the skills say. The skills now say:
+
+- add-paper: index every new cited work, not a selection; when a newly read work is already credited by other sources, check each credit against what it shows (contradiction kind `attribution`), and retire its indexed abstract.
+- housekeeping: refreshing many hubs with agents (drafts outside the vault, applied by the session, definitions unchanged); merging concepts only after checking how the literature uses each; reference cards merged only when one work; undoing a wrong merge; leftover links to merged cards; a retracted cited work; and auditing practice against the skills after a long session.
+- access: local edits left in the stash by a clashing pull; the Windows encoding crash; Windows scripting notes; Obsidian saving a stale copy over an edit; definitions, splits, merges and concept priorities are the user's, put as one numbered list; parallel agents draft outside the vault and start no agents of their own; the indexer may set a cited work's priority (as citation-index 4a already said, now consistent in brain-mesh, access and the vault `CLAUDE.md`).
+- batch: no agents or forks inside an agent; a scratch folder per agent; a handover in the progress note under fixed headings (hub facts, key figures, contradictions, links, concepts proposed, condition values missing); write a card before linking it; resume a stopped agent by message; carry an approved run through without stopping between batches.
+- FORMATS: `literature_checked::`; a pooled acquisition-software card where a vault's rules ask for one.
+- README: the release process as practised: an issue, a branch from the newest release, numbering from GitHub, `upgrade demo-vault`, a pull request the owner merges.
+
 ## 1.32.0 (2026-11-27)
 
 **One reading queue that every skill feeds, that looks forward as well as back, and that cannot go stale unnoticed; and the faults a batch of 35 papers found in the checker, the scan, the reference reader and the anchor.**
@@ -35,6 +72,18 @@ The queue only looked backwards: built from the reference lists of the sources a
 - **#49** `refs` reads Cell-style entries, numbered or not: the title to its full stop, the journal, volume and pages (with an `.eN` suffix) in their own fields, `et al.` kept, and `kind` inferred (preprint, software, book); Cell Press page furniture is stripped. Tests section 49.
 - **#47 (in part)** `anchor` reads a two-column page whose lines sit at the same heights column by column, keeping full-width lines whole. Three-column pages, and the anchored text of a source already carded, are left open on the issue. Tests section 47.
 - Tests section 56.
+
+## 1.31.0 (2026-11-27): drift health can see
+
+(Released on main while chronology, also numbered 1.31.0, waited in PR #51; both are merged here.)
+
+Three more things `health` can see, all of them kinds of drift a card cannot show on its own.
+
+- **Hypotheses the brain has moved past.** A hypothesis carries `deepened::` once `hypothesis deepen` has brought the brain to it. The queue lists any hypothesis never deepened, or deepened before the newest evidence card that shares a concept with it — the same staleness rule already used for concept hubs and mined cards. Until now a hypothesis was only asked about when a registered experiment sat on it.
+- **Studies whose data or code moved after they were sealed.** `check` verifies a *run's* data against the checksums on its data-set cards. This queue covers the gap before the run: a registered experiment whose `uses::` data-set or code card has been updated since the seal, so the plan is sealed but what it would run on is not.
+- **Citation-index entries whose work has since been read.** An indexed abstract is superseded the moment its work is read as a source; the entry should be retired so nothing rests on the authors' summary of themselves when the text is in the brain.
+
+Also: `literature` counted indexed works over a different population from the one it reported them against (retired and now-read works included in one count and not the other), so a vault could be told that more works were indexed than are cited.
 
 ## 1.31.0 (2026-11-27)
 

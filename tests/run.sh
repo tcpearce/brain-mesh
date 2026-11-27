@@ -2546,4 +2546,146 @@ grep -q "| SCE-01 .* | 5 | 4 | 2 | 4 | open |" st.txt && grep -q "| INS-01 .* | 
 [ "$(grep -n '| SCE-01 ' st.txt | cut -d: -f1)" -lt "$(grep -n '| INS-01 ' st.txt | cut -d: -f1)" ] && pass "ranked by impact: low realism does not sink a high-impact idea" || { cat st.txt; fail "impact ranking"; }
 grep -q "quartz-crystal-microbalance (.*): would unlock 1 proposal with impact 5 in all: SCE-01" st.txt && pass "what would unlock most: a needed capability the profile lacks, with the impact it holds back" || { cat st.txt; fail "unlocks"; }
 python3 tools/mesh.py campaign close $C2 > /dev/null; grep -q "^## What would unlock most" $FD/REPORT.md && grep -q "^## Recommendation" $FD/REPORT.md && grep -q "^- \*\*Prior and outcomes.\*\*" $FD/REPORT.md && grep -q "^- \*\*Follows on from.\*\*" $FD/REPORT.md && ! grep -q "INS-01 .*###" $FD/REPORT.md && pass "the report: the slate with prior and follow-on lines, what would unlock most, and a recommendation to write" || { cat $FD/REPORT.md; fail "report 1.29"; }
+# 1.30.0: computational studies — the ontology sweep, sealed analysis plans, sealed runs, cards anchored to the output
+rm -rf "$T/xp"; cp -r "$ROOT/demo-vault" "$T/xp"; cd "$T/xp"; python3 "$MESH" upgrade . > /dev/null; python3 tools/mesh.py build > /dev/null
+cat > hypotheses/H002-swelling-sets-the-loss.md <<'CARD'
+---
+type: hypothesis
+status: open
+updated: 2026-11-26
+---
+# Solvent uptake, not temperature as such, sets the capacity lost on heating
+
+## Rationale
+Heating raises uptake, the film swells and the cavities distort, so [[binding-capacity]] falls.
+
+## Rival explanations
+1. Heat alone deforms the cavities.
+
+## Predictions
+- Under this hypothesis: no loss in a solvent the film does not take up.
+
+## Codes
+- id:: H002
+- explains:: [[K001]] — the loss on heating
+- concepts:: [[binding-capacity]], [[temperature]], [[solvent]], [[swelling]]
+CARD
+python3 tools/mesh.py experiment sweep H002 > sw.txt
+grep -q "^### Established facts the design must agree with" sw.txt && grep -q "^### Limitations and assumptions to control for" sw.txt && grep -q "^### The nearest already-obvious next steps" sw.txt && grep -q "18 of 18 dimensions\|of 18 dimensions have something" sw.txt && pass "experiment sweep brings every dimension of the ontology to a design" || { head -20 sw.txt; fail "sweep"; }
+grep -q "K001" sw.txt && grep -q "P001-009\|limitation\|assumption" sw.txt && pass "the sweep finds the findings to agree with and the assumptions to control for" || { cat sw.txt; fail "sweep content"; }
+python3 tools/mesh.py experiment new H002 > out.txt; EID=$(grep -o "E0[0-9][0-9]" out.txt | head -1); E=$(ls experiments/$EID-*.md)
+grep -q "of 18 dimensions" out.txt && grep -q "^## What the brain brings" $E && grep -q "^- swept:: " $E && grep -q "^## Pipeline null" $E && grep -q "^## Leakage and circularity controls" $E && grep -q "^- tests:: \[\[H002\]\]" $E && pass "experiment new scaffolds a computational card with the sweep written into it" || { cat out.txt; fail "experiment new"; }
+python3 tools/mesh.py experiment register $EID > out.txt 2>&1 && fail "an experiment with no analysis plan was sealed" || grep -q "fill ## Analysis plan\|## Registered predictions\|## Decision rule" out.txt && pass "registration needs an analysis plan, predictions and a decision rule" || { cat out.txt; fail "register empty"; }
+python3 - "$E" <<'PY'
+import re, sys
+p = sys.argv[1]; t = open(p).read()
+def setsec(name, body):
+    global t
+    t = re.sub(r"(^## " + re.escape(name) + r"\s*\n)(.*?)(?=^## )", lambda m: m.group(1) + "\n" + body + "\n\n", t, count=1, flags=re.S | re.M)
+setsec("Analysis plan", "**Primary statistic.** The correlation between thickening and capacity loss across films.\n**Secondary.** Nothing.\n**Threshold.** r above 0.5.")
+setsec("Registered predictions", "- Under [[H002]]: r above 0.5.\n- Under the rival: r near zero.")
+setsec("Decision rule", "Supports above 0.5, refutes below 0.1, otherwise inconclusive.")
+open(p, "w").write(t)
+PY
+python3 tools/mesh.py experiment register $EID | grep -q "sealed" && grep -q "^status: registered" $E && grep -q "^$EID [0-9a-f]\{64\} " ledger/registrations.txt && pass "experiment register seals the analysis plan, predictions and decision rule" || fail "register"
+python3 tools/mesh.py build > /dev/null; (python3 tools/mesh.py check || true) > chk.txt 2>&1; grep -q "$EID: its analysis plan" chk.txt && fail "build's link expansion broke the seal" || pass "the seal survives build expanding links inside the frozen sections"
+sed -i.bak 's/^Supports above 0.5, refutes below 0.1, otherwise inconclusive.$/Supports above 0.3, refutes below 0.1, otherwise inconclusive./' $E; rm -f experiments/*.bak
+(python3 tools/mesh.py check || true) | grep -q "$EID: its analysis plan, registered predictions or decision rule have changed since it was sealed" && pass "a decision rule moved after sealing is an error" || fail "seal not enforced"
+sed -i.bak 's/^Supports above 0.3, refutes below 0.1, otherwise inconclusive.$/Supports above 0.5, refutes below 0.1, otherwise inconclusive./' $E; rm -f experiments/*.bak
+mkdir -p "$T/run1"; cd "$T/run1"
+cat > run.py <<'PY'
+print("films measured: 6")
+print("correlation between thickening and capacity loss: r = 0.81")
+print("shuffled control, 95th percentile: 0.42")
+print("mean binding capacity at 45 C: 1.4 mg/g")
+PY
+python3 run.py > output.txt
+printf -- '- outcome:: supported\n\nr = 0.81 across six films.\n\n## Amendments\n\nNone.\n' > result.md
+printf 'From the cards P001-005 and P003-002; no external data.\n' > DATA.md
+printf 'python 3.13\n' > environment.txt
+cd "$T/xp"
+python3 tools/mesh.py experiment run E099 --from "$T/run1" > out.txt 2>&1 && fail "a run of a card that does not exist was recorded" || pass "experiment run needs a real experiment card"
+python3 tools/mesh.py experiment run $EID --from "$T/run1" > out.txt; P=$(grep -o "^P0[0-9][0-9]" out.txt | head -1)
+[ -n "$P" ] && [ -f sources/$P-*/${P}_text.md ] && [ -f sources/$P-*/${P}_MANIFEST.tsv ] && grep -q "correlation between thickening and capacity loss: r = 0.81 \^b" sources/$P-*/${P}_text.md && pass "experiment run seals the run and anchors its output line by line" || { cat out.txt; fail "experiment run"; }
+grep -q "^- run_of:: \[\[$EID\]\]" sources/$P-*/$P-*.md && grep -q "^- kind:: own-result" sources/$P-*/$P-*.md && grep -q "^- environment:: " sources/$P-*/$P-*.md && grep -q "run.py	" sources/$P-*/${P}_MANIFEST.tsv && [ -f sources/$P-*/${P}_SI-run.py ] && pass "the run card records what ran, in what environment, with every file checksummed and the code stored" || { ls sources/$P-*/; fail "run card"; }
+grep -q "^- results:: \[\[$P\]\]" $E && grep -q "^status: running" $E && pass "the experiment card points at its run" || fail "results link"
+D=$(dirname sources/$P-*/${P}_text.md)
+B=$(grep -o "capacity loss: r = 0.81 \^b[0-9]*" "$D/${P}_text.md" | grep -o "\^b[0-9]*" | tr -d "^")
+B2=$(grep -o "mean binding capacity at 45 C: 1.4 mg/g \^b[0-9]*" "$D/${P}_text.md" | grep -o "\^b[0-9]*" | tr -d "^")
+cat > "$D/$P-001-thickening-tracks-capacity-loss.md" <<CARD
+---
+type: observation
+status: derived
+updated: 2026-11-26
+---
+# Across six films, thickening and capacity loss correlate at r = 0.81
+
+From the run of [[$EID]], the loss of [[binding-capacity]] tracked the rise in [[film-thickness]].
+
+**Source:** the run output, line $B.
+
+## Codes
+- id:: $P-001
+- stat:: r = 0.81 (six films)
+- concepts:: [[binding-capacity]], [[film-thickness]]
+- missing:: method — a synthetic run for the tests
+- anchor:: [[${P}_text#^$B]]
+- loc:: "correlation between thickening and capacity loss: r = 0.81"
+CARD
+cat > "$D/$P-002-capacity-at-45-degrees.md" <<CARD
+---
+type: observation
+status: measured
+updated: 2026-11-26
+---
+# The run reports a mean binding capacity of 1.4 mg/g at 45 °C
+
+From the run of [[$EID]], [[binding-capacity]] at 45 °C averaged 1.4 mg/g across the six films.
+
+**Source:** the run output, line $B2.
+
+## Codes
+- id:: $P-002
+- value:: [[binding-capacity]] = 1.4 mg/g
+- concepts:: [[binding-capacity]], [[temperature]]
+- missing:: method — a synthetic run for the tests
+- anchor:: [[${P}_text#^$B2]]
+- loc:: "mean binding capacity at 45 C: 1.4 mg/g"
+CARD
+python3 tools/mesh.py build > b.txt 2>&1; grep -q "check: 0 errors" b.txt && pass "a card anchored to a line of the sealed run builds clean" || { grep "^ERROR" b.txt | head -3; fail "run-anchored card"; }
+sed -i.bak 's/= 1.4 mg\/g/= 1.9 mg\/g/' "$D/$P-002-"*.md; rm -f "$D"/*.bak
+(python3 tools/mesh.py check || true) > chk.txt; grep -q "$P-002: value 1.9 not found in the anchored source" chk.txt && pass "a number that is not in the sealed output is caught, as for a paper" || { grep "$P" chk.txt | head -3; fail "number check"; }
+sed -i.bak 's/= 1.9 mg\/g/= 1.4 mg\/g/' "$D/$P-002-"*.md; rm -f "$D"/*.bak
+rm -f ledger/registrations.txt; (python3 tools/mesh.py check || true) > chk.txt
+grep -q "$P: a run of $EID, which was never sealed" chk.txt && grep -q "$EID: \(registered\|running\), but never sealed" chk.txt && pass "a run whose experiment was never sealed is flagged, and so is the card" || { grep "$P\|$EID" chk.txt | head -4; fail "unsealed run"; }
+python3 tools/mesh.py experiment run $EID --from "$T/run1" --as P099 > out.txt 2>&1 && fail "a run of an unsealed experiment was recorded" || grep -q "never sealed" out.txt && pass "experiment run refuses an unsealed experiment" || { cat out.txt; fail "run refuses"; }
+python3 tools/mesh.py experiment register $EID > /dev/null
+printf '%s %s 2099-01-01 00:00:00\n' "$EID" "$(grep "^$EID " ledger/registrations.txt | cut -d' ' -f2)" > ledger/registrations.txt
+(python3 tools/mesh.py check || true) | grep -q "$P: the run is dated .*, before $EID was sealed on 2099-01-01" && pass "a run dated before its registration is an error" || fail "run before seal"
+python3 tools/mesh.py experiment register $EID --force > /dev/null; python3 tools/mesh.py build > /dev/null
+
+
+# 1.30.0: hypothesis deepen — the whole brain brought to bear on a claim, and every card weighed
+H=hypotheses/H002-swelling-sets-the-loss.md
+python3 tools/mesh.py hypothesis deepen H002 > dp.txt
+grep -q "pertinent cards in" dp.txt && grep -q "How far the claim reaches" dp.txt && grep -q "### Evidence that bears on the claim directly" dp.txt && pass "hypothesis deepen files every pertinent card by how it can bear on the claim" || { head -20 dp.txt; fail "deepen"; }
+grep -q "bears: ?" dp.txt && pass "every card it finds arrives unjudged, to be read and weighed" || { head -20 dp.txt; fail "deepen unjudged"; }
+python3 tools/mesh.py hypothesis deepen H002 --write > /dev/null
+grep -q "^## Connections" $H && grep -q "^- deepened:: " $H && grep -q "^## Codes" $H && pass "deepen --write puts the connections in the card and records that it was deepened" || { cat $H; fail "deepen write"; }
+awk '/^## Connections/{c=1} /^## Codes/{c=0} c' $H | grep -q "bears: ?" && pass "the written connections carry the unjudged mark until a reader replaces it" || fail "deepen write unjudged"
+python3 tools/mesh.py build > /dev/null; (python3 tools/mesh.py check || true) > chk.txt
+grep -q "H002: .* not yet judged" chk.txt && pass "check asks for the unjudged cards of a hypothesis under a registered experiment" || { grep H002 chk.txt | head -3; fail "deepen check"; }
+python3 - "$H" <<'PY2'
+import re, sys
+p = sys.argv[1]; t = open(p).read()
+t = re.sub(r" · bears: \?$", " · bears: the mechanism of the swelling step", t, flags=re.M)
+open(p, "w").write(t)
+PY2
+python3 tools/mesh.py hypothesis deepen H002 --write > /dev/null
+awk '/^## Connections/{c=1} /^## Codes/{c=0} c' $H | grep -q "bears: the mechanism of the swelling step" && pass "a judgment already written survives the next deepen" || fail "judgments lost"
+(python3 tools/mesh.py check || true) > chk.txt; grep -q "H002: .* not yet judged" chk.txt && fail "check still asks for judgments that are written" || pass "check is satisfied once every card is weighed"
+python3 tools/mesh.py hypothesis deepen --text "solvent uptake sets the capacity lost on heating" > dp.txt
+grep -q "pertinent cards in" dp.txt && pass "deepen also works on a claim that has no card yet" || { head -5 dp.txt; fail "deepen --text"; }
+python3 tools/mesh.py hypothesis deepen K001 > out.txt 2>&1 && fail "deepen accepted a card that is not a hypothesis" || pass "deepen needs a hypothesis card or a claim"
+
 echo "ALL TESTS PASSED"

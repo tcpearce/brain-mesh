@@ -22,4 +22,5 @@ At 25 °C in [[water]] the [[binding-capacity|binding capacity]] of our batch 7 
 
 ## Linked from
 - in_source:: [[P003-own-2026-heat-cool-cycle-results|Own result (2026) Heat-then-cool cycle in water and acetonitrile, experiment E001]]
+- mentioned_in:: [[H001-loss-is-reversible-swelling|The loss of binding capacity on heating in water is reversible swelling, not damage]]
 - supports_finding:: [[K001-capacity-falls-on-heating-in-water|In water, binding capacity of the imprinted film for analyte X falls about threefold betw…]]

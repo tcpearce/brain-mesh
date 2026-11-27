@@ -36,3 +36,6 @@ updated: 2026-11-20
 - id:: solvent
 - kind:: variable
 - unit:: categorical
+
+## Linked from
+- mentioned_in:: [[H001-loss-is-reversible-swelling|The loss of binding capacity on heating in water is reversible swelling, not damage]]

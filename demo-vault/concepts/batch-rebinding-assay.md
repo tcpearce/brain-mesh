@@ -30,3 +30,6 @@ updated: 2026-11-20
 ## Codes
 - id:: batch-rebinding-assay
 - kind:: technique
+
+## Linked from
+- mentioned_in:: [[H001-loss-is-reversible-swelling|The loss of binding capacity on heating in water is reversible swelling, not damage]]

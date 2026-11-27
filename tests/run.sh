@@ -1995,7 +1995,7 @@ python3 tools/mesh.py build > b1.txt 2>&1 || true
 python3 "$T/land.py" . > l1.txt; n=$(sed -n 's/^land \([0-9]*\) .*/\1/p' l1.txt)
 [ "$n" -ge 18 ] && grep -q "^land $n miss 0$" l1.txt && pass "every card's link opens its own highlight: the annotation number in the link is the one in the marked copy" || { cat l1.txt; fail "card links land"; }
 cp -r sources "$T/mk-src1"; cp index/marks.json "$T/mk-marks1.json"; rm -rf index/.scratch sources/*/P*_marked.pdf; python3 tools/mesh.py build > b2.txt 2>&1 || true
-[ -z "$(diff -rq "$T/mk-src1" sources | grep -v '_marked.pdf')" ] && cmp -s index/marks.json "$T/mk-marks1.json" && ! grep -q '"sig"' index/marks.json && python3 "$T/land.py" . | grep -q "^land $n miss 0$" && pass "a copy of the vault with no marked PDFs builds its own, and no card or index file changes" || { diff -rq "$T/mk-src1" sources; fail "marked copies rebuilt elsewhere"; }
+[ -z "$(diff -rq "$T/mk-src1" sources | grep -v '_marked.pdf')" ] && cmp -s index/marks.json "$T/mk-marks1.json" && ! grep -q '"sig"' index/marks.json && python3 "$T/land.py" . > "$T/land.out" && grep -q "^land $n miss 0$" "$T/land.out" && pass "a copy of the vault with no marked PDFs builds its own, and no card or index file changes" || { diff -rq "$T/mk-src1" sources; fail "marked copies rebuilt elsewhere"; }
 python3 tools/mesh.py build | grep -q "marked PDFs rewritten for: none" && pass "a marked copy that is current is left alone" || fail "marked copy rebuilt needlessly"
 python3 "$T/annot.py" . add; python3 "$T/land.py" . | grep "^user" > u0.txt; python3 tools/mesh.py build > b3.txt 2>&1 || true; python3 "$T/land.py" . > l3.txt
 [ "$(wc -l < u0.txt)" = 7 ] && [ -f $S1/P001_annotations.json ] && [ "$(grep -c '"id"' $S1/P001_annotations.json)" = 7 ] && grep "^user" l3.txt | cmp -s - u0.txt && grep -q "^land $n miss 0$" l3.txt && pass "annotations a reader adds to a marked copy are saved to P001_annotations.json and drawn again on the rebuilt copy: kind, place, colour, text and author" || { cat b3.txt l3.txt; fail "user annotations kept"; }
@@ -2024,9 +2024,9 @@ if command -v git > /dev/null; then
   git clone -q -b main "$T/mg.git" "$T/mg2"; git -C "$T/mg2" config user.email u@u; git -C "$T/mg2" config user.name u
   [ -n "$(git ls-files 'sources/*/P*_marked.pdf')" ] && python3 tools/mesh.py sync "tooling 1.25" > "$T/mg-s.txt" 2>&1
   [ -z "$(git ls-files 'sources/*/P*_marked.pdf')" ] && [ -z "$(git -C "$T/mg.git" ls-tree -r --name-only main | grep '_marked.pdf$')" ] && [ -f $S1/P001_marked.pdf ] && grep -q "^sources/\*/P\*_marked.pdf$" .gitignore && grep -q "^sync: 2 marked PDFs are no longer kept in git" "$T/mg-s.txt" && [ -z "$(git status --porcelain)" ] && pass "sync stops versioning the marked copies of an older vault and leaves them on disk" || { cat "$T/mg-s.txt"; git status --porcelain; fail "marked untracked"; }
-  python3 "$T/annot.py" . add; python3 tools/mesh.py sync "my highlights" > "$T/mg-s.txt" 2>&1; git ls-files | grep -q "P001_annotations.json" && [ -z "$(git ls-files 'sources/*/P*_marked.pdf')" ] && pass "sync commits the side file with the reader's annotations, not the marked copy" || { cat "$T/mg-s.txt"; fail "side file committed"; }
+  python3 "$T/annot.py" . add; python3 tools/mesh.py sync "my highlights" > "$T/mg-s.txt" 2>&1; git ls-files > "$T/lsf.txt" && grep -q "P001_annotations.json" "$T/lsf.txt" && [ -z "$(git ls-files 'sources/*/P*_marked.pdf')" ] && pass "sync commits the side file with the reader's annotations, not the marked copy" || { cat "$T/mg-s.txt"; fail "side file committed"; }
   (cd "$T/mg2" && python3 tools/mesh.py sync > "$T/mg2-s.txt" 2>&1); python3 "$T/land.py" . | grep "^user" > "$T/mg-u1.txt"
-  [ -f "$T"/mg2/$S1/P001_marked.pdf ] && python3 "$T/land.py" "$T/mg2" | grep "^user" | cmp -s - "$T/mg-u1.txt" && [ "$(wc -l < "$T/mg-u1.txt")" = 7 ] && python3 "$T/land.py" "$T/mg2" | grep -q "^land [0-9]* miss 0$" && [ -z "$(git -C "$T/mg2" status --porcelain)" ] && pass "another copy pulls, builds its own marked copies with the reader's annotations, and has nothing to commit" || { cat "$T/mg2-s.txt"; git -C "$T/mg2" status --porcelain; fail "marked copies after a pull"; }
+  [ -f "$T"/mg2/$S1/P001_marked.pdf ] && python3 "$T/land.py" "$T/mg2" | grep "^user" | cmp -s - "$T/mg-u1.txt" && [ "$(wc -l < "$T/mg-u1.txt")" = 7 ] && python3 "$T/land.py" "$T/mg2" > "$T/land.out" && grep -q "^land [0-9]* miss 0$" "$T/land.out" && [ -z "$(git -C "$T/mg2" status --porcelain)" ] && pass "another copy pulls, builds its own marked copies with the reader's annotations, and has nothing to commit" || { cat "$T/mg2-s.txt"; git -C "$T/mg2" status --porcelain; fail "marked copies after a pull"; }
 fi
 else pass "(PyMuPDF is not installed here, so the marked-copy checks are skipped)"; fi
 # 41. build and check do each piece of work once, keep what they work out from unchanged files, and give the same results (1.26.0)
@@ -2421,7 +2421,7 @@ grep -q "Evidence published" concepts/swelling.md && pass "the hub says across w
 # 46. campaigns: competing discovery agents, blind scores, pairwise ranking, registered proofs of concept, meetings, the report (1.28.0)
 rm -rf "$T/cmp"; cp -r "$ROOT/demo-vault" "$T/cmp"; cd "$T/cmp"; python3 "$MESH" upgrade . > /dev/null; python3 tools/mesh.py build > /dev/null
 python3 tools/mesh.py campaign init "Heat and capacity" --scope topic:nonsense > out.txt 2>&1 && fail "campaign init took an unknown topic" || pass "campaign init refuses an unknown topic"
-python3 tools/mesh.py campaign init "Heat and capacity" --scope topic:binding-capacity --constraint "no field work" > out.txt
+python3 tools/mesh.py campaign init "Heat and capacity" --scope topic:binding-capacity --rank composite --constraint "no field work" > out.txt
 CD=$(ls -d campaigns/*-heat-and-capacity); [ -f $CD/agents/sceptic/BRIEF.md ] && [ -f $CD/referee-brief.md ] && [ -f $CD/verifier-brief.md ] && grep -q "^- constraint:: no field work$" $CD/CAMPAIGN.md && grep -q "proposals/SCE-NN-<slug>.md" $CD/agents/sceptic/BRIEF.md && pass "campaign init writes the campaign, one brief per lens, and the referee and verifier briefs" || fail "campaign init"
 cat > $CD/proposals/REC-01-solvent-uptake-sets-the-loss.md <<'CARD'
 # Capacity loss on heating scales with solvent uptake, not temperature as such
@@ -2434,6 +2434,9 @@ cat > $CD/proposals/REC-01-solvent-uptake-sets-the-loss.md <<'CARD'
 **Decisive experiment.** Heat films in solvents of graded uptake at one temperature.
 **Impact if true.** Settles X001 and grades K001.
 **How it could be killed.** Equal loss in a solvent the film does not take up.
+**Prior and outcomes.** Expected to hold; a null would surprise.
+**Nearest obvious entry.** O-01; differs in kind.
+**Credibility checks.** No shared upstream data.
 
 ## Codes
 - id:: REC-01
@@ -2457,6 +2460,9 @@ cat > $CD/proposals/MEC-01-cavity-damage-needs-heat-alone.md <<'CARD'
 **Decisive experiment.** Heat in acetonitrile and measure capacity.
 **Impact if true.** Separates the two accounts of K001.
 **How it could be killed.** No loss in acetonitrile.
+**Prior and outcomes.** Expected to hold; a null would surprise.
+**Nearest obvious entry.** O-01; differs in kind.
+**Credibility checks.** No shared upstream data.
 
 ## Codes
 - id:: MEC-01
@@ -2481,6 +2487,9 @@ cat > $CD/proposals/SCE-01-equilibrium-assumption.md <<'CARD'
 **Decisive experiment.** Time course to 24 hours.
 **Impact if true.** Every capacity value in the brain would be an underestimate.
 **How it could be killed.** A flat time course after 60 minutes.
+**Prior and outcomes.** Expected to hold; a null would surprise.
+**Nearest obvious entry.** O-01; differs in kind.
+**Credibility checks.** No shared upstream data.
 
 ## Codes
 - id:: SCE-01
@@ -2514,8 +2523,8 @@ python3 tools/mesh.py campaign score SCE-01 --referee R1 --impact 2 --cogency 2 
 python3 tools/mesh.py campaign score SCE-01 --referee R2 --impact 2 --cogency 3 --realism 2 --gate "no stated mechanism evidence" > /dev/null
 python3 tools/mesh.py campaign compare REC-01 MEC-01 --winner REC-01 --referee R1 > /dev/null; python3 tools/mesh.py campaign compare REC-01 SCE-01 --winner REC-01 --referee R2 > /dev/null; python3 tools/mesh.py campaign compare MEC-01 SCE-01 --winner MEC-01 --referee R1 > /dev/null
 python3 tools/mesh.py campaign status > st.txt
-grep -q "| REC-01 .* | recombiner | active | 4 | 4 | 4 | open | passed | 1[0-9][0-9][0-9] | 3.6 | ok |" st.txt && pass "composite: medians, geometric mean, × 0.9 until the proof of concept is replicated" || { cat st.txt; fail "composite"; }
-grep -q "| MEC-01 .* | 3 | 3.5 | 5 | partly | none | .* | 2.25 | ok |" st.txt && pass "without a verifier the most cautious novelty verdict counts" || { cat st.txt; fail "novelty"; }
+grep -q "| REC-01 .* | recombiner | active | 4 | 4 | 4 | – | open | passed | 1[0-9][0-9][0-9] | 3.6 | ok |" st.txt && pass "composite: medians, geometric mean, × 0.9 until the proof of concept is replicated" || { cat st.txt; fail "composite"; }
+grep -q "| MEC-01 .* | 3 | 3.5 | 5 | – | partly | none | .* | 2.25 | ok |" st.txt && pass "without a verifier the most cautious novelty verdict counts" || { cat st.txt; fail "novelty"; }
 grep -q "| SCE-01 .* | 0 | no stated mechanism evidence |" st.txt && pass "a failed gate makes the composite 0" || { cat st.txt; fail "gate"; }
 grep -q "recombiner: 3.6 · 0.56 · 0 · 4.16" st.txt && pass "credit: own composites plus a quarter of those that build on yours" || { cat st.txt; fail "credit"; }
 python3 tools/mesh.py campaign poc replicate REC-01 --ok --referee verifier --note "r = 0.80" > /dev/null; python3 tools/mesh.py campaign status | grep -q "| REC-01 .* | passed (replicated ok) | .* | 4 | ok |" && pass "a replicated proof of concept loses the 0.9" || fail "replicated"
@@ -2542,4 +2551,51 @@ python3 tools/mesh.py campaign set MEC-01 killed --why "acetonitrile result alre
 python3 tools/mesh.py campaign set MEC-01 killed --why "acetonitrile result already in P002" --by sceptic > /dev/null && grep -q "^- killed_by:: sceptic" $CD/proposals/MEC-01-*.md && python3 tools/mesh.py campaign status | grep -q "sceptic: 0 · 0 · 1 · 1" && pass "a kill earns the killer a point" || fail "kill credit"
 python3 tools/mesh.py campaign close > out.txt; grep -q "^### 1. Capacity loss on heating scales with solvent uptake" $CD/REPORT.md && grep -q "REC-DL01" $CD/REPORT.md && grep -q "^- status:: closed$" $CD/CAMPAIGN.md && pass "close writes the slate with downloads and closes the campaign" || { cat $CD/REPORT.md; fail "close"; }
 python3 tools/mesh.py build > build.txt; grep -q "check: 0 errors" build.txt && pass "a vault with a campaign folder builds clean" || { cat build.txt; fail "build with campaign"; }
+# 1.29.0: the obvious list, follow-on campaigns, originality, ranking by impact, what would unlock most
+python3 tools/mesh.py obvious sources:P001,P002 > ob.txt; grep -q "^# What is already obvious: papers P001, P002" ob.txt && grep -q "^## The standard moves" ob.txt && grep -q "Make the predicted molecules or mixtures and test them, for papers P001, P002" ob.txt && pass "obvious lists the standard moves for named papers" || { cat ob.txt; fail "obvious"; }
+grep -q "^## Named by the papers themselves" ob.txt && grep -q "^## Open gaps, contradictions and tensions" ob.txt && pass "obvious reads the papers' own questions and limitations and the open gaps they touch" || { cat ob.txt; fail "obvious sections"; }
+python3 tools/mesh.py obvious sources:P999 > out.txt 2>&1 && fail "obvious took a source that is not in the brain" || pass "obvious refuses a source not in the brain"
+python3 tools/mesh.py campaign init "Follow on" --sources P001,P002 > out.txt; FD=$(ls -d campaigns/*-follow-on)
+grep -q "^- scope:: sources:P001,P002$" $FD/CAMPAIGN.md && grep -q "^- agents:: sceptic, instrumentalist, transferer$" $FD/CAMPAIGN.md && grep -q "^- rank:: impact$" $FD/CAMPAIGN.md && grep -q "^- format:: 2$" $FD/CAMPAIGN.md && [ -f $FD/OBVIOUS.md ] && [ -f $FD/decisions.md ] && pass "a follow-on campaign: named papers, distant lenses, ranked by impact, with OBVIOUS.md and decisions.md" || { cat $FD/CAMPAIGN.md; fail "follow-on init"; }
+grep -q "This is a follow-on campaign" $FD/agents/instrumentalist/BRIEF.md && grep -q "OBVIOUS.md" $FD/agents/instrumentalist/BRIEF.md && grep -q -- "--campaign $(basename $FD)" $FD/agents/instrumentalist/BRIEF.md && grep -q "originality n" $FD/referee-brief.md && grep -q "load-bearing citation" $FD/verifier-brief.md && pass "briefs carry the follow-on rule, the obvious list, --campaign, originality and the citation check" || fail "follow-on briefs"
+python3 tools/mesh.py campaign init "Second" --scope topic:binding-capacity > /dev/null; python3 tools/mesh.py campaign status > out.txt 2>&1 && fail "status chose between two running campaigns" || grep -q "more than one campaign is running" out.txt && pass "with two campaigns running, --campaign is required" || { cat out.txt; fail "two running"; }
+C2="--campaign $(basename $FD)"
+cat > $FD/proposals/SCE-01-uptake-premise.md <<'CARD'
+# The heating loss needs a swelling solvent
+
+**Hypothesis.** No loss in a solvent the film does not take up.
+**Mechanism.** Uptake swells the network.
+**Rests on.** [[K001]], [[P001-005]].
+**Novelty search.** PubMed, 2026-11-26, nothing.
+**Proof of concept.** None yet.
+**Decisive experiment.** Heat in a non-swelling solvent.
+**Impact if true.** Settles X001.
+**How it could be killed.** Loss without uptake.
+**Prior and outcomes.** Expected to hold; a loss without uptake would surprise.
+**Nearest obvious entry.** O-03; differs in kind: a premise, not a repeat.
+**Credibility checks.** Shared upstream data: none.
+
+## Codes
+- id:: SCE-01
+- owner:: sceptic
+- round:: 1
+- status:: active
+- rests_on:: [[K001]], [[P001-005]]
+- novelty:: open — PubMed 2026-11-26
+- poc:: none
+- reach:: partner
+- needs:: [[quartz-crystal-microbalance]] — the uptake measurement
+- first_result:: two weeks
+- paper_months:: 6
+CARD
+python3 tools/mesh.py campaign check $C2 > chk.txt; grep -q "SCE-01: a follow-on proposal names in \*\*Follows on from.\*\* and - follows_on:: the result of P001, P002 it builds on" chk.txt && pass "a follow-on proposal must name the result it follows on from" || { cat chk.txt; fail "follows_on"; }
+printf '**Follows on from.** The capacity loss in water.\n' >> $FD/proposals/SCE-01-uptake-premise.md; printf -- '- follows_on:: [[P001-004]] — the loss on heating\n' >> $FD/proposals/SCE-01-uptake-premise.md
+sed 's/^- id:: SCE-01$/- id:: INS-01/; s/^- owner:: sceptic$/- owner:: instrumentalist/; s/^# The heating loss needs a swelling solvent$/# A thickness-normalised capacity is the right quantity/; /^- needs::/d; s/^- reach:: partner$/- reach:: in/' $FD/proposals/SCE-01-uptake-premise.md > $FD/proposals/INS-01-normalised-capacity.md
+python3 tools/mesh.py campaign check $C2 | grep -q "campaign check: 0 errors" && pass "format-2 proposals with prior, nearest obvious entry, credibility checks and follows_on pass check" || { python3 tools/mesh.py campaign check $C2; fail "format 2 check"; }
+python3 tools/mesh.py campaign score SCE-01 $C2 --referee R1 --impact 5 --cogency 4 --realism 2 --originality 4 > /dev/null; python3 tools/mesh.py campaign score INS-01 $C2 --referee R1 --impact 3 --cogency 4 --realism 5 --originality 1 > /dev/null
+python3 tools/mesh.py campaign status $C2 > st.txt
+grep -q "| SCE-01 .* | 5 | 4 | 2 | 4 | open |" st.txt && grep -q "| INS-01 .* | a baseline entry in disguise (originality 1) |" st.txt && pass "originality is scored, and below 2 it strikes a proposal" || { cat st.txt; fail "originality gate"; }
+[ "$(grep -n '| SCE-01 ' st.txt | cut -d: -f1)" -lt "$(grep -n '| INS-01 ' st.txt | cut -d: -f1)" ] && pass "ranked by impact: low realism does not sink a high-impact idea" || { cat st.txt; fail "impact ranking"; }
+grep -q "quartz-crystal-microbalance (.*): would unlock 1 proposal with impact 5 in all: SCE-01" st.txt && pass "what would unlock most: a needed capability the profile lacks, with the impact it holds back" || { cat st.txt; fail "unlocks"; }
+python3 tools/mesh.py campaign close $C2 > /dev/null; grep -q "^## What would unlock most" $FD/REPORT.md && grep -q "^## Recommendation" $FD/REPORT.md && grep -q "^- \*\*Prior and outcomes.\*\*" $FD/REPORT.md && grep -q "^- \*\*Follows on from.\*\*" $FD/REPORT.md && ! grep -q "INS-01 .*###" $FD/REPORT.md && pass "the report: the slate with prior and follow-on lines, what would unlock most, and a recommendation to write" || { cat $FD/REPORT.md; fail "report 1.29"; }
 echo "ALL TESTS PASSED"

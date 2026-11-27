@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, bisect, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.29.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.31.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -9259,7 +9259,22 @@ LENSES = {  # name: (id prefix, what it looks for, miners to start from, routes 
                    ["transfer", "tools", "analogies", "bottlenecks"], ["extension", "tool-transfer", "concept-transfer", "new-method"]),
     "datascout": ("DAT", "what open data can answer today: data sets analysed once, pooled values, regularities that only show at scale",
                   ["data", "constraints", "ceilings", "recognised"], ["scale", "new-resource", "new-model", "pooling"]),
+    "instrumentalist": ("INS", "the field measures the wrong quantity: build or validate the right one; a horizon, a ceiling, a coefficient, a missing control",
+                        ["bottlenecks", "ceilings", "definitions", "limits"], ["new-method", "new-model", "framework", "existence-proof"]),
 }
+LENS_DISTANCE = {"recombiner": "adjacent", "datascout": "adjacent", "transferer": "distant", "mechanist": "distant", "sceptic": "distant", "instrumentalist": "distant"}
+DP_SECTIONS_2 = ["Prior and outcomes", "Nearest obvious entry", "Credibility checks"]  # required in campaigns of format 2 (1.29.0)
+ORIGINALITY_STRIKE, COGENCY_STRIKE = 2, 2.5  # medians below these strike a proposal in a campaign ranked by impact
+STANDARD_MOVES = [
+    "test the predictions experimentally, in the system the papers name",
+    "apply the method to another data set or another panel of molecules",
+    "redo the analysis with a newer model or architecture",
+    "scale up: more molecules, subjects, receptors or conditions",
+    "add a second property or target to predict",
+    "validate prospectively, on molecules made or measured afterwards",
+    "repeat it in another species, preparation or level of organisation",
+    "make the predicted molecules or mixtures and test them",
+]
 NOVELTY_FACTOR = {"open": 1.0, "unchecked": 0.8, "partly": 0.6, "answered": 0.0}
 DP_STATUS = ["active", "final", "merged", "killed", "withdrawn", "cut"]
 DP_LIVE = ("active", "final")
@@ -9267,6 +9282,84 @@ POC_STATUS = ["none", "planned", "registered", "passed", "failed", "inconclusive
 DP_SECTIONS = ["Hypothesis", "Mechanism", "Rests on", "Novelty search", "Proof of concept", "Decisive experiment", "Impact if true", "How it could be killed"]
 PREREG_SECTIONS = ["Prediction", "Primary analysis", "Threshold", "Data", "Controls"]
 DP_REACH = ["in", "partner", "unclear", "out"]  # reach:: on a campaign proposal
+
+
+def scope_of(m, scope):
+    """A scope for a campaign or an obviousness list: (label, source ids or None, concepts). `topic:<slug>`, `sources:P004,P005`,
+    a concept, a source, or any other card (its concepts)."""
+    if scope.startswith("sources:"):
+        srcs = [s.strip() for s in scope[8:].split(",") if s.strip()]
+        for s in srcs:
+            if s not in m.cards or m.cards[s].fam != "source": sys.exit(f"scope: {s} is not a source in the brain")
+        cs = Counter(t_ for s in srcs for c in m.evidence(s) for t_ in m.terms(c) if m.cards[t_].get("kind") != "count")
+        return "papers " + ", ".join(srcs), set(srcs), {x for x, _n in cs.most_common(40)}
+    if scope.startswith("topic:"):
+        tp = topics(m)[0]
+        if scope[6:] not in tp: sys.exit(f"scope: no topic '{scope}' (`mesh.py zoom` lists them)")
+        return scope, None, set(tp[scope[6:]])
+    c = need(m, scope)
+    if c.fam == "source": return scope_of(m, "sources:" + c.id)
+    if c.fam == "concept": return f"[[{c.id}]]", None, {c.id}
+    return c.id, None, set(m.terms(c))
+
+
+def obvious_list(m, scope, cap=25):
+    """What any competent reader of these papers or this topic would propose next, from what the brain holds: the questions and
+    limitations the papers state, the open questions several groups share, what would settle the open gaps, contradictions and
+    tensions, the findings that rest on one group, and the standard moves. Returns [(section, text, [card ids])]."""
+    label, srcs, cs = scope_of(m, scope)
+    inscope = (lambda c: c.id[:4] in srcs) if srcs else (lambda c: bool(m.terms(c) & cs))
+    out = []
+    named = sorted((c for c in m.evidence() if c.type in ("question", "limitation") and inscope(c)), key=lambda c: c.id)
+    for c in named[:cap]: out.append(("Named by the papers themselves", ("Answer: " if c.type == "question" else "Overcome: ") + one(c.title, 150), [c.id]))
+    if len(named) > cap: out.append(("Named by the papers themselves", f"… and {len(named) - cap} more question and limitation cards in scope", []))
+    try:
+        rows = mine(m, ["recognised"])[0].get("recognised", [])
+    except Exception: rows = []
+    axes = {w_ for c in m.evidence() for w_, _v, _t in m.whens(c) if w_ and m.cards[w_].get("unit") == "categorical"}
+    axes |= {v_ for c in m.evidence() for w_, v_, t_ in m.whens(c) if t_ and w_ in axes}  # species, preparation and their values: axes, not questions
+    shared = [r for r in rows if set(r[4]) & cs and not set(r[4]) <= axes and (not srcs or set(r[5] if len(r) > 5 else ()) & srcs)]
+    seen_ = set()
+    for r in shared:
+        key = frozenset(set(r[4]) - axes)
+        if key in seen_ or len(seen_) >= cap // 2: continue
+        seen_.add(key); n_ = re.match(r"(\d+) independent groups", plain(r[2]))
+        out.append(("Open questions several groups already share", f"{n_.group(1) if n_ else 'Several'} independent groups name an open question or limit on " + " and ".join(f"[[{x}]]" for x in sorted(key)), list(r[5])[:4] if len(r) > 5 else []))
+    srcs_ev = {c.id for c in m.evidence() if srcs and c.id[:4] in srcs}
+    for p in sorted((c for c in m.cards.values() if c.fam == "page" and not c.get("retired") and c.id[0] in "GVX"), key=lambda c: c.id):
+        if p.status not in REVIEW_OPEN.get(p.id[0], ()): continue
+        linked = set(m.ids(p.raw)[0])
+        if not ((srcs and (linked & (srcs_ev | srcs))) or (not srcs and m.terms(p) & cs)): continue
+        settle = card_section(p, "What would close it", "What would settle it", "Ways out")
+        out.append(("Open gaps, contradictions and tensions, and what would settle them", f"{p.id}: " + one(p.title, 110) + (f" — settled by: {one(settle, 160)}" if settle else ""), [p.id]))
+    for k in sorted((c for c in m.pages("K") if not c.get("retired")), key=lambda c: c.id):
+        if k.status not in ("single-source", "tentative"): continue
+        sup = srcs_of(m, [k.id])
+        if (srcs and sup & srcs) or (not srcs and m.terms(k) & cs): out.append(("Findings resting on one group: replicate them", f"{k.id} ({k.status}): " + one(k.title, 140), [k.id]))
+    for mv in STANDARD_MOVES: out.append(("The standard moves", mv[0].upper() + mv[1:] + f", for {label}", []))
+    return label, out
+
+
+def obvious_md(m, scope):
+    label, items = obvious_list(m, scope)
+    L = [f"# What is already obvious: {label}", "",
+         f"Generated {TODAY} by `mesh.py obvious {scope}` from the cards of the brain. Any competent reader of these papers would propose",
+         "these. A proposal must not be one of them, or must show that it differs **in kind, not in degree**: a different question, not",
+         "a more thorough version of the same one. Each proposal names its nearest entry in **Nearest obvious entry.**, and referees",
+         "score originality against this list.", ""]
+    sec, n = None, 0
+    for s, text, ids in items:
+        if s != sec: L += ["", f"## {s}", ""]; sec = s
+        n += 1; L.append(f"- **O-{n:02d}** {text}" + (" · " + " ".join(f"[[{i}]]" for i in ids) if ids else ""))
+    return "\n".join(L) + "\n", n
+
+
+def cmd_obvious(m, args):
+    if not args: sys.exit("obvious <topic:slug | sources:P004,P005 | concept | card id> [--write <file>]: what any competent reader would propose next")
+    txt, n = obvious_md(m, args[0])
+    if "--write" in args:
+        p = args[args.index("--write") + 1]; wr(p if os.path.isabs(p) else J(m.root, p), txt); print(f"written: {p} ({n} entries)")
+    else: print(plain(txt))
 
 
 def camp_codes(t):
@@ -9286,13 +9379,18 @@ def camp_dir(m, name=None):
         sys.exit(f"campaign: no single campaign matches '{name}'" + (f": {', '.join(os.path.basename(h) for h in hit)}" if hit else ""))
     live = [d for d in sorted(glob.glob(J(base, "*"))) if os.path.exists(J(d, "CAMPAIGN.md")) and "running" in camp_codes(rd(J(d, "CAMPAIGN.md"))).get("status", [""])[0]]
     if not live: sys.exit("campaign: no running campaign; start one with `mesh.py campaign init <name> --scope topic:<slug>`")
+    if len(live) > 1: sys.exit("campaign: more than one campaign is running; name it with --campaign <name>: " + ", ".join(os.path.basename(d) for d in live))
     return live[-1]
 
 
 def camp_conf(cd):
     c = camp_codes(rd(J(cd, "CAMPAIGN.md")))
-    return {"slug": os.path.basename(cd), "scope": (c.get("scope") or [""])[0], "agents": [a.strip() for a in (c.get("agents") or [""])[0].split(",") if a.strip()],
-            "rounds": int((c.get("rounds") or ["3"])[0]), "minutes": int((c.get("minutes") or ["50"])[0]), "status": (c.get("status") or [""])[0], "constraints": c.get("constraint", [])}
+    g = lambda k, d: (c.get(k) or [d])[0]
+    scope = g("scope", "")
+    return {"slug": os.path.basename(cd), "scope": scope, "agents": [a.strip() for a in g("agents", "").split(",") if a.strip()],
+            "rounds": int(g("rounds", "3")), "minutes": int(g("minutes", "50")), "status": g("status", ""), "constraints": c.get("constraint", []),
+            "rank": g("rank", "composite"), "format": int(re.sub(r"\D", "", g("format", "1")) or 1),
+            "sources": [s.strip() for s in scope[8:].split(",") if s.strip()] if scope.startswith("sources:") else []}
 
 
 def camp_tsv(p, cols):
@@ -9308,7 +9406,7 @@ def camp_append(p, cols, row):
         f.write("\t".join(str(row.get(c, "")).replace("\t", " ").replace("\n", " ") for c in cols) + "\n")
 
 
-SCORE_COLS = ["time", "round", "referee", "pid", "impact", "cogency", "realism", "novelty", "gate", "note"]
+SCORE_COLS = ["time", "round", "referee", "pid", "impact", "cogency", "realism", "novelty", "gate", "note", "originality"]  # originality from 1.29.0
 PAIR_COLS = ["time", "round", "referee", "winner", "loser", "note"]
 REPL_COLS = ["time", "round", "referee", "pid", "result", "note"]
 
@@ -9323,7 +9421,8 @@ def camp_props(cd):
         out[pid] = {"id": pid, "file": f, "title": title, "text": t, "codes": c, "owner": g("owner"), "status": g("status", "active").split()[0] if g("status", "active") else "active",
                     "round": int(re.sub(r"\D", "", g("round", "1")) or 1), "poc": g("poc", "none").split()[0] if g("poc", "none") else "none",
                     "novelty": g("novelty", "unchecked").split()[0] if g("novelty", "unchecked") else "unchecked", "reach": g("reach", "unclear").split()[0] if g("reach", "unclear") else "unclear",
-                    "sections": [s_ for s_ in DP_SECTIONS if re.search(r"^\*\*" + re.escape(s_) + r"\.\*\*", t, re.M)]}
+                    "sections": [s_ for s_ in DP_SECTIONS + DP_SECTIONS_2 + ["Follows on from"] if re.search(r"^\*\*" + re.escape(s_) + r"\.\*\*", t, re.M)],
+                    "first_result": g("first_result"), "paper_months": g("paper_months")}
     return out
 
 
@@ -9346,20 +9445,26 @@ def bradley_terry(pairs, iters=300):
 
 def camp_board(cd):
     """The scoreboard: for every proposal the medians of its latest round of referee scores, novelty, gates, replication and the composite."""
+    impact_rank = camp_conf(cd)["rank"] == "impact"
     props, med = camp_props(cd), lambda xs: sorted(xs)[len(xs) // 2] if len(xs) % 2 else (sorted(xs)[len(xs) // 2 - 1] + sorted(xs)[len(xs) // 2]) / 2
     scores, repl = camp_tsv(J(cd, "scores.tsv"), SCORE_COLS), camp_tsv(J(cd, "replications.tsv"), REPL_COLS)
     bt = bradley_terry([(r["winner"], r["loser"]) for r in camp_tsv(J(cd, "pairs.tsv"), PAIR_COLS)])
     board = {}
     for pid, p in props.items():
         rs = [r for r in scores if r["pid"] == pid]
-        b = {"scored": bool(rs), "I": None, "C": None, "R": None, "novelty": p["novelty"] if p["novelty"] in NOVELTY_FACTOR else "unchecked", "gates": [], "repl": None, "composite": 0.0, "bt": bt.get(pid), "referees": 0}
+        b = {"scored": bool(rs), "I": None, "C": None, "R": None, "O": None, "novelty": p["novelty"] if p["novelty"] in NOVELTY_FACTOR else "unchecked", "gates": [], "repl": None, "composite": 0.0, "bt": bt.get(pid), "referees": 0}
         if rs:
             last = max(int(r["round"] or 0) for r in rs); rs = [r for r in rs if int(r["round"] or 0) == last]
             b.update(I=med([int(r["impact"]) for r in rs]), C=med([int(r["cogency"]) for r in rs]), R=med([int(r["realism"]) for r in rs]), referees=len({r["referee"] for r in rs}), round=last)
+            os_ = [int(r["originality"]) for r in rs if (r.get("originality") or "").isdigit()]
+            if os_: b["O"] = med(os_)
+            if impact_rank:
+                if b["O"] is not None and b["O"] < ORIGINALITY_STRIKE: b["gates"].append(f"a baseline entry in disguise (originality {b['O']:g})")
+                if b["C"] < COGENCY_STRIKE: b["gates"].append(f"cannot answer its own question (cogency {b['C']:g})")
             ver = [r["novelty"] for r in rs if r["referee"] == "verifier" and r["novelty"] in NOVELTY_FACTOR]
             votes = Counter(r["novelty"] for r in rs if r["novelty"] in NOVELTY_FACTOR)
             b["novelty"] = ver[-1] if ver else (min(votes, key=lambda k: (NOVELTY_FACTOR[k], k)) if votes else b["novelty"])  # without a verifier, the most cautious verdict
-            b["gates"] = sorted({r["gate"] for r in rs if r["gate"] and r["gate"] != "ok"})
+            b["gates"] = sorted({r["gate"] for r in rs if r["gate"] and r["gate"] != "ok"}) + b["gates"]
         rp = [r for r in repl if r["pid"] == pid]
         if rp: b["repl"] = rp[-1]["result"]
         if b["repl"] == "failed": b["gates"].append("proof of concept not reproduced")
@@ -9406,39 +9511,84 @@ def camp_downloads(cd, props, board):
     return sorted(out, key=lambda d: (-d["rank"], d["id"]))
 
 
+def camp_order(cd, props, board, ps=None):
+    """Proposals best first: by composite, or, in a campaign ranked by impact, by impact among those that pass the gates."""
+    ps = list(props.values()) if ps is None else ps
+    if camp_conf(cd)["rank"] == "impact":
+        return sorted(ps, key=lambda p: (p["status"] not in DP_LIVE, not board[p["id"]]["scored"] or bool(board[p["id"]]["gates"]), -(board[p["id"]]["I"] or 0), -(board[p["id"]]["C"] or 0), -(board[p["id"]]["bt"] or 0), p["id"]))
+    return sorted(ps, key=lambda p: (p["status"] not in DP_LIVE, -board[p["id"]]["composite"], -(board[p["id"]]["bt"] or 0), p["id"]))
+
+
+def camp_unlocks(m, cd, props, board):
+    """What would unlock most: each capability a live proposal says it needs (needs::) that the research profile does not mark
+    as had, with the proposals it holds back and their impact. Proposals out of reach that name no need are listed apart."""
+    P = research_profile(m); by, unnamed = defaultdict(list), []
+    for pid, p in props.items():
+        if p["status"] not in DP_LIVE: continue
+        needs = [x for v in p["codes"].get("needs", []) for x in m.ids(v)[0] if x in m.cards and m.cards[x].fam == "concept"]
+        held = [(x, mark_of(m, x, P)[0]) for x in needs]
+        held = [(x, k) for x, k in held if k != "have"]
+        for x, k in held: by[x].append((pid, k))
+        if not needs and p["reach"] in ("partner", "out"): unnamed.append(pid)
+    rows = []
+    for x, ps in by.items():
+        imp = sum(board[p]["I"] or 0 for p, _k in ps)
+        rows.append((imp, x, ps[0][1] or "unmarked", sorted(p for p, _k in ps)))
+    return sorted(rows, key=lambda r: (-r[0], r[1])), sorted(unnamed)
+
+
+def camp_unlock_lines(m, cd, props, board):
+    rows, unnamed = camp_unlocks(m, cd, props, board)
+    L = [f"- [[{x}]] ({mk}): would unlock {len(ps)} proposal{'s' if len(ps) > 1 else ''} with impact {imp:g} in all: {' '.join(ps)}" for imp, x, mk, ps in rows[:8]]
+    if unnamed: L.append(f"- out of reach or with a partner, but naming no needs:: line: {' '.join(unnamed)}")
+    return L
+
+
 def camp_board_lines(cd, props, board, live_only=False):
-    rows = sorted(props.values(), key=lambda p: (p["status"] not in DP_LIVE, -board[p["id"]]["composite"], -(board[p["id"]]["bt"] or 0), p["id"]))
-    L = ["| Proposal | Owner | Status | I | C | R | Novelty | PoC | Pairwise | Composite | Gates |", "|---|---|---|---|---|---|---|---|---|---|---|"]
+    rows = camp_order(cd, props, board)
+    L = ["| Proposal | Owner | Status | I | C | R | O | Novelty | PoC | Pairwise | Composite | Gates |", "|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for p in rows:
         if live_only and p["status"] not in DP_LIVE: continue
         b = board[p["id"]]; f = lambda x: "–" if x is None else f"{x:g}"
         poc = p["poc"] + (f" (replicated {b['repl']})" if b["repl"] else "")
-        L.append(f"| [[{os.path.basename(p['file'])[:-3]}\\|{p['id']}]] {one(p['title'], 70)} | {p['owner']} | {p['status']} | {f(b['I'])} | {f(b['C'])} | {f(b['R'])} | {b['novelty']} | {poc} | {b['bt'] or '–'} | {b['composite']:g}{'' if b['scored'] else ' (unscored)'} | {'; '.join(b['gates']) or 'ok'} |")
+        L.append(f"| [[{os.path.basename(p['file'])[:-3]}\\|{p['id']}]] {one(p['title'], 70)} | {p['owner']} | {p['status']} | {f(b['I'])} | {f(b['C'])} | {f(b['R'])} | {f(b['O'])} | {b['novelty']} | {poc} | {b['bt'] or '–'} | {b['composite']:g}{'' if b['scored'] else ' (unscored)'} | {'; '.join(b['gates']) or 'ok'} |")
     return L
 
 
 def camp_brief(conf, lens, cd_rel):
     pre, what, miners, routes = LENSES[lens]
-    scope, mins = conf["scope"], conf["minutes"]
+    scope, mins, slug_ = conf["scope"], conf["minutes"], conf["slug"]
+    focus = f"topic:{scope[6:]}" if scope.startswith("topic:") else scope
+    follow = conf["sources"]
+    f2 = conf["format"] >= 2
     return f"""# Brief: the {lens} agent
 
-You are one of {len(conf['agents'])} discovery agents in the campaign `{conf['slug']}` on this brain mesh vault, scope `{scope}`.
-Your lens: **{what}**. The other agents look elsewhere; stay on your lens unless a meeting reassigns you.
-
-Read first: `.brain-mesh/skills/brain-mesh-campaign/SKILL.md`, section **For discovery agents** (the rules, the proposal and
-preregistration formats, data access, novelty, download requests), and `.brain-mesh/skills/brain-mesh-discover/SKILL.md`
+You are one of {len(conf['agents'])} discovery agents in the campaign `{slug_}` on this brain mesh vault, scope `{scope}`.
+Your lens: **{what}** ({LENS_DISTANCE.get(lens, 'distant')} to the papers' own neighbourhood). The other agents look elsewhere; stay on
+your lens unless a meeting reassigns you.
+""" + (f"""
+**This is a follow-on campaign.** Its subject is the papers {', '.join(follow)}: propose the next study that follows from them,
+using everything else in the brain as the literature around them. Every proposal names, in **Follows on from.** and a
+`follows_on::` line, the result in these papers it builds on (their evidence cards).
+""" if follow else "") + f"""
+Read first: `.brain-mesh/skills/brain-mesh-campaign/SKILL.md`, section **For discovery agents** (rules, formats, data access,
+novelty, download requests{', the obvious list, the credibility checks' if f2 else ''}), and `.brain-mesh/skills/brain-mesh-discover/SKILL.md`
 rule 2 (every proposal must agree with every fact and piece of evidence that bears on it, unless a logged contradiction frees it).
-Campaign context, constraints and rubric: `{cd_rel}/CAMPAIGN.md`.
-
+Campaign context, constraints and rubric: `{cd_rel}/CAMPAIGN.md`; the user's research profile: `PROFILE.md`.
+""" + (f"""**What is already obvious: `{cd_rel}/OBVIOUS.md`.** Read it before anything else. Those next steps are taken: a proposal
+on that list wins nothing unless it differs in kind, not degree. Hunt first inside the papers' own results for what does not
+fit (a control that behaved oddly, an effect explained away in one sentence, a quantity two papers treat differently).
+""" if f2 else "") + f"""
 ## Where to start
-- `python3 tools/mesh.py zoom {scope}` and `python3 tools/mesh.py routes {scope} --route <route>` for: {', '.join(routes)}
-- `python3 tools/mesh.py discover {' '.join(miners)} --focus {scope}`
+- `python3 tools/mesh.py zoom {focus if not follow else follow[0]}` and `python3 tools/mesh.py routes {focus if not follow else follow[0]} --route <route> --reach all` for: {', '.join(routes)}
+- `python3 tools/mesh.py discover {' '.join(miners)}` (add `--focus <concept>` for the concepts that matter)
 - Then `zoom <id>`, `facts <concept>`, `outside <need>` (the brief only: never `outside add`), `ask "<question>"`, and the cards and pages themselves.
 
 ## What you may write
 Only: `{cd_rel}/agents/{lens}/notes.md`, `{cd_rel}/proposals/{pre}-NN-<slug>.md`, `{cd_rel}/poc/{pre}-NN/` and
 `{cd_rel}/downloads/{pre}-DLNN-<slug>.md`. Nothing else in the vault: no cards, no `build`, `sync`, `outside add`, `report`,
-`propose`, `priority`, `profile`, `dismiss`, `--explored` or `--record`. Number your proposals {pre}-01, {pre}-02, … and never reuse a number.
+`propose`, `priority`, `profile`, `dismiss`, `--explored` or `--record`. Number your proposals {pre}-01, {pre}-02, … and never
+reuse a number. Give `--campaign {slug_}` to every `campaign` command: other campaigns may be running.
 
 ## Each round
 1. Your round lasts about {mins} minutes; the deadline is in the message that starts it. Run `date -u` between steps. Ten
@@ -9446,50 +9596,63 @@ Only: `{cd_rel}/agents/{lens}/notes.md`, `{cd_rel}/proposals/{pre}-NN-<slug>.md`
 2. Round 1: up to five proposals, each with its novelty search done. Later rounds: deepen your survivors (a registered
    proof of concept under an hour, a sharper decisive experiment), answer the referees, merge or build on others' work,
    attack proposals you think are wrong, or start a new one if the meeting asked you to.
-3. Register a proof of concept before running it: write `poc/<id>/PREREG.md`, then `python3 tools/mesh.py campaign poc register <id>`.
+3. Register a proof of concept before running it: write `poc/<id>/PREREG.md`, then `python3 tools/mesh.py campaign poc register <id> --campaign {slug_}`.{' Its controls include a **pipeline null**: the whole analysis rerun on shuffled or permuted data.' if f2 else ''}
 4. Write everything worth sharing in `notes.md` under `## Round <n>`: searches run and what came back, data sets found and
-   how to reach them, dead ends, null results, facts found outside the brain. Information is shared; only proposals compete.
-   A proposal cannot score on anything you did not share at a meeting before it is scored.
-5. Run `python3 tools/mesh.py campaign check` and fix what it reports in your own files.
+   how to reach them, dead ends, null results, the ideas you abandoned and what killed each, facts found outside the brain.
+   Information is shared; only proposals compete. A proposal cannot score on anything you did not share at a meeting before it is scored.
+5. Run `python3 tools/mesh.py campaign check --campaign {slug_}` and fix what it reports in your own files.
 6. Return a round report of at most 300 words: your live proposals and what changed in each, proofs of concept and their
    outcomes, download requests, what you shared, and what you would do next round.
 """
 
 
 def camp_referee_brief(conf, cd_rel):
+    f2, slug_ = conf["format"] >= 2, conf["slug"]
     return f"""# Brief: referee
 
-You score the proposals of campaign `{conf['slug']}` blind: judge the proposal file, not who wrote it, and ignore the
-`owner::` line. Read `.brain-mesh/skills/brain-mesh-campaign/SKILL.md`, section **Scoring** (the three axes with their
-anchors, the gates, novelty) and `{cd_rel}/CAMPAIGN.md` (scope, the user's constraints).
+You score the proposals of campaign `{slug_}` blind: judge the proposal file, not who wrote it, and ignore the `owner::` line.
+Read `.brain-mesh/skills/brain-mesh-campaign/SKILL.md`, sections **Scoring** and **Credibility checks** (the axes with their
+anchors, the gates, novelty, circularity and pipeline artefacts), `{cd_rel}/CAMPAIGN.md` (scope, the user's constraints) and
+`PROFILE.md` (which decides realism).""" + (f""" Originality is judged against `{cd_rel}/OBVIOUS.md`.""" if f2 else "") + f"""
 
-For each proposal that is active and was changed or created since it was last scored (`python3 tools/mesh.py campaign status`):
+For each proposal that is active and was changed or created since it was last scored (`python3 tools/mesh.py campaign status --campaign {slug_}`):
 1. Open the proposal and the cards it rests on (`zoom <id>`, `facts <concept>`); open the PDF page for anything a score turns on.
 2. Check the gates: every claim traces to a card or a cited outside source; no clash with a fact or piece of evidence that no
    logged contradiction frees; a stated way to kill it; a reported proof of concept that is registered.
-3. Score: `python3 tools/mesh.py campaign score <id> --referee <your name> --impact n --cogency n --realism n --gate ok|"<failed gate>" --note "<one line: the main reason>"`.
+3. Work through the credibility checks whether or not the proposal raises them: train/test overlap, a label downstream of
+   the ground truth, a model-scored evaluation, a shared upstream data set, selection on the outcome, a definition that
+   contains its instrument, a filter validated by itself; and the pipeline artefacts: dimensionality, compression curves,
+   capacity, double dipping, best-of-many parameter settings, base rates, preprocessing leakage, unmatched freedom between
+   compared methods. Named and controlled is a strength; uncontrolled is a failed gate (`--gate "uncontrolled <form>"`).
+4. Ask what each outcome would change, and whether an expert would be surprised by either: a first measurement of what the
+   field already assumes is the prior dressed as a result, and scores low on impact however new.
+5. Score: `python3 tools/mesh.py campaign score <id> --campaign {slug_} --referee <your name> --impact n --cogency n --realism n""" + (" --originality n" if f2 else "") + f""" --gate ok|"<failed gate>" --note "<one line: the main reason>"`.
    Leave `--novelty` to the verifier unless you found prior art yourself (then `--novelty partly|answered` and name it in the note).
-4. Then compare the live proposals in pairs, best guesses first, at most ten pairs:
-   `python3 tools/mesh.py campaign compare <A> <B> --winner <A|B> --referee <your name> --note "<why>"`: which would you rather the user pursued?
-5. Write nothing else. Return at most 200 words: the scores, and for the top three the one thing that would raise each.
+6. Then compare the live proposals in pairs, best guesses first, at most ten pairs:
+   `python3 tools/mesh.py campaign compare <A> <B> --campaign {slug_} --winner <A|B> --referee <your name> --note "<why>"`: which would you rather the user pursued?
+7. Write nothing else. Return at most 200 words: the scores, and for the top three the one thing that would raise each.
 """
 
 
 def camp_verifier_brief(conf, cd_rel):
+    slug_ = conf["slug"]
     return f"""# Brief: verifier (novelty auditor and replicator)
 
-You check the proposals of campaign `{conf['slug']}`; you do not compete. Read `.brain-mesh/skills/brain-mesh-campaign/SKILL.md`,
-sections **Novelty** and **Proofs of concept**.
+You check the proposals of campaign `{slug_}`; you do not compete. Read `.brain-mesh/skills/brain-mesh-campaign/SKILL.md`,
+sections **Novelty**, **Proofs of concept** and **Credibility checks**. Give `--campaign {slug_}` to every `campaign` command.
 
-1. **Novelty.** For each active proposal not yet audited, or changed since: try to find prior art, adversarially. Search with
-   different phrasings from the agent's (at least three), PubMed and bioRxiv where the session has them, then the web, and the
-   papers citing its key sources. Record: `python3 tools/mesh.py campaign score <id> --referee verifier --impact n --cogency n --realism n --novelty open|partly|answered --gate ok --note "<where searched; what was found, with DOIs>"`
-   (give your own I, C and R too). Prior art goes in the note with its DOI.
-2. **Replication.** For each proof of concept reported passed, failed or inconclusive and not yet replicated: check
-   `python3 tools/mesh.py campaign poc verify <id>`, then rerun its code from a clean copy of `poc/<id>` (fetch the data afresh).
-   Record: `python3 tools/mesh.py campaign poc replicate <id> --ok|--failed --referee verifier --note "<numbers you got>"`.
+1. **The load-bearing citation.** For each active proposal not yet audited, or changed since: find the reference its gap claim
+   rests on (usually the nearest paper it says leaves the question open), check that it resolves (DOI, arXiv id or PMID), and
+   that it says what the proposal says it says. An unresolvable or misread load-bearing citation is a failed gate.
+2. **Novelty.** Then try to find prior art, adversarially: different phrasings from the agent's (at least three), PubMed and
+   bioRxiv where the session has them, then the web, and the papers citing its key sources. Record both checks:
+   `python3 tools/mesh.py campaign score <id> --campaign {slug_} --referee verifier --impact n --cogency n --realism n --novelty open|partly|answered --gate ok|"<failed gate>" --note "<citation checked: ...; where searched; what was found, with DOIs>"`
+   (give your own I, C and R too, and `--originality n` if the campaign has an OBVIOUS.md). Record the checks that passed as well.
+3. **Replication.** For each proof of concept reported passed, failed or inconclusive and not yet replicated: check
+   `python3 tools/mesh.py campaign poc verify <id> --campaign {slug_}`, then rerun its code from a clean copy of `poc/<id>` (fetch the data afresh).
+   Record: `python3 tools/mesh.py campaign poc replicate <id> --campaign {slug_} --ok|--failed --referee verifier --note "<numbers you got>"`.
    Failed means the primary result does not come out within its stated tolerance, or the analysis departs from the preregistration.
-3. Write nothing else. Return at most 200 words.
+4. Write nothing else. Return at most 200 words.
 """
 
 
@@ -9520,6 +9683,9 @@ def cmd_campaign(m, args):
         row["novelty"] = o("--novelty", "")
         if row["novelty"] and row["novelty"] not in NOVELTY_FACTOR: sys.exit(f"campaign score: --novelty is one of {', '.join(NOVELTY_FACTOR)}")
         row["gate"] = o("--gate", "ok")
+        og = o("--originality", "")
+        if og and (not og.isdigit() or not 1 <= int(og) <= 5): sys.exit("campaign score: --originality must be a whole number from 1 to 5")
+        row["originality"] = og
         camp_append(J(cd, "scores.tsv"), SCORE_COLS, row); print(f"scored {pos[0]} for round {row['round']} by {row['referee']}")
     elif sub == "compare":
         if len(pos) < 2 or o("--winner") not in pos[:2] or not o("--referee"): sys.exit("campaign compare <A> <B> --winner <A|B> --referee <name> [--note why]")
@@ -9539,7 +9705,12 @@ def cmd_campaign(m, args):
     elif sub == "poc": return camp_poc(m, cd, pos, opts, o, rnd)
     elif sub == "meeting": return camp_meeting(m, cd, conf, int(pos[0]) if pos and pos[0].isdigit() else rnd, opts)
     elif sub == "close": return camp_close(m, cd, conf)
-    else: sys.exit("campaign: init | status | check | score | compare | set | poc register|verify|replicate | meeting [n] [--cut] | close")
+    elif sub == "briefs":
+        rel = os.path.relpath(cd, m.root).replace(os.sep, "/")
+        for a in conf["agents"]: wr(J(cd, "agents", a, "BRIEF.md"), camp_brief(conf, a, rel))
+        wr(J(cd, "referee-brief.md"), camp_referee_brief(conf, rel)); wr(J(cd, "verifier-brief.md"), camp_verifier_brief(conf, rel))
+        print(f"briefs rewritten from the current templates for {conf['slug']}")
+    else: sys.exit("campaign: init | status | check | score | compare | set | poc register|verify|replicate | meeting [n] [--cut] | close | briefs")
 
 
 def camp_set(p, status, why, by=None, into=None, rnd=1):
@@ -9550,12 +9721,15 @@ def camp_set(p, status, why, by=None, into=None, rnd=1):
 
 
 def camp_init(m, pos, opts, o):
-    if not pos or not o("--scope"): sys.exit("campaign init <name> --scope <topic:slug|concept|id> [--agents recombiner,mechanist,sceptic] [--rounds 3] [--minutes 50] [--constraint \"<what the user has ruled out>\"]")
-    scope = o("--scope")
-    if scope.startswith("topic:"):
-        if scope[6:] not in topics(m)[0]: sys.exit(f"campaign init: no topic '{scope}' (`mesh.py zoom` lists them)")
-    else: scope = need(m, scope).id
-    agents = [a.strip() for a in o("--agents", "recombiner,mechanist,sceptic").split(",") if a.strip()]
+    if not pos or not (o("--scope") or o("--sources")): sys.exit("campaign init <name> (--scope <topic:slug|concept|id> | --sources P004,P005) [--agents a,b,c] [--rounds 3] [--minutes 50] [--rank impact|composite] [--constraint \"<what the user has ruled out>\"]")
+    scope = "sources:" + ",".join(s.strip() for s in o("--sources").split(",") if s.strip()) if o("--sources") else o("--scope")
+    if scope.startswith("topic:") or scope.startswith("sources:"): scope_of(m, scope)
+    else:
+        c_ = need(m, scope); scope = ("sources:" + c_.id) if c_.fam == "source" else c_.id
+    follow = scope.startswith("sources:")
+    agents = [a.strip() for a in o("--agents", "sceptic,instrumentalist,transferer" if follow else "recombiner,mechanist,sceptic").split(",") if a.strip()]
+    rank = o("--rank", "impact")
+    if rank not in ("impact", "composite"): sys.exit("campaign init: --rank is impact (the default) or composite")
     bad = [a for a in agents if a not in LENSES]
     if bad or len(agents) < 2: sys.exit(f"campaign init: agents are two or more of {', '.join(LENSES)}")
     slug_ = f"{TODAY}-" + (re.sub(r"[^a-z0-9]+", "-", pos[0].lower()).strip("-") or "campaign"); cd = J(m.root, "campaigns", slug_)
@@ -9566,20 +9740,23 @@ def camp_init(m, pos, opts, o):
     P = research_profile(m)
     wr(J(cd, "CAMPAIGN.md"), f"""# Campaign: {pos[0]}
 
-**What it is.** {len(agents)} discovery agents compete, one lens each, for proposals that score highest on impact, cogency and
-realism; they meet every hour to compare notes and resume. Nothing here is evidence and nothing enters the brain until the user
+**What it is.** {len(agents)} discovery agents compete, one lens each, for proposals that score highest on impact, cogency,
+realism and originality; they meet every hour to compare notes and resume. Nothing here is evidence and nothing enters the brain until the user
 accepts it (brain-mesh-campaign).
 
 **Scope.** `{scope}`. The user's focus (MAP.md) ranks first inside it.
 
 **The user's constraints.** {'; '.join(cons) if cons else 'none stated beyond the research profile'}. {'The research profile (PROFILE.md) decides reach.' if P else 'There is no research profile yet: judge reach from these constraints, and mark it unclear where they do not decide.'}
 
-**Rubric.** Impact, cogency and realism, 1 to 5 each, with the anchors in brain-mesh-campaign **Scoring**. Composite = geometric
-mean of the three × novelty (open 1, unchecked 0.8, partly 0.6, answered 0) × 0.9 while a reported proof of concept is not yet
-replicated; any failed gate makes it 0. Three referees' medians; pairwise preferences give a second, steadier ranking.
+**Rubric.** Impact, cogency, realism and originality, 1 to 5 each, with the anchors in brain-mesh-campaign **Scoring**; three
+referees' medians. """ + ("""Ranked by **impact**, among the proposals that pass the gates: cogency below 2.5 (it cannot answer its own question),
+originality below 2 (an entry of OBVIOUS.md in disguise), an uncontrolled circularity or pipeline artefact, or any other failed gate
+strikes a proposal. Realism is reported, never used to rank: what would unlock an idea out of reach is part of the result.""" if rank == "impact" else
+"""Composite = geometric mean of impact, cogency and realism × novelty (open 1, unchecked 0.8, partly 0.6, answered 0) × 0.9 while a
+reported proof of concept is not yet replicated; any failed gate makes it 0.""") + f""" Pairwise preferences give a second, steadier ranking.
 
 **Schedule.** {rounds} rounds of about {mins} minutes, a meeting after each; successive halving cuts the bottom half of the
-live proposals at every meeting but the last.
+live proposals at every meeting but the last. Stop early when a round adds fewer than two survivors.
 
 ## Codes
 - slug:: {slug_}
@@ -9589,14 +9766,18 @@ live proposals at every meeting but the last.
 - minutes:: {mins}
 - started:: {datetime.datetime.now().isoformat(timespec='minutes')}
 - status:: running
+- rank:: {rank}
+- format:: 2
 """ + "".join(f"- constraint:: {c}\n" for c in cons))
     conf, rel = camp_conf(cd), f"campaigns/{slug_}"
     for a in agents:
         wr(J(cd, "agents", a, "BRIEF.md"), camp_brief(conf, a, rel))
         wr(J(cd, "agents", a, "notes.md"), f"# Notes of the {a} agent\n\nShared with every agent at each meeting: searches and what came back, data sets and how to reach them, dead ends, null results, facts found outside the brain.\n")
     wr(J(cd, "referee-brief.md"), camp_referee_brief(conf, rel)); wr(J(cd, "verifier-brief.md"), camp_verifier_brief(conf, rel))
+    ob, nob = obvious_md(m, scope); wr(J(cd, "OBVIOUS.md"), ob)
+    wr(J(cd, "decisions.md"), "# Decisions\n\nEvery steer the user gives during the campaign, and what it changed. One line each: `- <date time> <the steer> — <what changed>`.\n")
     wr(J(cd, ".gitignore"), "# raw data fetched for proofs of concept stays out of git; each poc/<id>/DATA.md says how to fetch it again\npoc/*/data/\npoc/*/*.parquet\npoc/*/*.h5\n__pycache__/\n")
-    print(f"campaign {slug_}: {', '.join(agents)}; {rounds} rounds of {mins} minutes; scope {scope}\n"
+    print(f"campaign {slug_}: {', '.join(agents)}; {rounds} rounds of {mins} minutes; scope {scope}; ranked by {rank}; OBVIOUS.md holds {nob} obvious next steps\n"
           f"Briefs: {rel}/agents/<agent>/BRIEF.md, {rel}/referee-brief.md, {rel}/verifier-brief.md. Start round 1 (brain-mesh-campaign, The chair).")
 
 
@@ -9629,7 +9810,7 @@ def camp_poc(m, cd, pos, opts, o, rnd):
         print(f"{pid}: replication {'ok' if '--ok' in opts else 'failed'} recorded")
 
 
-def camp_check(m, cd, conf):
+def camp_check(m, cd, conf):  # noqa: C901
     props, E, W = camp_props(cd), [], []
     pre = {LENSES[a][0]: a for a in conf["agents"] if a in LENSES}
     for pid, p in sorted(props.items()):
@@ -9640,8 +9821,16 @@ def camp_check(m, cd, conf):
         if p["poc"] not in POC_STATUS: E.append(f"{pid}: poc is one of {', '.join(POC_STATUS)}")
         if p["novelty"] not in NOVELTY_FACTOR: E.append(f"{pid}: novelty is one of {', '.join(NOVELTY_FACTOR)}, then ' — where searched'")
         if p["reach"] not in DP_REACH: W.append(f"{pid}: reach is one of {', '.join(DP_REACH)}")
-        miss = [s_ for s_ in DP_SECTIONS if s_ not in p["sections"]]
+        miss = [s_ for s_ in DP_SECTIONS + (DP_SECTIONS_2 if conf["format"] >= 2 else []) if s_ not in p["sections"]]
         if miss: E.append(f"{pid}: missing {', '.join('**' + s_ + '.**' for s_ in miss)}")
+        if conf["format"] >= 2 and p["status"] in DP_LIVE:
+            if not p["first_result"]: W.append(f"{pid}: say how soon the first informative result would come (- first_result:: <time>) and the months to a paper (- paper_months:: n)")
+            nb = [b for v in p["codes"].get("needs", []) for b in m.ids(v)[1]]
+            if nb: E.append(f"{pid}: needs:: links what is not a concept: {', '.join(nb[:4])}")
+            if p["reach"] in ("partner", "out") and not p["codes"].get("needs"): W.append(f"{pid}: reach {p['reach']}: name what the decisive experiment needs (- needs:: [[technique]]), so the unlock table can count it")
+        if conf["sources"] and p["status"] in DP_LIVE:
+            fo, _b = m.ids(" ".join(p["codes"].get("follows_on", [])))
+            if "Follows on from" not in p["sections"] or not [x for x in fo if x[:4] in conf["sources"]]: E.append(f"{pid}: a follow-on proposal names in **Follows on from.** and - follows_on:: the result of {', '.join(conf['sources'])} it builds on")
         rests = " ".join(p["codes"].get("rests_on", []))
         good, bad = m.ids(rests)
         if not good: E.append(f"{pid}: rests_on:: links no card of the brain")
@@ -9673,6 +9862,12 @@ def camp_check(m, cd, conf):
     return not E
 
 
+def camp_survivors(cd, conf, props, board):
+    """Live proposals that pass the gates with impact at least 4 (campaigns ranked by impact) or composite at least 3."""
+    ok = lambda b: b["scored"] and not b["gates"] and ((b["I"] or 0) >= 4 if conf["rank"] == "impact" else b["composite"] >= 3)
+    return sorted(pid for pid, p in props.items() if p["status"] in DP_LIVE and ok(board[pid]))
+
+
 def camp_status(m, cd, conf):
     props, board = camp_board(cd)
     print(f"Campaign {conf['slug']} [{conf['status']}] · scope {conf['scope']} · agents {', '.join(conf['agents'])} · round {min(camp_round(cd), conf['rounds'])} of {conf['rounds']}\n")
@@ -9683,6 +9878,10 @@ def camp_status(m, cd, conf):
     if dls:
         print("\nDownload requests, by value over effort:")
         for d_ in dls: print(f"  {d_['id']} [{d_['rank']:g}] {one(d_['title'], 70)} · {d_['access']} · effort {d_['effort']} · for {' '.join(d_['for']) or '–'}")
+    ul = camp_unlock_lines(m, cd, props, board)
+    if ul: print("\nWhat would unlock most (needs the profile does not mark as had):"); [print("  " + plain(x)) for x in ul]
+    sv = camp_survivors(cd, conf, props, board)
+    print(f"\nSurvivors (gates passed, {'impact >= 4' if conf['rank'] == 'impact' else 'composite >= 3'}): {len(sv)} {' '.join(sv)}")
     unscored = [pid for pid, p in props.items() if p["status"] in DP_LIVE and not board[pid]["scored"]]
     if unscored: print(f"\nLive and not yet scored: {' '.join(unscored)}")
 
@@ -9690,7 +9889,7 @@ def camp_status(m, cd, conf):
 def camp_meeting(m, cd, conf, n, opts):
     props, board = camp_board(cd)
     live = [p for p in props.values() if p["status"] in DP_LIVE]
-    ranked = sorted(live, key=lambda p: (-board[p["id"]]["composite"], -(board[p["id"]]["bt"] or 0), p["id"]))
+    ranked = camp_order(cd, props, board, live)
     last = n >= conf["rounds"]
     cut = [] if last or len(ranked) < 3 else ranked[(len(ranked) + 1) // 2:]
     cut = [p for p in cut if board[p["id"]]["scored"]]
@@ -9702,6 +9901,10 @@ def camp_meeting(m, cd, conf, n, opts):
     auto = [f"Scoreboard after round {n} of {conf['rounds']} ({datetime.datetime.now().isoformat(timespec='minutes')}).", ""] + camp_board_lines(cd, props, board) + ["",
             "**Successive halving.** " + ("Last meeting: nothing is cut." if last else (f"Cut: {', '.join(p['id'] for p in cut)}." + ("" if "--cut" in opts else " (proposed; `campaign meeting " + str(n) + " --cut` applies it)") if cut else "Nothing to cut yet.")), "",
             "**Credit** (own · assists · kills · total): " + "; ".join(f"{a} {v[0]:g} · {v[1]:g} · {v[2]} · {v[3]:g}" for a, v in sorted(cr.items(), key=lambda kv: -kv[1][3])), ""]
+    sv = camp_survivors(cd, conf, props, board); new_ = [x for x in sv if props[x]["round"] == n]
+    auto += [f"**Survivors** (gates passed, {'impact at least 4' if conf['rank'] == 'impact' else 'composite at least 3'}): {len(sv)}, {len(new_)} of them new this round" + (" — fewer than two new: consider stopping, the territory may be exhausted." if n > 1 and len(new_) < 2 else "."), ""]
+    ul = camp_unlock_lines(m, cd, props, board)
+    if ul: auto += ["**What would unlock most.**"] + ul + [""]
     if dls: auto += ["**Download requests, by value over effort.**"] + [f"- {d_['id']} [{d_['rank']:g}] {one(d_['title'], 80)} · {d_['access']} · effort {d_['effort']} · for {' '.join(d_['for']) or '–'}" for d_ in dls] + [""]
     p_ = J(cd, "meetings", f"round-{n}.md")
     block = "<!--AUTO:START-->\n" + "\n".join(auto) + "\n<!--AUTO:END-->"
@@ -9712,19 +9915,31 @@ def camp_meeting(m, cd, conf, n, opts):
 
 def camp_close(m, cd, conf):
     props, board = camp_board(cd)
-    ranked = sorted((p for p in props.values() if p["status"] in DP_LIVE and board[p["id"]]["composite"] > 0), key=lambda p: (-board[p["id"]]["composite"], -(board[p["id"]]["bt"] or 0), p["id"]))
+    ranked = [p for p in camp_order(cd, props, board) if p["status"] in DP_LIVE and board[p["id"]]["scored"] and not board[p["id"]]["gates"]]
     nulls = [p for p in props.values() if p["poc"] == "failed" and board[p["id"]]["repl"] == "ok"]
     sec = lambda p, s_: (lambda mo: one(" ".join(mo.group(1).split()), 600) if mo else "")(re.search(r"^\*\*" + re.escape(s_) + r"\.\*\*(.*?)(?=^\*\*[A-Z][^*]*\.\*\*|^## |\Z)", p["text"], re.M | re.S))
     L = [f"# Campaign report: {conf['slug']}", "", f"Scope `{conf['scope']}` · agents {', '.join(conf['agents'])} · {conf['rounds']} rounds · closed {datetime.datetime.now().isoformat(timespec='minutes')}.",
          "Nothing here is evidence. Each proposal goes to the user in the format of brain-mesh-discover section 5; only what the user accepts becomes a card.", "", "## The slate", ""]
     for k, p in enumerate(ranked[:7], 1):
         b = board[p["id"]]
-        L += [f"### {k}. {p['title']}", f"[[{os.path.basename(p['file'])[:-3]}|{p['id']}]] by {p['owner']} · impact {b['I']:g}, cogency {b['C']:g}, realism {b['R']:g} · novelty {b['novelty']} · composite {b['composite']:g}" + (f" · pairwise {b['bt']}" if b["bt"] else "") + f" · reach {p['reach']}",
-              f"- **Hypothesis.** {sec(p, 'Hypothesis')}", f"- **Proof of concept.** {p['poc']}" + (f", replicated {b['repl']}" if b["repl"] else "") + f". {sec(p, 'Proof of concept')}",
+        L += [f"### {k}. {p['title']}", f"[[{os.path.basename(p['file'])[:-3]}|{p['id']}]] by {p['owner']} · impact {b['I']:g}, cogency {b['C']:g}, realism {b['R']:g}" + (f", originality {b['O']:g}" if b["O"] is not None else "") + f" · novelty {b['novelty']} · composite {b['composite']:g}" + (f" · pairwise {b['bt']}" if b["bt"] else "") + f" · reach {p['reach']}" + (f" · first result {p['first_result']}" if p["first_result"] else ""),
+              f"- **Hypothesis.** {sec(p, 'Hypothesis')}"] + ([f"- **Follows on from.** {sec(p, 'Follows on from')}"] if sec(p, 'Follows on from') else []) + ([f"- **Prior and outcomes.** {sec(p, 'Prior and outcomes')}"] if sec(p, 'Prior and outcomes') else []) + [f"- **Proof of concept.** {p['poc']}" + (f", replicated {b['repl']}" if b["repl"] else "") + f". {sec(p, 'Proof of concept')}",
               f"- **Decisive experiment.** {sec(p, 'Decisive experiment')}", f"- **Impact if true.** {sec(p, 'Impact if true')}", f"- **Rests on.** {' '.join((p['codes'].get('rests_on') or ['']))}", ""]
     if nulls: L += ["## Informative nulls", ""] + [f"- [[{os.path.basename(p['file'])[:-3]}|{p['id']}]] {p['title']}: {sec(p, 'Proof of concept')}" for p in nulls] + [""]
     dls = camp_downloads(cd, props, board)
     if dls: L += ["## Download requests, by value over effort", ""] + [f"- [[{os.path.basename(d_['file'])[:-3]}|{d_['id']}]] {d_['title']} · {d_['access']} · effort {d_['effort']} · value {d_['value']:g} · for {' '.join(d_['for']) or '–'}" for d_ in dls] + [""]
+    ul = camp_unlock_lines(m, cd, props, board)
+    if ul: L += ["## What would unlock most", "", "Ideas held back by a capability the profile does not mark as had, and the impact they carry. Often the most useful result of a campaign is the one partnership that unlocks the best study.", ""] + ul + [""]
+    conv, live_ = [], [p for p in props.values() if p["status"] in DP_LIVE + ("merged",)]
+    for a, b_ in itertools.combinations(sorted(live_, key=lambda p: p["id"]), 2):
+        if a["owner"] == b_["owner"]: continue
+        ra, rb = set(re.findall(r"\[\[([^\]|#]+)", " ".join(a["codes"].get("rests_on", [])))), set(re.findall(r"\[\[([^\]|#]+)", " ".join(b_["codes"].get("rests_on", []))))
+        if (ra and rb and jac(ra, rb) >= 0.4) or b_["id"] in " ".join(a["codes"].get("merged_into", [])) or a["id"] in " ".join(b_["codes"].get("merged_into", [])):
+            conv.append(f"- {a['id']} ({a['owner']}) and {b_['id']} ({b_['owner']}) reached the same ground independently")
+    if conv: L += ["## Independent convergence", "", "Weak evidence that a gap is real, and strong evidence that competitors can see it too.", ""] + conv + [""]
+    L += ["## Recommendation", "", "(The chair writes this: which study to do next and why, including whether the highest-impact study is the right one to start.)", ""]
+    dec = J(cd, "decisions.md")
+    if os.path.exists(dec) and len(rd(dec).splitlines()) > 3: L += ["## Steers from the user", ""] + [l for l in rd(dec).splitlines() if l.startswith("- ")] + [""]
     L += ["## Scoreboard", ""] + camp_board_lines(cd, props, board) + ["", "## Credit", ""] + [f"- {a}: own {v[0]:g}, assists {v[1]:g}, kills {v[2]}, total {v[3]:g}" for a, v in sorted(camp_credit(props, board).items(), key=lambda kv: -kv[1][3])] + [""]
     wr(J(cd, "REPORT.md"), "\n".join(L))
     t = rd(J(cd, "CAMPAIGN.md")); wr(J(cd, "CAMPAIGN.md"), re.sub(r"^- status:: .*$", "- status:: closed", t, count=1, flags=re.M))
@@ -9801,9 +10016,10 @@ seal [P###]                   record checksums for source files that have none
 linked [<file> [--from <where>] | --all | --restore | --verify]  source files over the size limit (MESH.json large_file_mb, 10) kept out of git: list, link, restore from history, check
 gaps [--all]                  scan for candidate gaps (signals to judge): the head of each section, or every row
 gapsdoc                       assemble gaps/RESEARCH-GAPS.md from the gap cards
-campaign init <name> --scope <topic:slug|concept|id> [--agents a,b,c] [--rounds n] [--minutes n] [--constraint "<text>"]
+campaign init <name> (--scope <topic:slug|concept|id> | --sources P004,P005) [--agents a,b,c] [--rounds n] [--minutes n] [--rank impact|composite] [--constraint "<text>"]
 campaign status | check | score <id> … | compare <A> <B> --winner … | set <id> <status> --why … | poc register|verify|replicate <id>
-                              | meeting [n] [--cut] | close   competing discovery agents with hourly meetings (brain-mesh-campaign)
+                              | meeting [n] [--cut] | close | briefs   competing discovery agents with hourly meetings (brain-mesh-campaign)
+obvious <topic:slug|sources:P004,P005|concept|id> [--write <file>]   what any competent reader would propose next: the list a proposal must beat
 discover [miner ...] [--top n] [--focus concept] [--all] [--full]   mine the ontology for candidate cards (no miner named: an overview; --full: every miner in full): """ + ", ".join(MINERS) + """
 discover --recheck            after new sources: what changed for stamped cards and rejected signals
 report [<kind> [target]] [--focus concept] [--since date|P###] [--top n]   assemble a dated report in reports/: frontier, contradictions [V001 ...], theories, causal,
@@ -9888,6 +10104,7 @@ def main():
     elif c == "gapsdoc": cmd_gapsdoc(m)
     elif c == "discover": cmd_discover(m, a)
     elif c == "campaign": cmd_campaign(m, a)
+    elif c == "obvious": cmd_obvious(m, a)
     elif c == "dismiss": cmd_dismiss(m, a[0], " ".join(a[1:]))
     elif c == "theories": cmd_theories(m)
     elif c == "log": cmd_log(m, " ".join(a))

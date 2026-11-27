@@ -2,11 +2,11 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
-## 1.29.0 (2026-11-26)
+## 1.31.0 (2026-11-26)
 
 **Knowledge has a date: the brain stops asserting what was only true when it was written.**
 
-(Branched at 1.27.0 as 1.28.0, and renumbered when discovery campaigns reached main first under that number. A vault upgraded to main's 1.28.0 lost the `chronology` command and the `superseded_by`, `supersedes`, `asof` and `chronology_checked` keys while its cards kept those lines; upgrading to 1.29.0 restores them.)
+(Branched at 1.27.0 as 1.28.0, and renumbered twice as discovery campaigns (1.28.0) and the planning pack (1.29.0) reached main first under the numbers it had; 1.30.0 is left to campaign work not yet published. A vault upgraded from main lost the `chronology` command and the `superseded_by`, `supersedes`, `asof` and `chronology_checked` handling while its cards kept those lines; upgrading to 1.31.0 restores them.)
 
 A claim that no structure exists, that something has never been measured, or that a paper is the first of its kind is true as of its source's year and no later. The brain stored all of it flatly, so it went on asserting absences the field had since filled. Three of the vault this was built for turned out to be answered already, two of them by papers published within three years of the question.
 
@@ -19,6 +19,18 @@ A claim that no structure exists, that something has never been measured, or tha
 - **A card resting on a settled claim is warned about**, until `- chronology_checked:: <card> — <what changed>` records that it was reviewed. Settling a dated claim says the brain no longer asserts it; a finding that cites it as support does not stop resting on it by itself. This mirrors the retraction-dependants check, which exists for the same reason.
 - **The synthesis layer has a date too.** `chronology` lists the findings, tensions, gaps and hypotheses whose newest evidence predates a source since read that bears on the same concepts. Not stale by itself — the newer source may say nothing about it — but not yet read against it either.
 - Tests section 45.
+
+## 1.29.0 (2026-11-26)
+
+**Follow-on campaigns, the list of what is already obvious, credibility checks, and ranking by impact with what would unlock the rest.**
+
+- **`mesh.py obvious <topic:slug | sources:P004,P005 | concept | id>`** lists what any competent reader would propose next, from the brain itself: the questions and limitations the papers state, the open questions several independent groups already share (axes such as species and preparation left out), what would settle the open gaps, contradictions and tensions, the findings resting on one group, and the standard moves. `campaign init` writes it as `OBVIOUS.md`; proposals name their nearest entry and must differ in kind, not degree.
+- **Follow-on campaigns**: `campaign init <name> --sources P004,P005` scopes a campaign to named papers, with the rest of the brain as their literature; every proposal names the result it follows on from (`follows_on::`). Default lenses for a follow-on: sceptic, instrumentalist and transferer.
+- **New lens `instrumentalist`** (the field measures the wrong quantity); lenses are marked adjacent or distant.
+- **Scoring**: an originality axis (`campaign score --originality`); campaigns rank by impact by default among the proposals that pass the gates, with cogency below 2.5 and originality below 2 as gates; realism is reported, not ranked; `--rank composite` keeps the 1.28 ranking. Existing campaigns keep their ranking.
+- **Proposal format 2**: **Prior and outcomes.**, **Nearest obvious entry.**, **Credibility checks.** (circularity and pipeline artefacts, with a pipeline null among a proof of concept's controls), `first_result::`, `paper_months::`, `needs::`.
+- **What would unlock most**: the capabilities live proposals need that the research profile does not mark as had, with the impact they hold back, in `status`, meetings and the report. The report also gives independent convergence, the user's steers (`decisions.md`) and a Recommendation for the chair to write; meetings count survivors and suggest stopping when a round adds fewer than two.
+- `campaign briefs` rewrites briefs from the current templates; with several campaigns running, `--campaign` is required. Discovery's proposal format (brain-mesh-discover section 5) gains the prior, nearest obvious entry, credibility and time-to-first-result lines.
 
 ## 1.28.0 (2026-11-26)
 

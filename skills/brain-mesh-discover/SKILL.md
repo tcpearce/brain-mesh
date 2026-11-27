@@ -221,7 +221,15 @@ For each signal worth attention:
 - Outside the brain: no answer found in PubMed and bioRxiv on 2026-11-23; from Claude's knowledge, not verified: hydrogel work links swelling to lost imprint fidelity
 - Proof it would need, and the fastest way to kill it: a paper reporting thickness and capacity on the same films; failing that, one heat cycle with both measured
 - How sure the signal is real: high; both quantities are carded with conditions in two sources
+- Prior and outcomes: expected to hold (r around 0.5); if it fails, the swelling account loses its strongest prediction; an expert would be surprised by a null
+- Nearest obvious entry: "test the prediction in the system the papers name" (`mesh.py obvious`); differs in kind: a film-by-film relation, not a repeat
+- Credibility checks: no circularity (thickness and capacity measured independently); best-of-many avoided by one registered correlation
+- Time to first result: an afternoon on the published values; a paper in about six months
 ```
+
+The last four lines come from the planning method (`brain-mesh-campaign`, **The obvious list** and **Credibility checks**):
+`mesh.py obvious <topic|sources:P004,P005>` lists what any competent reader would propose next, so a proposal can say how it
+differs; the credibility checks catch circular designs and effects made by the analysis rather than the system.
 
 Ask the user to accept, edit, reject or defer each one, with the multiple-choice tool where the session has it.
 

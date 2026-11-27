@@ -5381,10 +5381,127 @@ def cmd_chronology(m, args):
     print("\nA claim with a shelf life is not a fault: it is knowledge with a date. What is a fault is asserting it as if it had none.")
 
 
+SYNTH = "KXGVH"  # the synthesis layer: findings, tensions, gaps, contradictions, hypotheses
+
+
+def indexed_refs(m):
+    """The cited works indexed from their abstracts that the brain has not read: what the synthesis pass reads."""
+    return [r for r in m.cards.values() if r.fam == "reference" and not r.get("retired") and r.status != "held"
+            and r.get("indexed") and r.all("concepts") and not concepts_none(r)]
+
+
+def ref_terms(m, r):
+    return {x for v in r.all("concepts") for x in m.ids(v)[0] if x in m.cards and m.cards[x].fam == "concept"}
+
+
+def checked_on(card):
+    """The date of a synthesis card's last '- literature_checked:: <date> — ...' line, '' when it has none."""
+    ds = [mo.group(0) for v in card.all("literature_checked") for mo in [re.match(r"\s*\d{4}-\d{2}-\d{2}", str(v))] if mo]
+    return max(d.strip() for d in ds) if ds else ""
+
+
+def indexed_on(r):
+    mo = re.match(r"\s*(\d{4}-\d{2}-\d{2})", str(r.get("indexed") or ""))
+    return mo.group(1) if mo else ""
+
+
+def literature_against(m, card, refs=None, df=None):
+    """The indexed works that bear on one synthesis card. A work bears on it when it shares the card's concepts and
+    at least one of them is specific: carried by no more than a small share of the indexed works (3 per cent, at
+    least 3; `literature_specific_share` in config). A concept most works carry (human, mouse, the receptor itself)
+    says little on its own, so it takes two specific shared concepts, or three shared in all, unless the card names
+    only one or two. Ranked by shared concepts weighted by rarity. Returns [(score, reference, shared)], best first."""
+    refs = indexed_refs(m) if refs is None else refs
+    if df is None:
+        df = Counter(t for r in refs for t in ref_terms(m, r))
+    n, ts = max(len(refs), 1), {t for t in m.terms(card) if m.cards[t].priority != "low"}
+    cap = max(3.0, float(m.cfg.get("literature_specific_share", 0.03)) * n)
+    out = []
+    for r in refs:
+        sh = ts & ref_terms(m, r)
+        spec = sum(1 for t in sh if df[t] <= cap)
+        if sh and len(sh) >= min(2, len(ts)) and spec and (spec >= 2 or len(sh) >= 3 or len(ts) <= 2):
+            out.append((sum(math.log((n + 1) / (df[t] + 0.5)) for t in sh), r, sh))
+    out.sort(key=lambda x: (-x[0], -len(x[1].all("cited_by")), x[1].id))
+    return out
+
+
+def cmd_literature_against(m, args):
+    """`literature --against [K014 X001 ... | all]`: the synthesis layer read against the citation index. With ids,
+    the indexed works that bear on each card, with the claims that name the shared concepts, to judge one by one.
+    Without, every finding, tension, gap, contradiction and hypothesis: how many indexed works bear on it, when it was
+    last checked, and how many were indexed since."""
+    refs = indexed_refs(m)
+    df = Counter(t for r in refs for t in ref_terms(m, r))
+    ids = [a for a in args if not a.startswith("--") and a != "all"]
+    cards = [need(m, a) for a in ids] if ids else sorted((c for c in m.pages(SYNTH) if not c.get("retired")), key=lambda c: c.id)
+    for c in cards:
+        if c.fam != "page" or c.id[0] not in SYNTH: sys.exit(f"literature --against: {c.id} is not a finding, tension, gap, contradiction or hypothesis")
+    rows = []
+    for c in cards:
+        cand, last = literature_against(m, c, refs, df), checked_on(c)
+        new = [x for x in cand if last and indexed_on(x[1]) > last]
+        rows.append((c, cand, last, new))
+    if not ids:
+        never = [r for r in rows if not r[2] and r[1]]; stale = [r for r in rows if r[3]]
+        print(f"The synthesis layer against the citation index: {len(refs)} indexed works; {len(rows)} cards, "
+              f"{sum(1 for r in rows if r[2])} checked, {len(never)} with bearing works never checked, {len(stale)} with works indexed since their check.\n")
+        print(f"{'card':8} {'bearing':>8} {'checked':>11} {'since':>6}  title")
+        for c, cand, last, new in sorted(rows, key=lambda r: (bool(r[2]) and not r[3], -len(r[3]), -len(r[1]), r[0].id)):
+            print(f"{c.id:8} {len(cand):8d} {last or 'never':>11} {len(new) if last else '':>6}  {one(c.title, 70)}")
+        print("\nJudge each card against its bearing works: `mesh.py literature --against <id>` (brain-mesh-citation-index, section 7)."
+              "\nRecord the check on the card: '- literature_checked:: <date> — <n> read; agree [[R…]]; disagree [[R…]] (queued); answer [[R…]]'.")
+        return
+    top = 40 if "--all" not in args else 10 ** 6
+    for c, cand, last, new in rows:
+        newids = {x[1].id for x in new}
+        judged = {t for v in c.all("literature_checked") for t in re.findall(r"\bR\d{4}\b", str(v))}
+        print(f"{c.id} {one(c.title, 100)}\n  concepts: {', '.join(sorted(m.terms(c)))}\n  "
+              f"{len(cand)} indexed works bear on it; " + (f"last checked {last}, {len(new)} indexed since" if last else "never checked") + "\n")
+        for _s, r, sh in cand[:top]:
+            mark = " [new since check]" if r.id in newids else (" [judged]" if r.id in judged else "")
+            print(f"  {r.id} {one(r.title, 90)} ({r.get('year') or '?'}){mark}\n      shares: {', '.join(sorted(sh))}")
+            for l in section_bullets(r.raw, "What it claims"):
+                if set(m.ids(l)[0]) & sh: print("      - " + one(re.sub(r"\s*\(\[\[.*$", "", l[2:]), 150))
+        if len(cand) > top: print(f"  … {len(cand) - top} more (--all)")
+        print()
+    print("For each work: agrees, disagrees, answers (a gap or open question), or does not bear. An abstract is never evidence:"
+          "\na work that disagrees or answers goes on the reading queue (`queue add R… --why \"would test K014: …\"`), and the card is"
+          "\nchanged only once that work is read and carded. Record the check on the card: '- literature_checked:: <date> — …'.")
+
+
+def cmd_literature_pairs(m, args):
+    """`literature --pairs [<concept> ...] [--min n]`: pairs of concepts that the indexed abstracts claim together
+    and that no evidence card in the brain names together. The literature links them; the brain has no evidence
+    either way. Each is a candidate relationship or open question for the two hubs, and a reading list."""
+    want = {concept_arg(m, a) for a in args if not a.startswith("--") and not a.isdigit()} - {None}
+    mn = int(args[args.index("--min") + 1]) if "--min" in args and args.index("--min") + 1 < len(args) else int(m.cfg.get("literature_pair_min", 3))
+    low = {c.id for c in m.cards.values() if c.fam == "concept" and c.priority == "low"}
+    lit = defaultdict(set)
+    for r in indexed_refs(m):
+        for l in section_bullets(r.raw, "What it claims"):
+            ts = sorted({t for t in m.ids(l)[0] if t in m.cards and m.cards[t].fam == "concept"} - low)
+            for a, b in itertools.combinations(ts, 2): lit[(a, b)].add(r.id)
+    brain = Counter()
+    for c in m.cards.values():
+        if c.fam == "evidence" and not c.get("retired"):
+            for p in itertools.combinations(sorted(m.terms(c)), 2): brain[p] += 1
+    rows = sorted(((p, w) for p, w in lit.items() if len(w) >= mn and not brain[p] and (not want or set(p) & want)),
+                  key=lambda x: (-len(x[1]), x[0]))
+    print(f"{len(rows)} pairs of concepts that at least {mn} indexed abstracts claim together and no evidence card names together"
+          + (f", involving {', '.join(sorted(want))}" if want else "") + "\n")
+    for (a, b), w in rows[:40]:
+        print(f"  {a} + {b}: {len(w)} works — " + ", ".join(sorted(w)[:6]) + (" …" if len(w) > 6 else ""))
+    print("\nEach is the literature linking two concepts the brain holds no evidence on together: a candidate relationship or open"
+          "\nquestion for both hubs (asked as a question, never stated as known), and a reading list (brain-mesh-citation-index, section 7).")
+
+
 def cmd_literature(m, args):
     """Where the brain's own evidence is thin against the literature it already cites. For each concept: the sources
     read, the cited works indexed from their abstracts, and those still unindexed. A concept carried by many cited
     works and few read sources is where reading would pay most (the citation index)."""
+    if "--against" in args: return cmd_literature_against(m, [a for a in args if a != "--against"])
+    if "--pairs" in args: return cmd_literature_pairs(m, [a for a in args if a != "--pairs"])
     only = [a for a in args if not a.startswith("--")]
     cons = [c for c in m.cards.values() if c.fam == "concept" and not c.get("retired")]
     if only:
@@ -5407,10 +5524,22 @@ def cmd_literature(m, args):
         queued = sum(1 for r in idx.get(con.id, []) if r.status == "queued")
         rows.append((ni - 2 * nh + (3 if con.priority == "high" else 0), con, nh, ni, queued))
     rows.sort(key=lambda r: (-r[0], r[1].id))
-    nidx = sum(1 for r in m.cards.values() if r.fam == "reference" and r.get("indexed"))
-    nref = sum(1 for r in m.cards.values() if r.fam == "reference" and not r.get("retired") and r.status != "held")
+    live = [r for r in m.cards.values() if r.fam == "reference" and not r.get("retired") and r.status != "held"]
+    nidx, nref = sum(1 for r in live if r.get("indexed")), len(live)  # retired and held works count on neither side
     print(f"Citation index: {nidx} of {nref} cited works indexed from their abstracts"
           + (f"; {nref - nidx} still unindexed (`mesh.py literature --unindexed` lists them by source)" if nref > nidx else "") + "\n")
+    if not only:
+        syn = [c for c in m.pages(SYNTH) if not c.get("retired")]
+        if syn and nidx:
+            refs = indexed_refs(m); df = Counter(t for r in refs for t in ref_terms(m, r))
+            unchecked = stale = 0
+            for c in syn:
+                cand, last = literature_against(m, c, refs, df), checked_on(c)
+                unchecked += bool(cand) and not last
+                stale += bool(last) and any(indexed_on(x[1]) > last for x in cand)
+            if unchecked or stale:
+                print(f"Synthesis against the index: {unchecked} of {len(syn)} findings, tensions, gaps, contradictions and hypotheses have bearing works never checked"
+                      + (f", {stale} have works indexed since their check" if stale else "") + " (`mesh.py literature --against`)\n")
     print(f"{'concept':34} {'read':>5} {'cited':>6} {'queued':>7}  thinnest first")
     for _s, con, nh, ni, q in rows[:30]:
         if not ni and not nh: continue
@@ -11447,6 +11576,8 @@ queue [add <doi|R id|"author year title"> --why "<what it would fill>" --from <s
       | mark <R id|doi> queued|skip|suggested ["<why>"]]   the reading queue: the one route onto it for every skill, and the user's decisions
 forward [P### ...] [--since YEAR] [--max N] [--all]   the works citing the sources, from OpenAlex, for the queue's Forward section; stamps each search
 literature [<concept> ...] [--gaps] [--unindexed]   where the brain is thin against the literature it cites: sources read against cited works indexed from their abstracts; --gaps names the thin concepts no gap card covers
+literature --against [K001 X001 ...] [--all]   the synthesis layer read against the citation index: which indexed works bear on each finding, tension, gap, contradiction and hypothesis, and when each was last checked
+literature --pairs [<concept> ...] [--min n]   concept pairs the indexed abstracts claim together and no evidence card names together: candidate relationships, open questions and reading
 draft <file> [--out file]     worklist for auditing a draft against the brain: per sentence, the works cited, concepts, numbers, likeliest cards and what to check
 sample <P###> [n]             random cards beside their source text, for spot checks
 unread <P###> [min chars]     paragraphs of a source that no card is anchored to, for finding missed cards
@@ -11498,6 +11629,10 @@ tidy [P###|<id>]              keep each link once and drop empty items on the li
 log <message>                 append a dated changelog line          schema   print the enforced sets"""
 
 def main():
+    for st in (sys.stdout, sys.stderr):  # a Windows console's code page cannot print every character a card holds (issue #64)
+        try:
+            if (st.encoding or "").lower().replace("-", "").replace("_", "") not in ("utf8", "utf8sig"): st.reconfigure(errors="replace")
+        except (AttributeError, ValueError): pass
     a = sys.argv[1:]
     if not a or a[0] in ("help", "-h", "--help"): print(HELP); return
     c, a = a[0], a[1:]

@@ -34,7 +34,9 @@ Read `brain-mesh` for the map of the brain, and its FORMATS.md before writing or
   - In generated files (`index/`, `MAP.md`, AUTO blocks, `## Linked from`, `*.bib`, `ledger/reading-queue.md`), take either side; the next build regenerates them.
   - In cards, keep both contributions.
   - Then `git add -A`, `git rebase --continue`, and sync again.
+- **Local edits set aside during the pull.** When the working tree had uncommitted changes, the pull stashes them first and puts them back after; if they clash with what was pulled, they can stay in the stash while the vault shows GitHub's copy. After any sync that reported a conflict, run `git stash list`: a stash left there holds local work. Recover it (`git stash show -p stash@{0}`, then `git stash apply` and resolve as above), never drop it unread. This is why nothing syncs or pulls while agents are still writing into the vault (`brain-mesh-batch`).
 - The build has errors: fix them first. `sync` will not commit a broken vault.
+- **A crash on Windows** with `UnicodeEncodeError: 'charmap' codec` came from a console code page that cannot print every character on the cards. From 1.33.0 the tooling prints such characters as `?` (issue #64); with an older vault set `PYTHONIOENCODING=utf-8` first.
 - The vault has no GitHub remote: `sync` still commits locally. Tell the user that nothing reaches GitHub until a remote is added.
 
 ## 2. Navigating and extracting knowledge
@@ -117,7 +119,7 @@ Choose the home by what the material is. Everything that enters keeps its proven
 
 Get new ids from `python3 tools/mesh.py id <kind>`, never by guessing. Before creating any card, search for an existing one (`find`, `concept`); the duplicate rules are in add-paper.
 
-A concept card is made only by the user, by hand or with `adopt`, or by an agent on the user's word or where a vault rule in `CLAUDE.md` tells it to. When the user asks for a concept ("add a concept for mixture suppression"), that is their word: `propose` it, then `adopt` it.
+A concept card is made only by the user, by hand or with `adopt`, or by an agent on the user's word or where a vault rule in `CLAUDE.md` tells it to. The same holds for changing what a concept means: a new definition, a split, a merge, or a priority on a concept are the user's decisions. Gather those an agent or a pass proposes into **one numbered list**, each with a recommendation and the counts behind it, so the user can answer "yes to all" or name the numbers to change; then act on the answer. When the user asks for a concept ("add a concept for mixture suppression"), that is their word: `propose` it, then `adopt` it.
 
 Every fact entered from a source carries the works the source cites for it (`cites::`), and a hub line stating it cites them too (`brain-mesh` FORMATS.md, **Citations in cards**).
 
@@ -161,8 +163,8 @@ Removing a source (`remove P012`) deletes its whole folder: the PDF, its evidenc
 
 ## 7. Working alongside others
 
-- **The user in Obsidian.** If the user may have edited cards since the last session, the start-of-session sync rebuilds before anything else. Then bring Codes into line with any prose they changed.
-- **Several agents at once.** Only one session writes a given card at a time. Parallel extraction follows `brain-mesh-batch`: each agent writes only inside its own source folder, and shared files (concepts, findings, data-set and code cards, reference cards) are written by the orchestrating session. `sync` rebases on whatever was pushed in the meantime.
+- **The user in Obsidian.** If the user may have edited cards since the last session, the start-of-session sync rebuilds before anything else. Then bring Codes into line with any prose they changed. Obsidian can also save its open copy of a file back over an edit made outside it: after editing a file the user is likely to have open, check the file on disk and on GitHub (`git show origin/main:<path>`) before saying it is done.
+- **Several agents at once.** Only one session writes a given card at a time. Parallel extraction follows `brain-mesh-batch`: each agent writes only inside its own source folder, and shared files (concepts, findings, data-set and code cards, reference cards) are written by the orchestrating session. Other parallel work follows the same rule: an agent drafts or judges into a folder outside the vault that the session names, or writes only the cards it was given by id; and no agent starts agents of its own. `sync` rebases on whatever was pushed in the meantime.
 - **Scheduled runs** report; they do not commit, push or edit unless their instructions say so.
 
 ## 8. Tooling bugs

@@ -2109,6 +2109,65 @@ sed -i 's/^- id:: R0900$/- id:: R0900\n- indexed:: 2026-11-23 — from the publi
 sed -i 's/^- The films swell by 12 per cent over the same range (\[\[swelling\]\])$/- The films swell by 12 per cent over the same range/' references/R0900-*.md
 python3 tools/mesh.py build > b.txt 2>&1
 grep -q "R0900: 1 of 2 claims from the abstract name no concept" b.txt && pass "claims that name no concept are flagged, counted, one line a card" || { grep "R0900" b.txt; fail "claim no concept"; }
+# 57. the synthesis pass: findings and gaps read against the indexed works that bear on them, the check dated, concept pairs the literature draws (issue #63)
+cp -r "$ROOT/demo-vault" "$T/syn"; cd "$T/syn"; cp "$MESH" tools/mesh.py; mkdir -p references
+mkref() { cat > "references/$1.md" <<REF
+---
+type: reference
+status: not-held
+updated: 2026-11-23
+---
+# $2
+
+## Abstract
+
+$3
+
+## What it claims
+$4
+
+## Notes
+
+## Codes
+- id:: ${1%%-*}
+- authors:: Doe, J.
+- year:: 2021
+- title:: $2
+- journal:: J. Test
+- kind:: article
+- concepts:: $5
+- indexed:: 2026-11-23 — abstract from the publisher's page
+- cited_by:: [[P001]] ref 1 — b0004
+REF
+}
+mkref R0901-doe-2021-capacity-water "Capacity of imprinted films in hot water" "Films lost a third of their capacity in water between 25 and 45 degrees." "- Binding capacity falls with temperature in water ([[binding-capacity]], [[temperature]], [[water]])" "[[binding-capacity]], [[temperature]], [[water]]"
+mkref R0902-doe-2021-swelling-solvent "Swelling in acetonitrile" "Films swell in acetonitrile." "- Films swell in acetonitrile ([[swelling]], [[acetonitrile]])" "[[swelling]], [[acetonitrile]]"
+mkref R0903-doe-2021-retired-twin "A retired twin" "Films lost capacity." "- Capacity falls ([[binding-capacity]], [[temperature]], [[water]])" "[[binding-capacity]], [[temperature]], [[water]]"
+sed -i 's/^- id:: R0903$/- id:: R0903\n- retired:: merged into [[R0901-doe-2021-capacity-water]]/' references/R0903-*.md
+python3 tools/mesh.py build > b.txt 2>&1; grep -q "check: 0 errors" b.txt && pass "a vault with indexed works builds clean before the synthesis pass" || { grep -E "^ERROR" b.txt | head -4; fail "synthesis build"; }
+python3 tools/mesh.py literature > lit.txt 2>&1
+grep -q "Citation index: 2 of 2 cited works indexed" lit.txt && pass "a retired indexed work counts on neither side of the citation index" || { head -3 lit.txt; fail "literature count with retired"; }
+grep -q "^Synthesis against the index: .* have bearing works never checked .*literature --against" lit.txt && pass "literature says how many synthesis cards have bearing works never checked" || { cat lit.txt; fail "literature synthesis line"; }
+python3 tools/mesh.py literature --against > la.txt 2>&1
+grep -qE "^K001 +1 +never" la.txt && pass "literature --against lists each synthesis card with its bearing works and when it was checked" || { cat la.txt; fail "against summary"; }
+python3 tools/mesh.py literature --against K001 > lk.txt 2>&1
+grep -q "^  R0901 " lk.txt && grep -q "shares: binding-capacity, temperature, water" lk.txt && grep -q "      - Binding capacity falls with temperature in water$" lk.txt && ! grep -q "R0902\|R0903" lk.txt && pass "literature --against K001 lists the work sharing its concepts, with its claim, and not one sharing none or a retired twin" || { cat lk.txt; fail "against one card"; }
+python3 tools/mesh.py literature --against R0901 > /dev/null 2>&1 && fail "against a reference" || pass "literature --against refuses a card that is not a synthesis card"
+K=$(ls findings/K001-*.md); grep -q "^- id:: K001$" "$K" || fail "test setup: K001 has no id line"
+sed -i 's/^- id:: K001$/- id:: K001\n- literature_checked:: 2026-11-01 — 1 indexed works read; agree [[R0901-doe-2021-capacity-water]]/' "$K"
+python3 tools/mesh.py build > b.txt 2>&1; grep -q "check: 0 errors" b.txt && pass "a literature_checked line builds clean" || { grep -E "^ERROR" b.txt | head -4; fail "literature_checked build"; }
+python3 tools/mesh.py literature --against > la.txt 2>&1
+grep -qE "^K001 +1 +2026-11-01 +1 " la.txt && pass "a work indexed after the check makes the card stale" || { cat la.txt; fail "against stale"; }
+python3 tools/mesh.py literature --against K001 | grep -q "R0901 .*\[new since check\]" && pass "the work indexed since the check is marked" || { python3 tools/mesh.py literature --against K001; fail "new since check"; }
+sed -i 's/^- literature_checked:: 2026-11-01/- literature_checked:: 2026-12-01/' "$K"; python3 tools/mesh.py build > /dev/null 2>&1
+python3 tools/mesh.py literature --against | grep -qE "^K001 +1 +2026-12-01 +0 " && pass "a check after the last indexing leaves the card current" || { python3 tools/mesh.py literature --against; fail "against current"; }
+python3 tools/mesh.py literature --pairs --min 1 > lp.txt 2>&1
+grep -q "acetonitrile + swelling: 1 works — R0902" lp.txt && ! grep -q "R0903" lp.txt && pass "literature --pairs lists concept pairs the abstracts claim together and no evidence card names together" || { cat lp.txt; fail "pairs"; }
+grep -q "binding-capacity + temperature" lp.txt && fail "pairs lists a pair the brain's evidence already names together" || pass "a pair the brain's evidence names together is not listed"
+sed -i 's/^# Capacity of imprinted films in hot water$/# Capacity of imprinted films in hot water: α-phase → β/' references/R0901-*.md
+sed -i 's/^- title:: Capacity of imprinted films in hot water$/- title:: Capacity of imprinted films in hot water: α-phase → β/' references/R0901-*.md
+PYTHONIOENCODING=cp1252 PYTHONUTF8=0 python3 tools/mesh.py literature --against K001 > enc.txt 2>&1 && grep -q "hot water: ?-phase ? ?" enc.txt && pass "a console whose code page lacks a character prints it as ? and finishes (issue #64)" || { cat enc.txt | tail -3; fail "console encoding"; }
+
 # 43. the citation index feeds discovery: abstracts raise terms the brain cannot name, and a high-priority work heads the reading list
 cp -r "$ROOT/demo-vault" "$T/cid"; cd "$T/cid"; cp "$MESH" tools/mesh.py; mkdir -p references
 cat > references/R0901-doe-2019-capacity-of-imprinted-films.md <<'REF'

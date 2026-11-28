@@ -4809,6 +4809,19 @@ def cmd_scan_abstracts(m, args):
 HANDOVER_HEADS = ("Hub facts", "Key figures", "Links to papers in this batch", "Contradictions")
 
 
+def handover_bullets(raw, head):
+    """The items of a progress note's '## <head>' section: each '- ' line joined with the lines that continue it (an
+    agent wraps a long item onto indented lines, and the card links are often on the continuation)."""
+    mo = re.search(r"(?m)^## " + re.escape(head) + r"\s*$(.*?)(?=^## |\Z)", raw, re.S)
+    out = []
+    for l in (mo.group(1).split(chr(10)) if mo else []):
+        if l.startswith("- "): out.append(l.rstrip())
+        elif out and l.strip() and not l.lstrip().startswith(("#", "- ", "|", "<!--")) and (l[:1].isspace() or not out[-1].endswith(".")):
+            out[-1] += " " + l.strip()
+        elif not l.strip() and out and out[-1] != "": out.append("")
+    return [x for x in out if x]
+
+
 def handover_items(m, pid):
     """The items of a source's handover (its progress note's '## Hub facts', '## Key figures', '## Links to papers in
     this batch' and '## Contradictions' sections), each with its state: [(head, line, state, detail)], state one of
@@ -4818,7 +4831,7 @@ def handover_items(m, pid):
     raw, out = rd(p), []
     prop, rej = set(m.proposed()), set(rejected_concepts(m.root))
     for head in HANDOVER_HEADS:
-        for line in section_bullets(raw, head):
+        for line in handover_bullets(raw, head):
             names = [t.strip() for t, _a, _d in WIKI.findall(line)]
             ids = [m.resolve(t) or t for t in names]
             cons = [i for i in ids if i in m.cards and m.cards[i].fam == "concept"]
@@ -4850,7 +4863,8 @@ def handover_items(m, pid):
                 if len(cards) < 2: out.append((head, line, "unreadable", "needs two cards")); continue
                 against, _f = logged_pairs(m)
                 done_ = cards[1] in against.get(cards[0], ()) or cards[0] in against.get(cards[1], ())
-                clash = reason(line) or ""
+                last = list(WIKI.finditer(line))
+                clash = reason(line) or (re.sub(r"^[\s:;,.)\]*—-]+", "", line[last[-1].end():]).strip() if last else "")  # 'A against B: the clash' too
                 out.append((head, line, "applied" if done_ else ("ready" if clash else "unreadable"), dict(a=cards[0], b=cards[1:], clash=clash)))
     return out
 

@@ -22,6 +22,7 @@ Built on 1.33.0 (PR #70, merged into `fixes`).
 ### The batch handover (issue #66, item 2)
 - `handover <P###...> | --all [--apply]` reads the four handover sections of each extraction agent's progress note (hub facts, key figures, links to papers in the same batch, contradictions), says what is already applied, what is ready and what waits on a proposed concept, and with `--apply` writes the rest: hub facts into **What is known** with the evidence card, its source and the works it cites (and the `cites::` lines), key figures under **Key equations and figures**, links on the agent's cards, contradictions on the register. Applied items are recognised, so it runs again safely after more concepts are adopted.
 - `check` refuses a source set `integrated` while its handover has items not yet applied.
+- `handover` reads an item an agent wrapped onto indented lines, and a contradiction written `[[A]] against [[B]]: <the clash>`.
 - The batch brief fixes the line format of each handover section; batch Phase 3 runs `handover --all --apply` after the build.
 
 ### Check
@@ -31,7 +32,7 @@ Built on 1.33.0 (PR #70, merged into `fixes`).
 concept-scan (**Every concept across every source and every abstract: the record**), batch (handover line formats; Phase 3 steps 4 and 6; the backfill after adoptions), add-paper (step 9 in a batch; step 10.3, mesh the concepts the paper brought), citation-index 5b (concepts that arrive after a work was indexed), housekeeping item 23, FORMATS (`abstract_scan::`, `concept_decided::`, `ledger/concept-coverage.md`).
 
 ### Tests
-New section 58 (29 checks). The other sections run with `BRAIN_MESH_NO_RESOLVE=1`, so each tests its own feature; section 58 tests the default.
+New section 58 (27 checks). The other sections run with `BRAIN_MESH_NO_RESOLVE=1`, so each tests its own feature; section 58 tests the default.
 
 ## 1.33.0 (2026-11-27)
 

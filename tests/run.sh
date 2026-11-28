@@ -2243,6 +2243,8 @@ cat > "$P/P001_progress.md" <<NOTE
 ## Hub facts
 - [[swelling]] :: Films thicken by 18 percent in water at 45 degrees — [[$E5]]
 - [[film-cracking]] :: Films crack after three cycles — [[$E5]]
+- [[film-thickness]] :: Films thicken by a fifth after one cycle in hot water, a line long enough that the agent
+  wrapped it — [[$E5]]
 
 ## Key figures
 - none
@@ -2251,18 +2253,18 @@ cat > "$P/P001_progress.md" <<NOTE
 - [[$E3]] extends [[$F2]] — the same capacity measured in water rather than acetonitrile
 
 ## Contradictions
-- [[$E4]] ~ [[$F3]] — Capacity collapses at 45 degrees in water but holds in acetonitrile
+- [[$E4]] against [[$F3]]: Capacity collapses at 45 degrees in water but holds in acetonitrile
 NOTE
 python3 tools/mesh.py check > hc.txt 2>&1 || true
-grep -q "P001: integrated, but 3 items of its extraction agent's handover are not yet in the shared files" hc.txt && pass "check will not take a source as integrated while its handover is unapplied" || { grep P001 hc.txt | head -3; fail "handover check"; }
+grep -q "P001: integrated, but 4 items of its extraction agent's handover are not yet in the shared files" hc.txt && pass "check will not take a source as integrated while its handover is unapplied" || { grep P001 hc.txt | head -3; fail "handover check"; }
 python3 tools/mesh.py handover P001 > h1.txt 2>&1
-grep -q "^P001: 3 ready, 1 waiting" h1.txt && grep -q "\[waiting\] Hub facts: .*film-cracking" h1.txt && pass "handover lists what is ready and what waits on a proposed concept" || { cat h1.txt; fail "handover dry"; }
+grep -q "^P001: 4 ready, 1 waiting" h1.txt && grep -q "\[waiting\] Hub facts: .*film-cracking" h1.txt && pass "handover lists what is ready and what waits on a proposed concept" || { cat h1.txt; fail "handover dry"; }
 python3 tools/mesh.py handover P001 --apply > h2.txt 2>&1
 grep -q "^## What is known$" concepts/swelling.md && grep -q "^- Films thicken by 18 percent in water at 45 degrees (Smith .*\[\[$E5|P001-005\]\])$" concepts/swelling.md && pass "--apply writes a hub fact into What is known, citing its source and evidence card" || { cat h2.txt; sed -n 1,20p concepts/swelling.md; fail "hub fact"; }
 grep -q "^- extends:: \[\[P002-002[^]]*\]\] — the same capacity measured in water rather than acetonitrile$" "$P/$E3.md" && pass "--apply writes a link to a paper in the same batch on the agent's card" || fail "batch link"
 ls contradictions/ | grep -q "capacity-collapses" && pass "--apply logs a handed-over contradiction on the register" || { ls contradictions; cat h2.txt; fail "contradiction"; }
 python3 tools/mesh.py handover P001 --apply > h3.txt 2>&1
-grep -q "^P001: 3 applied, 1 waiting" h3.txt && [ "$(grep -c "Films thicken by 18 percent" concepts/swelling.md)" = 1 ] && pass "handover run again applies nothing twice" || { cat h3.txt; fail "idempotent"; }
+grep -q "^P001: 4 applied, 1 waiting" h3.txt && grep -q "a line long enough that the agent wrapped it" concepts/film-thickness.md && [ "$(grep -c "Films thicken by 18 percent" concepts/swelling.md)" = 1 ] && pass "handover run again applies nothing twice" || { cat h3.txt; fail "idempotent"; }
 python3 tools/mesh.py build > b3.txt 2>&1; grep -q "check: 0 errors" b3.txt && pass "the vault builds clean once the handover is applied" || { grep -E "^ERROR" b3.txt | head -4; fail "build after handover"; }
 # build resolves connections by default: a finished handover and a concept in an abstract's title, with nothing run by hand
 mkidx R0914-roe-2022-acetonitrile "Acetonitrile uptake by films" "Uptake was measured." "- Films take up solvent ([[film-thickness]])" "[[film-thickness]]"

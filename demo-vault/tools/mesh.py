@@ -7,7 +7,7 @@ Run inside the vault:  python3 tools/mesh.py <command> [args]      (`help` lists
 import sys, os, re, json, glob, math, bisect, random, shutil, hashlib, datetime, difflib, itertools, subprocess, unicodedata, urllib.parse
 from collections import Counter, defaultdict
 
-VERSION = "1.33.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
+VERSION = "1.34.0"   # tooling version; the source of truth is tools/mesh.py in the brain-mesh repository
 SCHEMA = 1
 EVIDENCE_TYPES = ["method", "observation", "model", "claim", "assumption", "limitation", "question", "definition", "cited", "oddity"]
 EVIDENCE_STATUS = ["reported", "measured", "derived", "inferred", "asserted", "speculated", "cited"]
@@ -1181,7 +1181,8 @@ class Mesh:
                 for wv, val, is_term in s.whens(c):
                     if not wv and any(firstlink(v_) in s.proposed() for v_ in c.all("when")): continue
                     if not wv or s.cards[wv].fam != "concept": E.append(f"{i}: 'when::' must start with a [[variable]] concept link then ' = '")
-                    elif s.cards[wv].get("unit") == "categorical" and not is_term: E.append(f"{i}: when {wv} is categorical, so its value must be a concept link (got '{val}')")
+                    elif s.cards[wv].get("unit") == "categorical" and not is_term and not any(t.strip() in s.proposed() for v_ in c.all("when") if s.pair(v_)[0] == wv for t, _a, _d in WIKI.findall(s.pair(v_)[1])):  # a proposed value is a warning, as every link to a proposal is (issue #72)
+                        E.append(f"{i}: when {wv} is categorical, so its value must be a concept link (got '{val}')")
                 dig = [s.part(k) for k in parts] if via in ("text", "table", "si") else []
                 xs = s.data_numbers(tuple(dfiles)) if via in ("text", "table", "si") else []
                 if (any(d[0] for d in dig) or xs) and via in ("text", "table", "si"):
@@ -1268,6 +1269,9 @@ class Mesh:
                 elif c.status in ("extracted", "integrated"):
                     todo = scan_todo(s, i)
                     if todo: W.append(f"{i}: {len(todo)} concept{'s are' if len(todo) > 1 else ' is'} named in passages no card of {i} covers, with no decision: " + ", ".join(f"{cid} ({len(u)})" for cid, u in todo[:8]) + (" …" if len(todo) > 8 else "") + f" — run `mesh.py scan {i}`, then card the facts (with cites:: for the works cited) or write a decided:: line in {i}_scan.md")
+                if c.status == "integrated":  # the batch handover cannot be forgotten (1.34.0, issue #66)
+                    rdy = [x for x in handover_items(s, i) if x[2] == "ready"]
+                    if rdy: E.append(f"{i}: integrated, but {len(rdy)} item{'s' * (len(rdy) > 1)} of its extraction agent's handover {'are' if len(rdy) > 1 else 'is'} not yet in the shared files ({', '.join(sorted({x[0].lower() for x in rdy}))}): run `mesh.py handover {i} --apply`")
                 files = source_files(s.root, i)
                 lk = {k: v for k, v in s.linked_store().items() if k.startswith(i) and "_marked." not in k and not os.path.exists(J(SRC(s.root, i), k))}
                 for k, v in lk.items(): s.absent.append(f"{i}: {k} is a linked file (kept out of git) and is not in this copy of the vault; `mesh.py linked --restore` brings it back if it was ever committed, otherwise get it from {v['from']}, put it in {relp(SRC(s.root, i), s.root)}, and run `mesh.py linked --verify`")
@@ -1511,6 +1515,8 @@ class Mesh:
                     for rb, fb in grp[x_ + 1:]:
                         if set(ref_keys(fa)) & set(ref_keys(fb)) or (fa.get("doi") and fb.get("doi") and clean_doi(fa["doi"]) != clean_doi(fb["doi"])): continue
                         if same_work(fa, fb): W.append(f"{rb.id} and {ra.id} look like the same work (first author, year and title); merge them with `mesh.py merge`")
+            at_ = abstract_todo(s)  # every concept across every indexed abstract (1.34.0)
+            if at_: W.append(f"references: {len(at_)} concept mentions in {len({r_ for r_, _c, _w in at_})} indexed abstracts are neither linked on their concepts:: line nor decided: run `mesh.py scan --abstracts --apply`, then link or decide the rest (ledger/concept-coverage.md)")
             rq_ = J(s.root, "ledger", "reading-queue.md")
             if os.path.exists(rq_) and "## Rows of the old hand-written table" in rd(rq_).split("<!--AUTO:START")[0]:
                 n_ = len(queue_table_rows(rd(rq_).split("<!--AUTO:START")[0]))
@@ -3010,6 +3016,10 @@ def cmd_build(root):
     seed_grades(Mesh(root)); seed_priority(root)
     n = fixlinks(Mesh(root))
     m = Mesh(root)
+    if str(m.cfg.get("auto_resolve", True)).lower() not in ("false", "0", "no") and not os.environ.get("BRAIN_MESH_NO_RESOLVE"):
+        done_, left_ = resolve_connections(m)  # every build makes the connections that need no judgement (1.34.0)
+        if sum(done_.values()) or sum(left_.values()): print(resolve_line(done_, left_))
+        if sum(done_.values()): n += fixlinks(Mesh(root)); m = Mesh(root)
     def fill(card, L):  # replace the AUTO block of a hub card
         a, b = card.raw.find("<!--AUTO:START"), card.raw.find("<!--AUTO:END-->")
         if a < 0 or b < 0: return
@@ -3202,6 +3212,7 @@ def cmd_build(root):
     srcs = [c for c in m.cards.values() if c.fam == "source"]
     cov = [[c.id] + [x.strip() for x in v.split("|")] for c in srcs for v in c.all("coverage")]
     wr(J(ix, "coverage.tsv"), tsv([["source", "unit", "depth", "what"]] + cov))
+    write_concept_coverage(m)  # the record of which concepts have been searched across which sources and abstracts
     front = frontier(m)
     wr(J(ix, "frontier.tsv"), tsv([["cited_by_n", "ref", "sources"]] + [[len(v), k, " ".join(sorted(v))] for k, v in front]))
     ev, tc, tsrc = m.evidence(), Counter(), defaultdict(set)
@@ -4015,6 +4026,7 @@ def cmd_health(m):
     rq = [r for r in m.cards.values() if r.fam == "reference" and r.status in ("not-held", "suggested", "queued")]
     sec("Cited works to consider reading (see ledger/reading-queue.md)", [f"{r.id} {one(r.title, 90)} [{r.status}; cited by {len(r.all('cited_by'))} sources]" for r in sorted(rq, key=lambda r: (-len(r.all("cited_by")), r.id)) if len(r.all("cited_by")) > 1], 15)
     print("\n" + queue_stale_line(m))  # issue #56: the queue cannot go stale unnoticed
+    _d, _l = resolve_connections(m, dry=True); print(coverage_line(m) + " " + resolve_line(_d, _l, dry=True))  # 1.34.0: what is left to mesh
     sec("Sources not yet integrated", [f"{row(c)} [{c.status}]" for c in m.cards.values() if c.fam == "source" and c.status != "integrated"])
     newest = lambda cs: max([str(e.fm.get("updated", ""))[:10] for e in m.evidence() if m.terms(e) & cs] or [""])
     sec("Mined cards with evidence newer than their stamp (run `discover --recheck` and take the changes to the user)", [f"{c.id} {key} [stamped {d}, newer evidence {newest(m.terms(c))}]" for c, key, d, _s, _b in stamps(m) if newest(m.terms(c)) > d])
@@ -4589,6 +4601,400 @@ def short_cite(c):
 def works_cited(m, c):
     """Reference cards and sources a card cites in Codes."""
     return [m.cards[t] for v in c.all("cites") for t in m.ids(v)[0] if m.cards[t].fam in ("reference", "source")]
+
+
+# ---- every concept across every source and every indexed abstract (1.34.0) ----
+
+def ref_section(raw, head):
+    """The text of a reference card's '## <head>' section, '' when there is none."""
+    mo = re.search(r"(?m)^## " + re.escape(head) + r"\s*$(.*?)(?=^## |\Z)", raw, re.S)
+    return mo.group(1).strip() if mo else ""
+
+
+def indexed_refs_live(m):
+    """Reference cards indexed from an abstract and not yet read: not retired, not held, not skipped."""
+    return [r for r in m.cards.values() if r.fam == "reference" and not r.get("retired") and r.status not in ("held", "skip")
+            and r.get("indexed") and "## Abstract" in r.raw]
+
+
+def abstract_hits(m):
+    """{reference id: {concept id: 'title' | 'claims' | 'abstract'}}: the live concepts each indexed abstract names
+    (slug, title or aliases, as `scan` matches them in a source), with the strongest place it names them."""
+    if getattr(m, "_abs_hits", None) is not None: return m._abs_hits
+    cons = [c for c in m.cards.values() if c.fam == "concept" and not c.get("retired")]
+    rx = {}
+    for c in cons:
+        r_, keys = concept_rx(c, deep=False)
+        if r_: rx[c.id] = (r_, [k.lower() for k in keys])
+    out = {}
+    for r in indexed_refs_live(m):
+        parts = {"title": (r.get("title") or "").lower(), "claims": ref_section(r.raw, "What it claims").lower(), "abstract": ref_section(r.raw, "Abstract").lower()}
+        parts["claims"] = re.sub(r"\[\[[^\]]*\]\]", " ", parts["claims"])  # the concept links the indexer wrote are not mentions
+        whole = " ".join(parts.values())
+        got = {}
+        for cid, (r_, keys) in rx.items():
+            if keys and not any(k in whole for k in keys): continue
+            for where in ("title", "claims", "abstract"):
+                if parts[where] and r_.search(parts[where]): got[cid] = where; break
+        if got: out[r.id] = got
+    m._abs_hits = out
+    return out
+
+
+ABSTRACT_SCAN = {"none": (), "title": ("title",), "claims": ("title", "claims"), "all": ("title", "claims", "abstract")}
+
+
+def abstract_scope(con):
+    """Where a mention of the concept in an indexed abstract counts: '- abstract_scan:: none | title | claims | all —
+    <why>' on the concept card (all when absent). A concept whose names are everyday words, or a condition variable
+    such as species, is set to title or none: a passing word in an abstract does not make the work about it."""
+    v = (con.get("abstract_scan") or "all").split(" — ")[0].strip().lower()
+    return ABSTRACT_SCAN.get(v, ABSTRACT_SCAN["all"])
+
+
+def abstract_decisions(m, r):
+    """{concept id: why}: '- concept_decided:: [[concept]] — <why the work is not about it>' lines on a reference card."""
+    out = {}
+    for v in r.all("concept_decided"):
+        for t in m.ids(v)[0]: out[t] = reason(v) or "decided"
+    return out
+
+
+def abstract_todo(m, only=None):
+    """[(reference id, concept id, where)]: concepts an indexed abstract names that its concepts:: line does not link
+    and no concept_decided:: line settles. Low-priority and retired concepts are left out, as `scan` leaves them out."""
+    out = []
+    for rid, got in sorted(abstract_hits(m).items()):
+        r = m.cards[rid]
+        linked = {t for v in r.all("concepts") for t in m.ids(v)[0]}
+        dec = abstract_decisions(m, r)
+        for cid, where in sorted(got.items()):
+            if only and cid != only: continue
+            if cid in linked or cid in dec or m.cards[cid].priority == "low" or where not in abstract_scope(m.cards[cid]): continue
+            out.append((rid, cid, where))
+    return out
+
+
+def add_ref_concepts(raw, cids):
+    """Add concept links to a reference card's '- concepts::' line (or write one)."""
+    mo = re.search(r"(?m)^- concepts::(.*)$", raw)
+    if mo and re.match(r"\s*none\b", mo.group(1), re.I):  # 'none — why' was a judgement made before these concepts existed
+        return raw[:mo.start()] + "- concepts:: " + ", ".join(f"[[{c}]]" for c in cids) + raw[mo.end():]
+    if mo: return raw[:mo.end()] + "".join(f", [[{c}]]" for c in cids) + raw[mo.end():]
+    return add_code_line(raw, "concepts", "- concepts:: " + ", ".join(f"[[{c}]]" for c in cids))
+
+
+def abstracts_apply(m, todo, every=False):
+    """Link the concepts of `todo` on their reference cards: those named in the title or in a claim line always,
+    those named only in the abstract with every=True. Returns (linked, left)."""
+    by, left = defaultdict(list), []
+    for rid, cid, where in todo:
+        if where in ("title", "claims") or every: by[rid].append(cid)
+        else: left.append((rid, cid, where))
+    for rid, cids in by.items():
+        r = m.cards[rid]; raw = add_ref_concepts(r.raw, cids)
+        raw = set_fm(raw, "updated", TODAY)
+        wr(r.path, raw)
+    return sum(len(v) for v in by.values()), left
+
+
+def concept_coverage(m):
+    """For every live concept: the sources and indexed abstracts that name it, and which of them are not yet meshed.
+    A source is meshed for a concept when every passage naming it is covered by one of its cards or a decided:: line
+    in its scan file settles it; an abstract when its concepts:: line links the concept or a concept_decided:: line
+    settles it. Sources not yet extracted are counted apart: their scan comes with their extraction.
+    Returns {concept id: dict(src=set, src_todo=set, src_pending=set, abs=set, abs_linked=set, abs_decided=set, abs_todo=set)}."""
+    cons = {c.id: c for c in m.cards.values() if c.fam == "concept" and not c.get("retired")}
+    cov = {cid: dict(src=set(), src_todo=set(), src_pending=set(), abs=set(), abs_linked=set(), abs_decided=set(), abs_todo=set()) for cid in cons}
+    for s_ in [c for c in m.cards.values() if c.fam == "source" and not c.get("retired") and m.blocks(c.id)]:
+        st, dec = scan_state(m, s_.id), scan_decisions(m, s_.id)
+        for cid, (_h, unc) in st.items():
+            if cid not in cov: continue
+            cov[cid]["src"].add(s_.id)
+            if s_.status not in ("extracted", "integrated"): cov[cid]["src_pending"].add(s_.id)
+            elif unc and cid not in dec and cons[cid].priority != "low": cov[cid]["src_todo"].add(s_.id)
+    for rid, got in abstract_hits(m).items():
+        r = m.cards[rid]; linked = {t for v in r.all("concepts") for t in m.ids(v)[0]}; dec = abstract_decisions(m, r)
+        for cid in got:
+            if cid not in cov: continue
+            cov[cid]["abs"].add(rid)
+            if cid in linked: cov[cid]["abs_linked"].add(rid)
+            elif cid in dec or got[cid] not in abstract_scope(cons[cid]): cov[cid]["abs_decided"].add(rid)
+            elif cons[cid].priority != "low": cov[cid]["abs_todo"].add(rid)
+    for r in indexed_refs_live(m):  # linked by the indexer without naming it (a synonym): meshed, and counted
+        for t in {t for v in r.all("concepts") for t in m.ids(v)[0]}:
+            if t in cov: cov[t]["abs"].add(r.id); cov[t]["abs_linked"].add(r.id)
+    return cov
+
+
+def coverage_line(m, cov=None):
+    """One line for sync and health: how many concepts are meshed across every source and indexed abstract."""
+    cov = cov if cov is not None else concept_coverage(m)
+    todo = [c for c, v in cov.items() if v["src_todo"] or v["abs_todo"]]
+    ns = sum(len(v["src_todo"]) for v in cov.values()); na = sum(len(v["abs_todo"]) for v in cov.values())
+    pend = {s_ for v in cov.values() for s_ in v["src_pending"]}
+    return (f"Concepts: {len(cov) - len(todo)} of {len(cov)} meshed across every source and indexed abstract"
+            + (f"; {len(todo)} still to do ({ns} source scans: `mesh.py scan <concept>`; {na} abstract links: `mesh.py scan --abstracts --apply`)" if todo else "")
+            + (f"; {len(pend)} sources not yet extracted" if pend else "") + " (ledger/concept-coverage.md).")
+
+
+def write_concept_coverage(m, cov=None):
+    """ledger/concept-coverage.md: the record of which concepts have been searched across which sources and abstracts."""
+    cov = cov if cov is not None else concept_coverage(m)
+    cons = m.cards
+    todo = sorted((c for c, v in cov.items() if v["src_todo"] or v["abs_todo"]), key=lambda c: (-(len(cov[c]["src_todo"]) + len(cov[c]["abs_todo"])), c))
+    done = sorted(c for c in cov if c not in todo)
+    nsrc = len([c for c in m.cards.values() if c.fam == "source" and not c.get("retired") and m.blocks(c.id)])
+    nabs = len(indexed_refs_live(m))
+    L = ["# Concept coverage", "",
+         "<!-- written by `mesh.py build`; do not edit by hand -->",
+         "",
+         f"Every concept is to be meshed across every source and every indexed abstract. A source is meshed for a concept when each passage naming it is covered by one of its cards or settled by a `decided::` line in its scan file (`mesh.py scan <concept>`); an indexed abstract when its `concepts::` line links the concept or a `concept_decided::` line settles it (`mesh.py scan --abstracts`). Matching is by the concept's names and aliases. Low-priority concepts need nothing.",
+         "",
+         f"Rebuilt {TODAY}: {nsrc} sources with text, {nabs} indexed abstracts not yet read, {len(cov)} concepts. " + coverage_line(m, cov), ""]
+    if todo:
+        L += [f"## Still to mesh ({len(todo)})", ""]
+        for c in todo:
+            v = cov[c]
+            L.append(f"- [[{c}]]{' (high)' if cons[c].priority == 'high' else ''} · sources: {len(v['src'])} name it, "
+                     + (f"to do {', '.join(sorted(v['src_todo']))}" if v["src_todo"] else "all meshed")
+                     + (f", {len(v['src_pending'])} not yet extracted" if v["src_pending"] else "")
+                     + f" · abstracts: {len(v['abs'])} name it, {len(v['abs_linked'])} linked, {len(v['abs_decided'])} decided"
+                     + (f", to do {', '.join(sorted(v['abs_todo'])[:12])}{' …' if len(v['abs_todo']) > 12 else ''}" if v["abs_todo"] else ""))
+        L.append("")
+    scoped = sorted((c for c in cov if cons[c].get("abstract_scan")), key=lambda c: c)
+    if scoped: L += ["## Concepts whose abstract mentions count only in part", ""] + [f"- [[{c}]]: {cons[c].get('abstract_scan')}" for c in scoped] + [""]
+    L += [f"## Meshed everywhere ({len(done)})", "", ", ".join(f"[[{c}]] ({len(cov[c]['src'])}/{len(cov[c]['abs'])})" for c in done) or "none", "",
+          "Each entry gives the sources and the indexed abstracts that name the concept.", ""]
+    wr(J(m.root, "ledger", "concept-coverage.md"), "\n".join(L))
+    return cov
+
+
+def backfill_concept(m, cid):
+    """After a new concept: link it on every indexed abstract whose title or claims name it, and say which sources and
+    abstracts still need reading for it. Run by `adopt` for each concept it makes."""
+    todo = abstract_todo(m, only=cid)
+    n, left = abstracts_apply(m, todo)
+    srcs = [pid for pid in sorted(c.id for c in m.cards.values() if c.fam == "source" and m.blocks(c.id))
+            if (scan_state(m, pid).get(cid) or ((), ()))[1] and cid not in scan_decisions(m, pid)]
+    print(f"{cid}: linked on {n} indexed abstract{'s' * (n != 1)} that name it in the title or a claim"
+          + (f"; {len(left)} name it only in the abstract (`mesh.py scan --abstracts {cid}`: link or decide each)" if left else "")
+          + (f"; named in {len(srcs)} source{'s' * (len(srcs) != 1)} in passages no card covers: {', '.join(srcs)} (`mesh.py scan {cid}`)" if srcs else "; no source names it outside its cards"))
+
+
+def cmd_scan_abstracts(m, args):
+    """`scan --abstracts [<concept>] [--apply [--all]]`: the concepts indexed abstracts name without linking them.
+    --apply links those named in the title or a claim line; --all links those named only in the abstract too."""
+    rest = [a for a in args if not a.startswith("--")]
+    only = None
+    if rest:
+        only = m.resolve(rest[0]) or m.alias.get(" ".join(rest[0].lower().replace("-", " ").split()))
+        if not only or m.cards[only].fam != "concept": sys.exit(f"scan --abstracts: '{rest[0]}' is not a concept")
+    todo = abstract_todo(m, only)
+    if "--apply" in args:
+        n, left = abstracts_apply(m, todo, every="--all" in args)
+        print(f"linked {n} concept{'s' * (n != 1)} on indexed abstracts that name them" + (" in the title or a claim" if "--all" not in args else ""))
+        todo = left
+    by = defaultdict(list)
+    for rid, cid, where in todo: by[cid].append(rid)
+    if not todo: print("every concept the indexed abstracts name is linked or decided" + (f" for {only}" if only else "")); return
+    print(f"{len(todo)} mentions to link or decide, in {len({r for r, _c, _w in todo})} abstracts:")
+    for cid, rids in sorted(by.items(), key=lambda x: -len(x[1])):
+        print(f"- {cid} ({len(rids)}): " + ", ".join(rids[:15]) + (" …" if len(rids) > 15 else ""))
+    print("Link each with `mesh.py scan --abstracts <concept> --apply --all`, or write '- concept_decided:: [[concept]] — <why the work is not about it>' on the reference card.")
+
+
+# ---- the batch handover (1.34.0, issue #66) ----
+
+HANDOVER_HEADS = ("Hub facts", "Key figures", "Links to papers in this batch", "Contradictions")
+
+
+def handover_bullets(raw, head):
+    """The items of a progress note's '## <head>' section: each '- ' line joined with the lines that continue it (an
+    agent wraps a long item onto indented lines, and the card links are often on the continuation)."""
+    mo = re.search(r"(?m)^## " + re.escape(head) + r"\s*$(.*?)(?=^## |\Z)", raw, re.S)
+    out = []
+    for l in (mo.group(1).split(chr(10)) if mo else []):
+        if l.startswith("- "): out.append(l.rstrip())
+        elif out and l.strip() and not l.lstrip().startswith(("#", "- ", "|", "<!--")) and (l[:1].isspace() or not out[-1].endswith(".")):
+            out[-1] += " " + l.strip()
+        elif not l.strip() and out and out[-1] != "": out.append("")
+    return [x for x in out if x]
+
+
+def handover_items(m, pid):
+    """The items of a source's handover (its progress note's '## Hub facts', '## Key figures', '## Links to papers in
+    this batch' and '## Contradictions' sections), each with its state: [(head, line, state, detail)], state one of
+    'applied', 'ready', 'waiting' (a concept still proposed), 'unreadable' or 'dropped' (a concept rejected)."""
+    p = J(SRC(m.root, pid), pid + "_progress.md")
+    if not os.path.exists(p): return []
+    raw, out = rd(p), []
+    prop, rej = set(m.proposed()), set(rejected_concepts(m.root))
+    for head in HANDOVER_HEADS:
+        for line in handover_bullets(raw, head):
+            names = [t.strip() for t, _a, _d in WIKI.findall(line)]
+            ids = [m.resolve(t) or t for t in names]
+            cons = [i for i in ids if i in m.cards and m.cards[i].fam == "concept"]
+            evs = [i for i in ids if i in m.cards and m.cards[i].fam == "evidence"]
+            refs = [i for i in ids if i in m.cards and m.cards[i].fam in ("reference", "source")]
+            if re.match(r"-\s*(none|nothing)\b", line, re.I): continue
+            if head in ("Hub facts", "Key figures"):
+                tgt = names[0] if names else ""
+                if not cons:
+                    st = "waiting" if tgt in prop else ("dropped" if tgt in rej else "unreadable")
+                    out.append((head, line, st, tgt or "no concept link")); continue
+                hub = m.cards[cons[0]]
+                if head == "Hub facts":
+                    if not evs: out.append((head, line, "unreadable", "no evidence card named")); continue
+                    have = set(m.ids(section_text(hub.raw, "What is known"))[0])
+                    out.append((head, line, "applied" if set(evs) & have else "ready", dict(concept=cons[0], evs=evs, refs=refs, fact=handover_fact(line))))
+                else:
+                    figs = re.findall(r"(P\d{3}-[A-Za-z0-9_.-]+?\.(?:webp|png|jpg))", line)
+                    if not figs: out.append((head, line, "unreadable", "no figure file named")); continue
+                    out.append((head, line, "applied" if figs[0] in hub.raw else "ready", dict(concept=cons[0], fig=figs[0], evs=evs, refs=refs, fact=handover_fact(line))))
+            elif head == "Links to papers in this batch":
+                rel = next((r_ for r_ in EVIDENCE_RELS if re.search(r"\b" + r_.replace("_", "[_ ]") + r"\b", line)), None)
+                if len(evs) < 2 or not rel: out.append((head, line, "unreadable", "needs two evidence cards and a relation (" + ", ".join(EVIDENCE_RELS[2:9]) + ")")); continue
+                a, b = evs[0], evs[1]
+                done_ = any(b in m.ids(v)[0] for v in m.cards[a].all(rel))
+                out.append((head, line, "applied" if done_ else "ready", dict(a=a, b=b, rel=rel, why=reason(line) or "")))
+            else:
+                cards = [i for i in ids if i in m.cards and m.cards[i].fam != "concept"]
+                if len(cards) < 2: out.append((head, line, "unreadable", "needs two cards")); continue
+                against, _f = logged_pairs(m)
+                done_ = cards[1] in against.get(cards[0], ()) or cards[0] in against.get(cards[1], ())
+                last = list(WIKI.finditer(line))
+                clash = reason(line) or (re.sub(r"^[\s:;,.)\]*—-]+", "", line[last[-1].end():]).strip() if last else "")  # 'A against B: the clash' too
+                out.append((head, line, "applied" if done_ else ("ready" if clash else "unreadable"), dict(a=cards[0], b=cards[1:], clash=clash)))
+    return out
+
+
+def section_text(raw, head):
+    mo = re.search(r"(?m)^## " + re.escape(head) + r"\s*$(.*?)(?=^## |\Z)", raw, re.S)
+    return mo.group(1) if mo else ""
+
+
+def handover_fact(line):
+    """The fact of a handover line: after the concept and '::', before the first ' — '."""
+    t = re.sub(r"^-\s*", "", line)
+    t = t.split("::", 1)[1] if "::" in t else re.sub(r"^\[\[[^\]]*\]\]\s*[:\-—]?\s*", "", t)
+    t = t.split(" — ")[0].strip()
+    t = re.sub(r"!\[\[[^\]]*\]\]", "", t).strip()
+    return t[:1].upper() + t[1:] if t else t
+
+
+def insert_in_section(raw, head, text, before=("Relationships", "Open questions", "Key equations and figures", "How it is measured", "Where it appears", "Codes")):
+    """Put text at the end of a card's '## <head>' section, making the section (before the first of `before`) if absent."""
+    mo = re.search(r"(?m)^## " + re.escape(head) + r"\s*$(.*?)(?=^## |\Z)", raw, re.S)
+    if mo:
+        body = mo.group(1).rstrip("\n")
+        return raw[:mo.start(1)] + body + "\n" + text + "\n\n" + raw[mo.end(1):].lstrip("\n")
+    for b in before:
+        mb = re.search(r"(?m)^## " + re.escape(b) + r"\s*$", raw)
+        if mb: return raw[:mb.start()] + f"## {head}\n" + text + "\n\n" + raw[mb.start():]
+    return raw.rstrip("\n") + f"\n\n## {head}\n{text}\n"
+
+
+def handover_apply(m, pid):
+    """Write a source's ready handover items into the shared files. Returns Counter of what was done."""
+    done, root = Counter(), m.root
+    items = [x for x in handover_items(m, pid) if x[2] == "ready"]
+    for head, line, _st, d in items:
+        if head in ("Hub facts", "Key figures"):
+            hub = Mesh(root).cards[d["concept"]] if done else m.cards[d["concept"]]
+            ev = [m.cards[e] for e in d["evs"] if e in m.cards]
+            works = {w.id: w for e in ev for w in works_cited(m, e)}
+            works.update({r: m.cards[r] for r in d["refs"] if r in m.cards})
+            src = m.cards.get(ev[0].id[:4]) if ev else None
+            cite = (short_cite(src).replace(" (", " ").rstrip(")") + ", " if src else "") + ", ".join(f"[[{e.name}|{e.id}]]" for e in ev)
+            if works: cite += "; " + ", ".join(f"[[{w.name}|{short_cite(w).replace(' (', ' ').rstrip(')')}]]" for w in works.values())
+            raw = hub.raw
+            if head == "Hub facts":
+                raw = insert_in_section(raw, "What is known", f"- {d['fact'].rstrip('.')} ({cite})")
+            else:
+                cap = d["fact"] or (one(ev[0].title, 120) if ev else d["fig"])
+                raw = insert_in_section(raw, "Key equations and figures", f"- **{one(cap, 140)}** ({cite})\n  ![[{d['fig']}|400]]", before=("How it is measured", "Where it appears", "Codes"))
+            have = {t for v in hub.all("cites") for t in m.ids(v)[0]}
+            for w in works.values():
+                if w.id not in have: raw = add_code_line(raw, "cites", f"- cites:: [[{w.id}]] — {one(d['fact'] or d.get('fig', ''), 90)}"); have.add(w.id)
+            wr(hub.path, set_fm(raw, "updated", TODAY)); done[head] += 1
+        elif head == "Links to papers in this batch":
+            c = Mesh(root).cards[d["a"]] if done else m.cards[d["a"]]
+            wr(c.path, set_fm(add_code_line(c.raw, d["rel"], f"- {d['rel']}:: [[{d['b']}]] — {d['why'] or 'from the batch handover of ' + pid}"), "updated", TODAY)); done[head] += 1
+        else:
+            try:
+                contradiction_add(Mesh(root), [d["a"]] + d["b"] + [d["clash"], "--by", f"handover {pid}"]); done[head] += 1
+            except SystemExit as e:
+                print(f"  contradiction not logged ({d['a']} ~ {', '.join(d['b'])}): {e}")
+    return done
+
+
+
+def resolve_connections(m, dry=False):
+    """The connections the tooling makes by itself, on every `build` unless the vault's MESH.json sets
+    "auto_resolve": false (or BRAIN_MESH_NO_RESOLVE is set): the handover of each source whose extraction agent has
+    finished (status extracted or integrated), and the concepts an indexed abstract names in its title or a claim.
+    What needs judgement is left and reported: handover items on proposed concepts or unreadable, abstract mentions in
+    the body only. Returns (Counter of what was done, Counter of what is left)."""
+    done, left = Counter(), Counter()
+    srcs = sorted(c.id for c in m.cards.values() if c.fam == "source" and c.status in ("extracted", "integrated")
+                  and not c.get("retired") and os.path.exists(J(SRC(m.root, c.id), c.id + "_progress.md")))
+    for pid in srcs:
+        items = handover_items(m, pid)
+        for x in items:
+            if x[2] in ("waiting", "unreadable"): left["handover " + x[2]] += 1
+        if not dry and any(x[2] == "ready" for x in items):
+            done.update(handover_apply(m, pid)); m = Mesh(m.root)
+        elif dry: done.update(Counter(x[0] for x in items if x[2] == "ready"))
+    todo = abstract_todo(m)
+    strong = [t for t in todo if t[2] in ("title", "claims")]
+    if strong:
+        if not dry: abstracts_apply(m, strong)
+        done["concepts linked on indexed abstracts"] += len(strong)
+    left["abstract mentions to judge"] += len(todo) - len(strong)
+    return done, left
+
+
+def resolve_line(done, left, dry=False):
+    d = ", ".join(f"{v} {k.lower()}" for k, v in done.items() if v)
+    l_ = ", ".join(f"{v} {k}" for k, v in left.items() if v)
+    return (("would resolve: " if dry else "resolved: ") + (d or "nothing new")) + (f"; left for judgement: {l_} (`mesh.py handover --all`, `mesh.py scan --abstracts`)" if l_ else "")
+
+
+def cmd_resolve(m, args):
+    """`resolve [--dry]`: make the connections the tooling can make by itself (handovers of finished extractions,
+    concepts named in indexed abstracts' titles and claims), as `build` does on every run, and say what is left."""
+    dry = "--dry" in args
+    done, left = resolve_connections(m, dry=dry)
+    print(resolve_line(done, left, dry))
+    if not dry and sum(done.values()): print("Run `mesh.py build` to mirror the new links and rebuild the record.")
+
+
+def cmd_handover(m, args):
+    """`handover <P###...> | --all [--apply]`: what each source's extraction agent handed over for the shared files
+    (hub facts, key figures, links to papers in the same batch, contradictions), what is already applied and what
+    waits on a proposed concept; --apply writes the rest. Safe to run again: applied items are recognised."""
+    apply_ = "--apply" in args
+    pids = [a for a in args if re.fullmatch(r"P\d{3}", a)]
+    if "--all" in args or not pids:
+        pids = sorted(c.id for c in m.cards.values() if c.fam == "source" and os.path.exists(J(SRC(m.root, c.id), c.id + "_progress.md")))
+    tot = Counter()
+    for pid in pids:
+        items = handover_items(m, pid)
+        if not items: continue
+        st = Counter(x[2] for x in items)
+        if apply_ and st["ready"]:
+            d = handover_apply(m, pid); m = Mesh(m.root)
+            items = handover_items(m, pid); st = Counter(x[2] for x in items)
+            print(f"{pid}: applied " + ", ".join(f"{v} {k.lower()}" for k, v in d.items()))
+        for k, v in st.items(): tot[k] += v
+        print(f"{pid}: " + ", ".join(f"{v} {k}" for k, v in sorted(st.items())))
+        for head, line, s_, d in items:
+            if s_ in ("waiting", "unreadable", "dropped") or (s_ == "ready" and not apply_):
+                print(f"  [{s_}] {head}: {one(line, 150)}" + (f" — {d}" if isinstance(d, str) else ""))
+    if not tot: print("no handover in the progress notes"); return
+    print(f"\n{tot['applied']} applied, {tot['ready']} ready" + (" (run with --apply)" if tot["ready"] and not apply_ else "") + f", {tot['waiting']} waiting on proposed concepts, {tot['unreadable']} unreadable, {tot['dropped']} on rejected concepts")
+    if apply_: print("Run `mesh.py build` to mirror the new links and refresh the hubs.")
 
 
 def cmd_scan(m, args):
@@ -7780,7 +8186,7 @@ def cmd_sync(root, msg=None, push=True):
         m = Mesh(root); m.check()
         if m.err: sys.exit(f"sync: build has {len(m.err)} errors; fix them before syncing (nothing committed)")
         guard_large(root, m)
-        qline = queue_stale_line(m)  # said at the end of every sync, so the reading queue cannot go stale unnoticed (issue #56)
+        qline = queue_stale_line(m) + chr(10) + coverage_line(m)  # said at the end of every sync, so neither the reading queue nor the concept mesh can go stale unnoticed (issues #56, 1.34.0)
         gone = untrack_marked(root)
         if gone: print(f"sync: {gone} marked PDFs are no longer kept in git. `build` makes them from the originals and the cards, and your own highlights on them travel in P###_annotations.json. They stay on this computer; git keeps the old copies in its history.")
         git(root, "add", "-A")
@@ -11626,6 +12032,9 @@ reject <name> "<why>"           turn a proposed concept down: links become plain
 contradictions [P###|<concept>] | add <key>|<card> <card> "<clash>" | dismiss <key> "<why>"  the contradictions register: list, log, dismiss
 facts <concept> [<concept> ...]  what a proposal about these concepts must respect: hub facts, effects, null results, findings, evidence, logged contradictions
 scan [P### ...|<concept>]       look for every concept across a source's text: passages no card covers, the works cited there, cards missing cites::; writes P###_scan.md
+scan --abstracts [<concept>] [--apply [--all]]  concepts the indexed abstracts name but do not link; --apply links those in a title or claim (--all: in the abstract too)
+resolve [--dry]                make the connections that need no judgement (finished handovers, concepts in abstracts' titles and claims); build does it every run
+handover <P###...> | --all [--apply]  what extraction agents handed over (hub facts, key figures, links within the batch, contradictions); --apply writes it into the hubs, cards and register
 related <P###>                synthesis and workbench cards, and sources, sharing concepts with a source
 neighbours <id|P###>          per card: likely duplicates, and cards in other sources to link, ranked by rare shared concepts
 health                        housekeeping queues: stale hubs, findings to re-grade, old searches, unused evidence
@@ -11686,7 +12095,11 @@ def main():
     elif c == "equations": cmd_equations(m, a[0], "_SI" if "--si" in a else "")
     elif c == "latex": cmd_latex(m, a[0])
     elif c == "staged": cmd_staged(m)
-    elif c == "adopt": cmd_adopt(m, a)
+    elif c == "adopt":
+        before = {k for k, v in m.cards.items() if v.fam == "concept"}
+        cmd_adopt(m, a)
+        m2 = Mesh(root)  # each concept adopt made is looked for at once in every indexed abstract and source (1.34.0)
+        for cid in sorted(k for k, v in m2.cards.items() if v.fam == "concept" and k not in before): backfill_concept(m2, cid)
     elif c == "propose": cmd_propose(m, a)
     elif c == "contradictions": cmd_contradictions(m, a)
     elif c == "facts": cmd_facts(m, a)
@@ -11697,6 +12110,9 @@ def main():
     elif c == "independence": cmd_independence(m, a)
     elif c == "draft": cmd_draft(m, a)
     elif c == "reject": cmd_reject(m, a)
+    elif c == "scan" and "--abstracts" in a: cmd_scan_abstracts(m, [x for x in a if x != "--abstracts"])
+    elif c == "handover": cmd_handover(m, a)
+    elif c == "resolve": cmd_resolve(m, a)
     elif c == "scan":
         if len(a) > 1 and all(re.fullmatch(r"P\d{3}", x) for x in a):
             for x in a: cmd_scan(Mesh(m.root), [x]); print()

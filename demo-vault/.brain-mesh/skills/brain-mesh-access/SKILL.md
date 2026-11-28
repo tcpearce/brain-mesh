@@ -165,7 +165,7 @@ Removing a source (`remove P012`) deletes its whole folder: the PDF, its evidenc
 
 - **The user in Obsidian.** If the user may have edited cards since the last session, the start-of-session sync rebuilds before anything else. Then bring Codes into line with any prose they changed. Obsidian can also save its open copy of a file back over an edit made outside it: after editing a file the user is likely to have open, check the file on disk and on GitHub (`git show origin/main:<path>`) before saying it is done.
 - **Several agents at once.** Only one session writes a given card at a time. Parallel extraction follows `brain-mesh-batch`: each agent writes only inside its own source folder, and shared files (concepts, findings, data-set and code cards, reference cards) are written by the orchestrating session. Other parallel work follows the same rule: an agent drafts or judges into a folder outside the vault that the session names, or writes only the cards it was given by id; and no agent starts agents of its own. `sync` rebases on whatever was pushed in the meantime.
-- **Scheduled runs** report; they do not commit, push or edit unless their instructions say so.
+- **Scheduled runs** report; they do not commit, push or edit unless their instructions say so. The exception is a scheduled maintenance run (`brain-mesh-housekeeping`, **Running it on a schedule**): it runs `sync`, which commits the connections `build` makes by itself and nothing else.
 
 ## 8. Tooling bugs
 

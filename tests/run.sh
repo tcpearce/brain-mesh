@@ -3,6 +3,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"; MESH="$ROOT/tools/mesh.py"; T="$(mktemp -d)"
 export PYTHONUTF8=1  # the inline Python below opens files without an encoding; on Windows that would mean cp1252 (issue #10)
+export BRAIN_MESH_NO_RESOLVE=1  # build makes connections by itself (1.34.0); section 58 tests that, the other sections test their own feature without it
 pass() { echo "ok   $1"; }; fail() { echo "FAIL $1"; exit 1; }
 
 # 1. versions agree
@@ -2173,6 +2174,119 @@ grep -q "R0902: heading does not end" b.txt && fail "a heading that ends with it
 sed -i 's/^- id:: R0902$/- id:: R0902\n- held:: [[P001]]/; s/^status: not-held$/status: held/' references/R0902-*.md
 python3 tools/mesh.py build > b.txt 2>&1; grep -q "R0902: held as P001, which cites it" b.txt && pass "a work marked held by the very source that cites it is flagged" || { grep R0902 b.txt; fail "self-held check"; }
 
+# 58. every concept across every source and indexed abstract, with a record; the batch handover applied by the tooling (1.34.0, issue #66)
+cp -r "$ROOT/demo-vault" "$T/cov"; cd "$T/cov"; cp "$MESH" tools/mesh.py; mkdir -p references
+mkidx() { cat > "references/$1.md" <<REF
+---
+type: reference
+status: not-held
+updated: 2026-11-23
+---
+# $2
+
+## Abstract
+
+$3
+
+## What it claims
+$4
+
+## Notes
+
+## Codes
+- id:: ${1%%-*}
+- authors:: Roe, A.
+- year:: 2022
+- title:: $2
+- journal:: J. Test
+- kind:: article
+- concepts:: $5
+- indexed:: 2026-11-23 — abstract from the publisher's page
+- cited_by:: [[P001]] ref 1 — b0004
+REF
+}
+mkidx R0911-roe-2022-swelling-films "Swelling of imprinted films in organic solvents" "Films were cast and tested." "- Films change size in organic media ([[acetonitrile]])" "[[acetonitrile]]"
+mkidx R0912-roe-2022-uptake "Uptake of analyte by thin films" "Uptake was measured at several temperatures between 20 and 60 degrees." "- Uptake depends on film preparation ([[film-thickness]])" "[[film-thickness]]"
+mkidx R0913-roe-2022-kinetics "Imprinting kinetics of thin films" "Kinetics were followed for an hour." "- Imprinting is slow ([[film-thickness]])" "[[film-thickness]]"
+python3 tools/mesh.py build > b.txt 2>&1; grep -q "check: 0 errors" b.txt && pass "a vault with abstracts that name unlinked concepts builds without errors" || { grep -E "^ERROR" b.txt | head -4; fail "coverage setup build"; }
+[ -f ledger/concept-coverage.md ] && grep -q "^# Concept coverage" ledger/concept-coverage.md && pass "build writes ledger/concept-coverage.md, the record of which concepts are meshed where" || fail "no concept-coverage ledger"
+grep -q "^- \[\[swelling\]\] .*to do R0911" ledger/concept-coverage.md && grep -q "^- \[\[temperature\]\] .*to do R0912" ledger/concept-coverage.md && pass "the record names each concept's abstracts still to mesh" || { cat ledger/concept-coverage.md; fail "coverage rows"; }
+grep -q "Concepts: [0-9]* of [0-9]* meshed across every source and indexed abstract; [0-9]* still to do" ledger/concept-coverage.md && pass "the record carries the line sync ends with" || fail "coverage line"
+python3 tools/mesh.py check > c.txt 2>&1 || true
+grep -q "concept mentions in 2 indexed abstracts are neither linked" c.txt && pass "check counts abstract mentions neither linked nor decided" || { grep -i abstract c.txt | head -3; fail "check abstract todo"; }
+python3 tools/mesh.py scan --abstracts > sa.txt 2>&1
+grep -q "^- swelling (1): R0911" sa.txt && grep -q "^- temperature (1): R0912" sa.txt && pass "scan --abstracts lists the concepts each indexed abstract names without linking" || { cat sa.txt; fail "scan --abstracts list"; }
+python3 tools/mesh.py scan --abstracts --apply > sp.txt 2>&1
+grep -q "^- concepts:: \[\[acetonitrile\]\], .*\[\[swelling\]\]" references/R0911-*.md && ! grep -q "\[\[temperature\]\]" references/R0912-*.md && pass "--apply links a concept named in the title, and leaves one named only in the abstract for a decision" || { grep concepts references/R091*.md; cat sp.txt; fail "apply"; }
+grep -q "^- temperature (1): R0912" sp.txt && pass "what --apply leaves is listed for a decision" || { cat sp.txt; fail "apply leftover"; }
+sed -i 's/^- id:: R0912$/- id:: R0912\n- concept_decided:: [[temperature]] — the temperatures are the assay'"'"'s range, not its subject/' references/R0912-*.md
+python3 tools/mesh.py scan --abstracts > sd.txt 2>&1
+grep -q "every concept the indexed abstracts name is linked or decided" sd.txt && pass "a concept_decided:: line settles a mention" || { cat sd.txt; fail "decided"; }
+python3 tools/mesh.py build > b2.txt 2>&1
+grep -q "^- \[\[temperature\]\]" ledger/concept-coverage.md && fail "temperature still listed to do" || pass "the record moves a settled concept to meshed everywhere"
+sed -i 's/^- concept_decided:: .*$//' references/R0912-*.md
+C=concepts/temperature.md; sed -i 's/^## Codes$/## Codes\n- abstract_scan:: title — an everyday word in methods sections/' "$C"
+python3 tools/mesh.py scan --abstracts temperature > st.txt 2>&1
+grep -q "linked or decided for temperature" st.txt && pass "abstract_scan:: title counts a concept only where a title names it" || { cat st.txt; fail "abstract_scan scope"; }
+python3 tools/mesh.py build > /dev/null 2>&1; grep -q "^- \[\[temperature\]\]: title — an everyday word" ledger/concept-coverage.md && pass "the record lists each concept whose abstract mentions count only in part" || fail "scoped list"
+# a new concept is looked for at once in the abstracts and the sources
+python3 tools/mesh.py propose imprinting-kinetics "How fast an imprinted film takes up its template while it forms." --kind concept > /dev/null 2>&1
+python3 tools/mesh.py adopt imprinting-kinetics > ad.txt 2>&1
+grep -q "imprinting-kinetics: linked on 1 indexed abstract that name it in the title or a claim" ad.txt && grep -q "\[\[imprinting-kinetics\]\]" references/R0913-*.md && pass "adopt links a new concept on every indexed abstract whose title names it, and says which sources to scan" || { cat ad.txt; grep concepts references/R0913-*.md; fail "adopt backfill"; }
+# the batch handover
+P=$(ls -d sources/P001-*); E5=$(basename "$P"/P001-005-*.md .md); E3=$(basename "$P"/P001-003-*.md .md); E4=$(basename "$P"/P001-004-*.md .md)
+Q=$(ls -d sources/P002-*); F2=$(basename "$Q"/P002-002-*.md .md); F3=$(basename "$Q"/P002-003-*.md .md)
+python3 tools/mesh.py propose film-cracking "Cracks that open in a film as it swells and dries." --from P001 > /dev/null 2>&1
+cat > "$P/P001_progress.md" <<NOTE
+# P001 progress
+
+## Hub facts
+- [[swelling]] :: Films thicken by 18 percent in water at 45 degrees — [[$E5]]
+- [[film-cracking]] :: Films crack after three cycles — [[$E5]]
+
+## Key figures
+- none
+
+## Links to papers in this batch
+- [[$E3]] extends [[$F2]] — the same capacity measured in water rather than acetonitrile
+
+## Contradictions
+- [[$E4]] ~ [[$F3]] — Capacity collapses at 45 degrees in water but holds in acetonitrile
+NOTE
+python3 tools/mesh.py check > hc.txt 2>&1 || true
+grep -q "P001: integrated, but 3 items of its extraction agent's handover are not yet in the shared files" hc.txt && pass "check will not take a source as integrated while its handover is unapplied" || { grep P001 hc.txt | head -3; fail "handover check"; }
+python3 tools/mesh.py handover P001 > h1.txt 2>&1
+grep -q "^P001: 3 ready, 1 waiting" h1.txt && grep -q "\[waiting\] Hub facts: .*film-cracking" h1.txt && pass "handover lists what is ready and what waits on a proposed concept" || { cat h1.txt; fail "handover dry"; }
+python3 tools/mesh.py handover P001 --apply > h2.txt 2>&1
+grep -q "^## What is known$" concepts/swelling.md && grep -q "^- Films thicken by 18 percent in water at 45 degrees (Smith .*\[\[$E5|P001-005\]\])$" concepts/swelling.md && pass "--apply writes a hub fact into What is known, citing its source and evidence card" || { cat h2.txt; sed -n 1,20p concepts/swelling.md; fail "hub fact"; }
+grep -q "^- extends:: \[\[P002-002[^]]*\]\] — the same capacity measured in water rather than acetonitrile$" "$P/$E3.md" && pass "--apply writes a link to a paper in the same batch on the agent's card" || fail "batch link"
+ls contradictions/ | grep -q "capacity-collapses" && pass "--apply logs a handed-over contradiction on the register" || { ls contradictions; cat h2.txt; fail "contradiction"; }
+python3 tools/mesh.py handover P001 --apply > h3.txt 2>&1
+grep -q "^P001: 3 applied, 1 waiting" h3.txt && [ "$(grep -c "Films thicken by 18 percent" concepts/swelling.md)" = 1 ] && pass "handover run again applies nothing twice" || { cat h3.txt; fail "idempotent"; }
+python3 tools/mesh.py build > b3.txt 2>&1; grep -q "check: 0 errors" b3.txt && pass "the vault builds clean once the handover is applied" || { grep -E "^ERROR" b3.txt | head -4; fail "build after handover"; }
+# build resolves connections by default: a finished handover and a concept in an abstract's title, with nothing run by hand
+mkidx R0914-roe-2022-acetonitrile "Acetonitrile uptake by films" "Uptake was measured." "- Films take up solvent ([[film-thickness]])" "[[film-thickness]]"
+Q=$(ls -d sources/P002-*); F1=$(basename "$Q"/P002-001-*.md .md)
+printf '# P002 progress
+
+## Hub facts
+- [[swelling]] :: Capacity was read by microbalance rather than by assay — [[%s]]
+' "$F1" > "$Q/P002_progress.md"
+env -u BRAIN_MESH_NO_RESOLVE python3 tools/mesh.py resolve --dry > rd.txt 2>&1
+grep -qE "^would resolve: 1 hub facts, [0-9]+ concepts linked on indexed abstracts" rd.txt && ! grep -q "\[\[acetonitrile\]\]" references/R0914-*.md && pass "resolve --dry says what build would connect, and changes nothing" || { cat rd.txt; fail "resolve dry"; }
+env -u BRAIN_MESH_NO_RESOLVE python3 tools/mesh.py build > br.txt 2>&1
+grep -qE "^resolved: 1 hub facts, [0-9]+ concepts linked on indexed abstracts" br.txt && grep -q "\[\[acetonitrile\]\]" references/R0914-*.md && grep -q "Capacity was read by microbalance" concepts/swelling.md && pass "build applies a finished handover and links a concept an abstract's title names, by default" || { head -5 br.txt; fail "build resolves"; }
+grep -q "check: 0 errors" br.txt && pass "the vault builds clean after the connections are made" || { grep -E "^ERROR" br.txt | head -3; fail "build after resolve"; }
+env -u BRAIN_MESH_NO_RESOLVE python3 tools/mesh.py resolve --dry > rd2.txt 2>&1
+grep -q "^would resolve: nothing new" rd2.txt && pass "once resolved, nothing is made twice" || { cat rd2.txt; fail "resolve idempotent"; }
+mkidx R0915-roe-2022-swelling-again "Swelling again" "Films swell." "- Films swell ([[film-thickness]])" "[[film-thickness]]"
+python3 - <<PY
+import json; p="MESH.json"; d=json.load(open(p)); d["auto_resolve"]=False; json.dump(d, open(p,"w"), indent=1)
+PY
+env -u BRAIN_MESH_NO_RESOLVE python3 tools/mesh.py build > bn.txt 2>&1
+! grep -q "\[\[swelling\]\]" references/R0915-*.md && ! grep -q "^resolved:" bn.txt && pass "a vault with auto_resolve false in MESH.json builds without making connections" || fail "auto_resolve off"
+cd "$ROOT"
+
 # 43. the citation index feeds discovery: abstracts raise terms the brain cannot name, and a high-priority work heads the reading list
 cp -r "$ROOT/demo-vault" "$T/cid"; cd "$T/cid"; cp "$MESH" tools/mesh.py; mkdir -p references
 cat > references/R0901-doe-2019-capacity-of-imprinted-films.md <<'REF'
@@ -3089,7 +3203,7 @@ python3 tools/mesh.py check > k.txt 2>&1 || true; grep -q "R0082 and R0081 look 
 python3 tools/mesh.py merge R0081 R0082 > /dev/null && grep -q "^- suggested_by:: 2026-11-21 report — the drift control$" references/R0081-*.md && grep -q "^- retired:: merged into" references/R0082-*.md && pass "merge folds them, and the survivor keeps every suggestion" || { cat references/R0081-*.md; fail "merge keeps suggestions"; }
 if command -v git > /dev/null; then
   git init -q -b main . ; git config user.email t@t; git config user.name t
-  python3 tools/mesh.py sync "the reading queue" > s.txt 2>&1; tail -1 s.txt | grep -q "^Reading queue: .*Last forward search: $D\.$" && pass "sync ends with the queue's staleness line" || { cat s.txt; fail "sync staleness"; }
+  python3 tools/mesh.py sync "the reading queue" > s.txt 2>&1; tail -2 s.txt | head -1 | grep -q "^Reading queue: .*Last forward search: $D\.$" && tail -1 s.txt | grep -q "^Concepts: .* meshed across every source and indexed abstract" && pass "sync ends with the queue's staleness line, then the concept-coverage line" || { cat s.txt; fail "sync staleness"; }
 fi
 
 cd "$T/xp"  # the vault of the 1.30.0 hypothesis-deepen section above

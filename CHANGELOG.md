@@ -2,6 +2,34 @@
 
 Newest first. Raise `VERSION` here, in the `VERSION` file and in `tools/mesh.py` together.
 
+## 1.34.0 (2026-11-28)
+
+**Integration that cannot be forgotten: every concept across every source and abstract, on the record, and the batch handover applied by the tooling.**
+
+Built on 1.33.0 (PR #70, merged into `fixes`).
+
+### Every concept across every source and every indexed abstract
+- `build` writes `ledger/concept-coverage.md`, the record of which concepts have been looked for across which sources and indexed abstracts: for each concept, the sources and abstracts that name it, how many are meshed, and which are still to do. The last line of `sync` counts what is left.
+- `scan --abstracts [<concept>] [--apply [--all]]`: concepts an indexed abstract names but its `concepts::` line does not link. `--apply` links those named in the title or a claim line; `--all` those named only in the abstract too. `- concept_decided:: [[concept]] — <why>` on a reference card settles a mention; `- abstract_scan:: title | claims | none — <why>` on a concept card limits where its mentions count (condition variables, everyday words), and the record lists each such setting.
+- `adopt` backfills each concept it makes: linked at once on the indexed abstracts whose title or claims name it, with the sources that name it in passages no card covers listed for the sweep.
+- `check` counts the abstract mentions neither linked nor decided.
+
+### Connections resolved by default
+- `build` makes the connections that need no judgement on every run, so every `sync`, every housekeeping routine and every scheduled maintenance run resolves them: the handover of each source whose extraction agent has finished (status extracted or integrated), and every concept an indexed abstract names in its title or a claim. It prints what it made and what is left for judgement. `resolve [--dry]` does the same on its own. `"auto_resolve": false` in `MESH.json` (or `BRAIN_MESH_NO_RESOLVE`) turns it off.
+- `health` ends with the concept-coverage line and what `resolve` would still make.
+- housekeeping: the routine and **Running it on a schedule** (a scheduled maintenance run now syncs, committing those connections and nothing else); access (the scheduled-run exception); README schedule table.
+
+### The batch handover (issue #66, item 2)
+- `handover <P###...> | --all [--apply]` reads the four handover sections of each extraction agent's progress note (hub facts, key figures, links to papers in the same batch, contradictions), says what is already applied, what is ready and what waits on a proposed concept, and with `--apply` writes the rest: hub facts into **What is known** with the evidence card, its source and the works it cites (and the `cites::` lines), key figures under **Key equations and figures**, links on the agent's cards, contradictions on the register. Applied items are recognised, so it runs again safely after more concepts are adopted.
+- `check` refuses a source set `integrated` while its handover has items not yet applied.
+- The batch brief fixes the line format of each handover section; batch Phase 3 runs `handover --all --apply` after the build.
+
+### Skills
+concept-scan (**Every concept across every source and every abstract: the record**), batch (handover line formats; Phase 3 steps 4 and 6; the backfill after adoptions), add-paper (step 9 in a batch; step 10.3, mesh the concepts the paper brought), citation-index 5b (concepts that arrive after a work was indexed), housekeeping item 23, FORMATS (`abstract_scan::`, `concept_decided::`, `ledger/concept-coverage.md`).
+
+### Tests
+New section 58 (27 checks). The other sections run with `BRAIN_MESH_NO_RESOLVE=1`, so each tests its own feature; section 58 tests the default.
+
 ## 1.33.0 (2026-11-27)
 
 **The citation index read as a whole, and the method brought into line with how it is practised.**

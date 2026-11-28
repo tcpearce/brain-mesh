@@ -249,7 +249,7 @@ A report is a snapshot: run it again when the brain changes, and never treat it 
 
 | When | What |
 |---|---|
-| Every session | `sync` first and last |
+| Every session | `sync` first and last; its `build` makes the connections that need no judgement (finished handovers, concepts named in indexed abstracts' titles and claims), and its last lines count what is left to read and to mesh |
 | Once, and when your lab changes | The research profile (`profile`) |
 | Every paper or batch | Stages 1 and 2, then `discover --recheck` (your earlier ideas, the routes and the leads from outside that the papers moved) and `report changes`; the new reference cards indexed from their abstracts and `forward` for the new papers, before `sync` |
 | Every five to ten papers, or monthly | `health`, `gaps`, the reading queue, `report frontier` and `report robustness`; a discovery session on the hottest topic; `beyond terms`, and that topic compared with an outside map; `routes --readiness` |
@@ -257,7 +257,7 @@ A report is a snapshot: run it again when the brain changes, and never treat it 
 | Now and then | An audit: `sample P012 10` puts ten cards beside their source text, to check meaning rather than typing |
 | Before an experiment | `report contradictions` and `report novelty` on the idea; discovery on the question; a hypothesis with rivals, **deepened against the whole brain** (`hypothesis deepen`); the study swept from the ontology (`experiment new`) and sealed (`experiment register`) before anything runs |
 | Before submitting text | `draft` |
-| Weekly, unattended | A scheduled check that reports and changes nothing |
+| Weekly, unattended | A scheduled maintenance run: `sync` (which resolves those connections and commits them), then `health` and `gaps`, reporting what needs judgement and changing nothing else |
 
 ### What to expect at each size
 

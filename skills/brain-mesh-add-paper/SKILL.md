@@ -278,7 +278,7 @@ Every paper, preprint, thesis or report gets a claims card, `P012-claims.md`, wr
 
 ## 9. Update the concept hubs
 
-This is what the user reads, so it is not optional. For every concept the source says something material about:
+This is what the user reads, so it is not optional. In a batch the extraction agents hand their hub facts and key figures over in their progress notes and `mesh.py handover --apply` writes them in (`brain-mesh-batch`, Phase 3); the session then reads each hub and makes its lines one article. For every concept the source says something material about:
 
 - add to **What is known**, one line per point, citing the finding or evidence card;
 - add or revise lines under **Relationships**, and the matching relation in Codes (`affects`, `measured_by`, `part_of`, `broader`, `related`). Every `affects` line starts its reason with its basis (`tested`, `correlational`, `proposed`, `inferred`), judged from the design of the study behind it, and the wording of the hub line follows that basis: causal words only for `tested` (`brain-mesh`, **Concept cards**);
@@ -294,6 +294,8 @@ Set the source card's status to `integrated`. Rewrite the Overview in `MAP.md` i
 
 1. **Index the new reference cards.** `cite` made a card for every work this paper cites that the brain had not met. `python3 tools/mesh.py literature --unindexed` lists them under P012: index every one from its abstract (`brain-mesh-citation-index`), without waiting to be asked: the user wants every cited work downloaded and meshed, not a selection. With more than about fifty, split them between agents (citation-index section 6). Only if the session must stop early, index first those the paper leans on (its methods and the works cited where its claims rest) and say in the report how many are left. The count of works still unindexed is on the last line of `sync`.
 2. **Search forward.** `python3 tools/mesh.py forward P012` asks OpenAlex for the works that cite the new paper (it needs a DOI on the source card and a network) and stamps the date; `build` ranks them in the queue's Forward section. With no network, say so in the report: `sync` will go on counting the paper among those not searched forward.
+
+3. **Mesh the concepts it brought.** Each concept the paper brought and the user adopted has been linked on the indexed abstracts that name it in a title or claim (`adopt` does it) and needs looking for in the sources carded before it: `scan <concept>`, and `scan --abstracts <concept>` for the mentions left to judge (`brain-mesh-concept-scan`, **Every concept across every source and every abstract**). `ledger/concept-coverage.md` shows what is left.
 
 Run `python3 tools/mesh.py build` until there are no errors (the decisions on gaps and tensions and the claims card are checked from here on), then `python3 tools/mesh.py log "add P012 <authors year> (<n> cards); <findings, tensions and gaps changed>"` and `python3 tools/mesh.py sync "add P012"`.
 

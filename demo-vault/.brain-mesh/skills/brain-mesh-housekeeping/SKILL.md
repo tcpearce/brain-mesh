@@ -19,9 +19,11 @@ Run it after every five to ten sources, before the brain is used for a proposal 
 ## The routine
 
 ```bash
-python3 tools/mesh.py build     # errors, duplicate warnings, prose and Codes out of step, changed source files
-python3 tools/mesh.py health    # the queues below
+python3 tools/mesh.py build     # makes the connections that need no judgement, then: errors, duplicate warnings, prose and Codes out of step, changed source files
+python3 tools/mesh.py health    # the queues below, ending with what is left to mesh
 ```
+
+`build` resolves connections by default (1.34.0), so every routine, every `sync` and every scheduled run starts with them made: the handover of each source whose extraction agent has finished (hub facts, key figures, links within its batch, contradictions) and every concept an indexed abstract names in its title or a claim. `python3 tools/mesh.py resolve --dry` shows what it would make. What needs judgement is left and reported: handover items on proposed concepts or unreadable (`handover --all`), and abstract mentions in the body only (`scan --abstracts`); item 23 works them. A vault turns this off with `"auto_resolve": false` in `MESH.json`, for instance while it is being restructured by hand.
 
 Work through the results in this order. Fix what is clear. Bring to the user anything that is a judgement about their science.
 
@@ -48,6 +50,7 @@ Work through the results in this order. Fix what is clear. Bring to the user any
 20. **Hypotheses the brain has moved past.** A hypothesis never deepened, or deepened before the newest evidence that shares a concept with it, is being tested against a brain that has since changed. Run `python3 tools/mesh.py hypothesis deepen <H###> --write`, judge the new lines, and rewrite the rationale, the rivals and the predictions against what they say (`brain-mesh-experiment`, section 2.1). Deepen before registering an experiment, never after.
 21. **Studies whose data or code moved after they were sealed.** The analysis plan is sealed; its inputs are not. Check that the study still runs on what it registered: if the data-set or code card changed in a way that matters, write it under `## Amendments` on the experiment card before the run, or re-register.
 22. **Citation-index entries whose work has since been read.** Remove the index from the reference card (its `## Abstract`, `## What it claims`, `- concepts::` and `- indexed::`), as add-paper step 8 says: an abstract is the authors' summary of themselves, and nothing should rest on it once the text is in the brain and carded. Do not retire the reference card itself: it carries the work's `cited_by::` lines and the links of every card that cites it.
+23. **Concepts not yet meshed everywhere.** `ledger/concept-coverage.md` lists every concept still to look for in a source or an indexed abstract. Run `python3 tools/mesh.py scan --abstracts --apply`, judge the mentions it leaves (link, or `concept_decided::` on the reference card), and work the sources by the sweep in `brain-mesh-concept-scan`. A concept that floods the list with passing mentions needs a narrower alias or `abstract_scan:: title`, not hundreds of decisions. The aim is an empty **Still to mesh** section.
 
 Finish with `build`, then `python3 tools/mesh.py log "housekeeping: <what was done>"`.
 
@@ -126,7 +129,7 @@ Log the result, for example `audit: 30 cards across P004, P011, P019; 1 correcte
 
 ## Running it on a schedule
 
-Where scheduled tasks are available and the vault is somewhere a scheduled run can reach (a git repository, say), offer a weekly or monthly check. The run clones the vault, runs `build`, `health` and `gaps` in its own copy, and reports the queues and any errors. It may also assemble the what-changed digest (`report changes`) in its own copy and include it. It never commits, pushes or edits cards: a scheduled run reports, and the next working session acts on the report.
+Where scheduled tasks are available and the vault is somewhere a scheduled run can reach (a git repository, say), offer a weekly or monthly maintenance run. The run clones the vault and runs `sync`: its `build` makes the connections that need no judgement and `sync` commits and pushes them, so the vault's connections are resolved on schedule by default. It then runs `health` and `gaps` and reports the queues, any errors and what is left to mesh (`ledger/concept-coverage.md`, the handover items waiting). Apart from those connections it edits nothing: It may also assemble the what-changed digest (`report changes`) in its own copy and include it. everything that needs judgement it reports, and the next working session acts on the report. Never schedule it while extraction agents are writing in the vault's working copy on someone's computer: that copy must not pull until they have reported.
 
 ## Report
 

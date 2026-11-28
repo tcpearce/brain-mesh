@@ -70,7 +70,7 @@ hypotheses/H###  experiments/E###          the workbench
 theories/T###  analogies/A###  seeds/S###  discovery cards
 data-sets/D###  code/C###                  what the studies use
 reports/<date>-<kind>.md                   dated snapshots, never sources
-ledger/                                    changelog, reading queue and forward searches, contradictions register, checksums, removed ids, rejected signals and concepts,
+ledger/                                    changelog, reading queue and forward searches, concept coverage, contradictions register, checksums, removed ids, rejected signals and concepts,
                                            explored branches, the routes record, outside checks
 index/                                     generated tables: cards.tsv, edges.tsv, coverage.tsv, priority.tsv, marks.json
 tools/mesh.py  .brain-mesh/                the tooling (a copy) and an offline copy of these instructions

@@ -126,6 +126,10 @@ Write each candidate with: the concept and its read-against-cited counts; the th
 
 **Never set a gap's priority.** A cited work's priority is yours to judge (section 4a); a gap's is the user's, like a concept's. Write the card without a priority and let the user rank it.
 
+
+## 5b. Concepts that arrive after a work was indexed
+
+An abstract is indexed against the concepts the brain had that day. Concepts adopted later are linked on it by the tooling where its title or a claim names them (`adopt` does this for each new concept; `mesh.py scan --abstracts --apply` does it for all), and the mentions only in the abstract body are judged: link the concept, or write `- concept_decided:: [[concept]] — <why the work is not about it>` on the card. `ledger/concept-coverage.md` records which concepts are meshed across the indexed abstracts and which are not (`brain-mesh-concept-scan`).
 ## 6. Working in agents
 
 With more than about fifty works to index, split them between agents as `brain-mesh-batch` does. Each agent takes a block of reference ids, writes **only** in `references/`, touches no other folder, and never runs `build`, `sync` or `cite`. Give each agent its list explicitly, so two never take the same card. The services' allowances are shared: OpenAlex's daily allowance is spent by all the agents together, so give each agent the order to try them in and tell it to record on the card any service it could not reach. Each agent writes its fetch scripts and downloads in a scratch folder of its own, outside the vault. The launching session builds, checks and syncs when they are done, adopts or rejects the proposed concepts, and writes the gap cards from the candidates the agents reported (section 5a).

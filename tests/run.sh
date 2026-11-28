@@ -2285,6 +2285,14 @@ import json; p="MESH.json"; d=json.load(open(p)); d["auto_resolve"]=False; json.
 PY
 env -u BRAIN_MESH_NO_RESOLVE python3 tools/mesh.py build > bn.txt 2>&1
 ! grep -q "\[\[swelling\]\]" references/R0915-*.md && ! grep -q "^resolved:" bn.txt && pass "a vault with auto_resolve false in MESH.json builds without making connections" || fail "auto_resolve off"
+# a proposed concept as a categorical condition value is a warning, like every link to a proposal (issue #72)
+python3 tools/mesh.py propose ethanol "Ethanol as the solvent a film is tested in." --kind entity --from P001 > /dev/null 2>&1
+E3F=$(ls sources/P001-*/P001-003-*.md); sed -i 's/^- when:: \[\[solvent\]\] = \[\[water\]\]/- when:: [[solvent]] = [[ethanol]]/' "$E3F"
+python3 tools/mesh.py check P001 > cp.txt 2>&1 || true
+grep -q "^- when:: \[\[solvent\]\] = \[\[ethanol\]\]" "$E3F" && ! grep -q "solvent is categorical, so its value must be a concept link" cp.txt && pass "a categorical condition value that links a proposed concept is not an error" || { grep -i categorical cp.txt; fail "proposed categorical value"; }
+sed -i 's/^- when:: \[\[solvent\]\] = \[\[ethanol\]\]/- when:: [[solvent]] = ethanol/' "$E3F"
+python3 tools/mesh.py check P001 > cp2.txt 2>&1 || true
+grep -q "solvent is categorical, so its value must be a concept link (got 'ethanol')" cp2.txt && pass "a categorical condition value that is no link at all is still an error" || { grep -i categorical cp2.txt; fail "plain categorical value"; }
 cd "$ROOT"
 
 # 43. the citation index feeds discovery: abstracts raise terms the brain cannot name, and a high-priority work heads the reading list

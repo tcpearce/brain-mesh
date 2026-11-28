@@ -24,11 +24,14 @@ Built on 1.33.0 (PR #70, merged into `fixes`).
 - `check` refuses a source set `integrated` while its handover has items not yet applied.
 - The batch brief fixes the line format of each handover section; batch Phase 3 runs `handover --all --apply` after the build.
 
+### Check
+- A categorical condition value that links a proposed concept (`when:: [[species]] = [[anopheles-gambiae]]` before the species is adopted) is a warning, as every link to a proposal is, not an error (issue #72). Agents had dropped the condition from their cards to get past it.
+
 ### Skills
 concept-scan (**Every concept across every source and every abstract: the record**), batch (handover line formats; Phase 3 steps 4 and 6; the backfill after adoptions), add-paper (step 9 in a batch; step 10.3, mesh the concepts the paper brought), citation-index 5b (concepts that arrive after a work was indexed), housekeeping item 23, FORMATS (`abstract_scan::`, `concept_decided::`, `ledger/concept-coverage.md`).
 
 ### Tests
-New section 58 (27 checks). The other sections run with `BRAIN_MESH_NO_RESOLVE=1`, so each tests its own feature; section 58 tests the default.
+New section 58 (29 checks). The other sections run with `BRAIN_MESH_NO_RESOLVE=1`, so each tests its own feature; section 58 tests the default.
 
 ## 1.33.0 (2026-11-27)
 

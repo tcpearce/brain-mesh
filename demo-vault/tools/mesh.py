@@ -1181,7 +1181,8 @@ class Mesh:
                 for wv, val, is_term in s.whens(c):
                     if not wv and any(firstlink(v_) in s.proposed() for v_ in c.all("when")): continue
                     if not wv or s.cards[wv].fam != "concept": E.append(f"{i}: 'when::' must start with a [[variable]] concept link then ' = '")
-                    elif s.cards[wv].get("unit") == "categorical" and not is_term: E.append(f"{i}: when {wv} is categorical, so its value must be a concept link (got '{val}')")
+                    elif s.cards[wv].get("unit") == "categorical" and not is_term and not any(t.strip() in s.proposed() for v_ in c.all("when") if s.pair(v_)[0] == wv for t, _a, _d in WIKI.findall(s.pair(v_)[1])):  # a proposed value is a warning, as every link to a proposal is (issue #72)
+                        E.append(f"{i}: when {wv} is categorical, so its value must be a concept link (got '{val}')")
                 dig = [s.part(k) for k in parts] if via in ("text", "table", "si") else []
                 xs = s.data_numbers(tuple(dfiles)) if via in ("text", "table", "si") else []
                 if (any(d[0] for d in dig) or xs) and via in ("text", "table", "si"):
